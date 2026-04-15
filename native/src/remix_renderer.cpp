@@ -27,6 +27,17 @@ constexpr float kFaceOverlayBias = 0.001f;
 constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
+constexpr std::uint32_t kRtTextureArgNone = 0;
+constexpr std::uint32_t kRtTextureArgTexture = 1;
+constexpr std::uint32_t kRtTextureArgVertexColor0 = 2;
+constexpr std::uint32_t kRtTextureOpSelectArg1 = 1;
+constexpr std::uint32_t kRtTextureOpModulate = 3;
+
+struct SurfaceBuildBuffers {
+  remixapi_MaterialHandle materialHandle {nullptr};
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+};
 
 constexpr float kFaceVertexOffsets[6][4][3] = {
   {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
@@ -720,10 +731,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     remixapi_MaterialHandle materialHandle = nullptr;
     const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-      log(std::string("CreateMaterial failed for terrain material class ")
-          + std::to_string(materialClass)
-          + ": "
-          + errorCodeToString(result));
+      setError("CreateMaterial failed: " + errorCodeToString(result));
       return false;
     }
 
@@ -870,12 +878,26 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return true;
   }
 
-  std::array<std::vector<remixapi_HardcodedVertex>, kTerrainMaterialClassCount> verticesByMaterial;
-  std::array<std::vector<std::uint32_t>, kTerrainMaterialClassCount> indicesByMaterial;
-  for (std::size_t materialClass = 0; materialClass < kTerrainMaterialClassCount; ++materialClass) {
-    verticesByMaterial[materialClass].reserve(meshData.blockCount * 12);
-    indicesByMaterial[materialClass].reserve(meshData.blockCount * 18);
-  }
+  std::vector<SurfaceBuildBuffers> surfacesToBuild;
+  surfacesToBuild.reserve(8);
+  std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
+
+  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](remixapi_MaterialHandle materialHandle) -> SurfaceBuildBuffers& {
+    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(materialHandle);
+    const auto it = surfaceIndexByHandle.find(materialKey);
+    if (it != surfaceIndexByHandle.end()) {
+      return surfacesToBuild[it->second];
+    }
+
+    SurfaceBuildBuffers surface;
+    surface.materialHandle = materialHandle;
+    surface.vertices.reserve(512);
+    surface.indices.reserve(768);
+    const std::size_t surfaceIndex = surfacesToBuild.size();
+    surfacesToBuild.push_back(std::move(surface));
+    surfaceIndexByHandle.emplace(materialKey, surfaceIndex);
+    return surfacesToBuild.back();
+  };
 
   for (int localY = 0; localY < kChunkDimension; ++localY) {
     for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
@@ -887,8 +909,8 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 
         const ChunkBlockCell& cell = meshData.cells[cellIndex];
         const std::size_t materialClass = cell.materialClass < kTerrainMaterialClassCount
-            ? cell.materialClass
-            : kOpaqueTerrainMaterialClass;
+          ? cell.materialClass
+          : kOpaqueTerrainMaterialClass;
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
           const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
@@ -943,6 +965,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
             continue;
           }
 
+          SurfaceBuildBuffers& faceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendFaceGeometry(
               faceIndex,
               static_cast<float>(localX),
@@ -953,13 +976,14 @@ bool RemixRenderer::rebuildChunkMeshFromData(
                   ? packVertexColor(cell.blockColor)
                   : kDefaultVertexColor,
               0.0f,
-              verticesByMaterial[materialClass],
-              indicesByMaterial[materialClass]);
+              faceSurface.vertices,
+              faceSurface.indices);
 
           if (cell.blockId == kGrassBlockId
               && minecraftSide >= 2
               && minecraftSide <= 5
               && cell.terrainTiles[minecraftSide] == 3) {
+            SurfaceBuildBuffers& overlaySurface = acquireSurface(terrainMaterialHandles_[kCutoutTerrainMaterialClass]);
             appendFaceGeometry(
                 faceIndex,
                 static_cast<float>(localX),
@@ -968,32 +992,32 @@ bool RemixRenderer::rebuildChunkMeshFromData(
                 kGrassOverlayTerrainTile,
                 packVertexColor(cell.blockColor),
                 kFaceOverlayBias,
-                verticesByMaterial[kCutoutTerrainMaterialClass],
-                indicesByMaterial[kCutoutTerrainMaterialClass]);
+                overlaySurface.vertices,
+                overlaySurface.indices);
           }
         }
       }
     }
   }
 
-  std::array<remixapi_MeshInfoSurfaceTriangles, kTerrainMaterialClassCount> surfaces {};
-  std::size_t surfaceCount = 0;
-  for (std::size_t materialClass = 0; materialClass < kTerrainMaterialClassCount; ++materialClass) {
-    if (indicesByMaterial[materialClass].empty()) {
+  std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
+  surfaces.reserve(surfacesToBuild.size());
+  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+    if (surfaceBuild.indices.empty()) {
       continue;
     }
 
     remixapi_MeshInfoSurfaceTriangles surface {};
-    surface.vertices_values = verticesByMaterial[materialClass].data();
-    surface.vertices_count = verticesByMaterial[materialClass].size();
-    surface.indices_values = indicesByMaterial[materialClass].data();
-    surface.indices_count = indicesByMaterial[materialClass].size();
+    surface.vertices_values = surfaceBuild.vertices.data();
+    surface.vertices_count = surfaceBuild.vertices.size();
+    surface.indices_values = surfaceBuild.indices.data();
+    surface.indices_count = surfaceBuild.indices.size();
     surface.skinning_hasvalue = FALSE;
-    surface.material = terrainMaterialHandles_[materialClass];
-    surfaces[surfaceCount++] = surface;
+    surface.material = surfaceBuild.materialHandle;
+    surfaces.push_back(surface);
   }
 
-  if (surfaceCount == 0) {
+  if (surfaces.empty()) {
     destroyChunkMesh(meshData);
     return true;
   }
@@ -1002,7 +1026,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
   meshInfo.hash = makeChunkMeshHash(chunkKey, nextChunkMeshHash_++);
   meshInfo.surfaces_values = surfaces.data();
-  meshInfo.surfaces_count = surfaceCount;
+  meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
@@ -1063,8 +1087,19 @@ bool RemixRenderer::drawCapturedGeometry() {
       continue;
     }
 
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
     remixapi_InstanceInfo instanceInfo {};
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
     instanceInfo.mesh = meshData.meshHandle;
     instanceInfo.transform = makeTranslationTransform(
