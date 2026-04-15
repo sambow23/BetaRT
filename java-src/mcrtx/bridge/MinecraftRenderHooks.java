@@ -4,6 +4,8 @@ public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
+    private static final int DOOR_BLOCK_RENDER_TYPE = 7;
+    private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
 
     private static volatile boolean initialized;
     private static boolean chunkBuildCaptureActive;
@@ -297,6 +299,12 @@ public final class MinecraftRenderHooks {
             int texture3,
             int texture4,
             int texture5,
+            float boundsMinX,
+            float boundsMinY,
+            float boundsMinZ,
+            float boundsMaxX,
+            float boundsMaxY,
+            float boundsMaxZ,
             int blockColorRgb,
             int liquidVisibilityMask,
             float liquidHeight0,
@@ -324,6 +332,12 @@ public final class MinecraftRenderHooks {
                 texture3,
                 texture4,
                 texture5,
+                boundsMinX,
+                boundsMinY,
+                boundsMinZ,
+                boundsMaxX,
+                boundsMaxY,
+                boundsMaxZ,
                 blockColorRgb,
                 liquidVisibilityMask,
                 liquidHeight0,
@@ -352,7 +366,14 @@ public final class MinecraftRenderHooks {
             return false;
         }
         if (activeChunkRenderPass == 0) {
-            return renderType == 0 || renderType == 1 || renderType == 2 || renderType == 8 || renderType == 9 || renderType == 11;
+            return renderType == 0
+                    || renderType == 1
+                    || renderType == 2
+                    || renderType == DOOR_BLOCK_RENDER_TYPE
+                    || renderType == 8
+                    || renderType == 9
+                    || renderType == STAIRS_BLOCK_RENDER_TYPE
+                    || renderType == 11;
         }
         if (activeChunkRenderPass == 1) {
             return renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID);

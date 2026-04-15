@@ -25,15 +25,23 @@ constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kCubeBlockRenderType = 0;
 constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
 constexpr std::uint8_t kTorchBlockRenderType = 2;
+constexpr std::uint8_t kDoorBlockRenderType = 7;
 constexpr std::uint8_t kLadderBlockRenderType = 8;
 constexpr std::uint8_t kRailBlockRenderType = 9;
+constexpr std::uint8_t kStairBlockRenderType = 10;
 constexpr std::uint8_t kFenceBlockRenderType = 11;
 constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
+constexpr std::uint8_t kDoubleSlabBlockId = 43;
+constexpr std::uint8_t kSingleSlabBlockId = 44;
 constexpr std::uint8_t kTallGrassBlockId = 31;
 constexpr std::uint8_t kTorchBlockId = 50;
+constexpr std::uint8_t kWoodStairsBlockId = 53;
+constexpr std::uint8_t kWoodDoorBlockId = 64;
 constexpr std::uint8_t kLadderBlockId = 65;
+constexpr std::uint8_t kStoneStairsBlockId = 67;
+constexpr std::uint8_t kIronDoorBlockId = 71;
 constexpr std::uint8_t kGoldenRailBlockId = 27;
 constexpr std::uint8_t kDetectorRailBlockId = 28;
 constexpr std::uint8_t kRailBlockId = 66;
@@ -239,6 +247,10 @@ bool isTorchRenderType(int renderType) {
   return renderType == kTorchBlockRenderType;
 }
 
+bool isDoorRenderType(int renderType) {
+  return renderType == kDoorBlockRenderType;
+}
+
 bool isLadderRenderType(int renderType) {
   return renderType == kLadderBlockRenderType;
 }
@@ -247,8 +259,24 @@ bool isRailRenderType(int renderType) {
   return renderType == kRailBlockRenderType;
 }
 
+bool isStairRenderType(int renderType) {
+  return renderType == kStairBlockRenderType;
+}
+
 bool isFenceRenderType(int renderType) {
   return renderType == kFenceBlockRenderType;
+}
+
+bool isSingleSlabBlockId(int blockId) {
+  return blockId == kSingleSlabBlockId;
+}
+
+bool isStairBlockId(int blockId) {
+  return blockId == kWoodStairsBlockId || blockId == kStoneStairsBlockId;
+}
+
+bool isDoorBlockId(int blockId) {
+  return blockId == kWoodDoorBlockId || blockId == kIronDoorBlockId;
 }
 
 bool isRailBlockId(int blockId) {
@@ -260,8 +288,10 @@ bool isSupportedPass0RenderType(int renderType) {
     case kCubeBlockRenderType:
     case kCrossedQuadBlockRenderType:
     case kTorchBlockRenderType:
+    case kDoorBlockRenderType:
     case kLadderBlockRenderType:
     case kRailBlockRenderType:
+    case kStairBlockRenderType:
     case kFenceBlockRenderType:
       return true;
     default:
@@ -289,6 +319,7 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
 bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   if (isCrossedQuadRenderType(renderType)
       || isTorchRenderType(renderType)
+      || isDoorRenderType(renderType)
       || isLadderRenderType(renderType)
       || isRailRenderType(renderType)) {
     return true;
@@ -445,8 +476,12 @@ std::uint64_t computeChunkFingerprint(
     fingerprint *= 1099511628211ull;
     fingerprint ^= static_cast<std::uint64_t>(cells[index].blockColor);
     fingerprint *= 1099511628211ull;
-    for (const std::uint8_t tileIndex : cells[index].terrainTiles) {
-      fingerprint ^= static_cast<std::uint64_t>(tileIndex);
+    for (const std::int16_t tileIndex : cells[index].terrainTiles) {
+      fingerprint ^= static_cast<std::uint64_t>(static_cast<std::uint16_t>(tileIndex));
+      fingerprint *= 1099511628211ull;
+    }
+    for (const float boundValue : cells[index].bounds) {
+      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(boundValue));
       fingerprint *= 1099511628211ull;
     }
   }
@@ -455,6 +490,31 @@ std::uint64_t computeChunkFingerprint(
 
 std::uint32_t packVertexColor(std::uint32_t rgbColor) {
   return 0xFF000000u | (rgbColor & 0x00FFFFFFu);
+}
+
+int normalizeTerrainTileIndex(std::int16_t terrainTileIndex) {
+  return std::abs(static_cast<int>(terrainTileIndex));
+}
+
+bool usesFlippedTerrainTile(std::int16_t terrainTileIndex) {
+  return terrainTileIndex < 0;
+}
+
+float maybeFlipTileU(float u, float tileMinU, float scaleU, bool flipU) {
+  if (!flipU) {
+    return u;
+  }
+
+  return tileMinU + scaleU - (u - tileMinU);
+}
+
+bool usesPartialCubeBounds(const ChunkBlockCell& cell) {
+  return cell.bounds[0] > 0.0f
+      || cell.bounds[1] > 0.0f
+      || cell.bounds[2] > 0.0f
+      || cell.bounds[3] < 1.0f
+      || cell.bounds[4] < 1.0f
+      || cell.bounds[5] < 1.0f;
 }
 
 std::array<float, 3> computeQuadNormal(
@@ -494,7 +554,7 @@ void appendFaceGeometry(
     float localX,
     float localY,
     float localZ,
-    std::uint8_t terrainTileIndex,
+    std::int16_t terrainTileIndex,
     std::uint32_t vertexColor,
     float normalOffset,
     std::vector<remixapi_HardcodedVertex>& vertices,
@@ -508,7 +568,7 @@ void appendFaceGeometry(
     float maxX,
     float maxY,
     float maxZ,
-    std::uint8_t terrainTileIndex,
+    std::int16_t terrainTileIndex,
     std::uint32_t vertexColor,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);
@@ -542,12 +602,16 @@ bool usesFancyLeavesTexture(const ChunkBlockCell& cell) {
     return false;
   }
 
-  const std::uint8_t terrainTile = cell.terrainTiles[0];
+  const int terrainTile = normalizeTerrainTileIndex(cell.terrainTiles[0]);
   return terrainTile == kLeavesFancyTextureOak || terrainTile == kLeavesFancyTextureBirchSpruce;
 }
 
 bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockCell& neighborCell) {
   if (cell.renderType != kCubeBlockRenderType || neighborCell.renderType != kCubeBlockRenderType) {
+    return false;
+  }
+
+  if (usesPartialCubeBounds(cell) || usesPartialCubeBounds(neighborCell)) {
     return false;
   }
 
@@ -758,7 +822,7 @@ void appendCrossedQuadGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
   const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
   const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
   const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
@@ -844,13 +908,15 @@ void appendBoundsFaceGeometry(
     float maxX,
     float maxY,
     float maxZ,
-    std::uint8_t terrainTileIndex,
+    std::int16_t terrainTileIndex,
     std::uint32_t vertexColor,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
-  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
-  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const int terrainTile = normalizeTerrainTileIndex(terrainTileIndex);
+  const bool flipU = usesFlippedTerrainTile(terrainTileIndex);
+  const float tileMinU = static_cast<float>((terrainTile & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTile & 0xF0) / kAtlasSizePixels;
   const float usableTileSize = kAtlasTileSizePixels - kAtlasUvInsetPixels;
   const float scaleU = usableTileSize / kAtlasSizePixels;
   const float scaleV = usableTileSize / kAtlasSizePixels;
@@ -892,7 +958,7 @@ void appendBoundsFaceGeometry(
       v = tileMinV + relZ * scaleV;
     }
 
-    vertex.texcoord[0] = u;
+    vertex.texcoord[0] = maybeFlipTileU(u, tileMinU, scaleU, flipU);
     vertex.texcoord[1] = v;
     vertex.color = vertexColor;
     vertices.push_back(vertex);
@@ -910,7 +976,7 @@ void appendBoxGeometry(
     float maxX,
     float maxY,
     float maxZ,
-    const std::array<std::uint8_t, 6>& terrainTiles,
+  const std::array<std::int16_t, 6>& terrainTiles,
     std::uint32_t vertexColor,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
@@ -931,6 +997,178 @@ void appendBoxGeometry(
   }
 }
 
+  void appendSlabGeometry(
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    appendBoxGeometry(
+        localX,
+        localY,
+        localZ,
+        localX + 1.0f,
+        localY + 0.5f,
+        localZ + 1.0f,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  }
+
+  void appendStairGeometry(
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    const int metadata = cell.blockMetadata & 3;
+
+    if (metadata == 0) {
+      appendBoxGeometry(
+          localX,
+          localY,
+          localZ,
+          localX + 0.5f,
+          localY + 0.5f,
+          localZ + 1.0f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      appendBoxGeometry(
+          localX + 0.5f,
+          localY,
+          localZ,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      return;
+    }
+
+    if (metadata == 1) {
+      appendBoxGeometry(
+          localX,
+          localY,
+          localZ,
+          localX + 0.5f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      appendBoxGeometry(
+          localX + 0.5f,
+          localY,
+          localZ,
+          localX + 1.0f,
+          localY + 0.5f,
+          localZ + 1.0f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      return;
+    }
+
+    if (metadata == 2) {
+      appendBoxGeometry(
+          localX,
+          localY,
+          localZ,
+          localX + 1.0f,
+          localY + 0.5f,
+          localZ + 0.5f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      appendBoxGeometry(
+          localX,
+          localY,
+          localZ + 0.5f,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      return;
+    }
+
+    appendBoxGeometry(
+        localX,
+        localY,
+        localZ,
+        localX + 1.0f,
+        localY + 1.0f,
+        localZ + 0.5f,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+    appendBoxGeometry(
+        localX,
+        localY,
+        localZ + 0.5f,
+        localX + 1.0f,
+        localY + 0.5f,
+        localZ + 1.0f,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  }
+
+  void appendDoorGeometry(
+      const ChunkBlockCell& cell,
+      int resolvedMetadata,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    const int doorShape = (resolvedMetadata & 4) == 0
+        ? ((resolvedMetadata - 1) & 3)
+        : (resolvedMetadata & 3);
+    constexpr float kDoorThickness = 0.1875f;
+
+    float minX = localX;
+    float maxX = localX + 1.0f;
+    float minZ = localZ;
+    float maxZ = localZ + 1.0f;
+
+    if (doorShape == 0) {
+      maxZ = localZ + kDoorThickness;
+    } else if (doorShape == 1) {
+      minX = localX + 1.0f - kDoorThickness;
+    } else if (doorShape == 2) {
+      minZ = localZ + 1.0f - kDoorThickness;
+    } else {
+      maxX = localX + kDoorThickness;
+    }
+
+    appendBoxGeometry(
+        minX,
+        localY,
+        minZ,
+        maxX,
+        localY + 1.0f,
+        maxZ,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  }
+
 void appendTorchGeometry(
     const ChunkBlockCell& cell,
     float localX,
@@ -938,7 +1176,7 @@ void appendTorchGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
   const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
   const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
   const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + 15.99f) / kAtlasSizePixels;
@@ -1150,7 +1388,7 @@ void appendLadderGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
   const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
   const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
   const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
@@ -1268,7 +1506,7 @@ void appendRailGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
   const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
   const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
   const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
@@ -1752,12 +1990,12 @@ void appendWaterGeometry(
   const float heightSouthWest = cell.liquidHeights[3];
 
   if ((cell.liquidVisibilityMask & (1 << 1)) != 0) {
-    std::uint8_t terrainTileIndex = cell.terrainTiles[1];
+    int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[1]);
     double uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 8) / kAtlasSizePixels;
     double uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 8) / kAtlasSizePixels;
     float flowAngle = cell.liquidFlowAngle;
     if (flowAngle > -999.0f) {
-      terrainTileIndex = cell.terrainTiles[2];
+      terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[2]);
       uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 16) / kAtlasSizePixels;
       uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 16) / kAtlasSizePixels;
     } else {
@@ -1813,7 +2051,7 @@ void appendWaterGeometry(
       continue;
     }
 
-    const std::uint8_t terrainTileIndex = cell.terrainTiles[minecraftSide];
+    const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[minecraftSide]);
     const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
     const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
     const float tileBaseV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
@@ -1898,16 +2136,18 @@ void appendFaceGeometry(
     float localX,
     float localY,
     float localZ,
-    std::uint8_t terrainTileIndex,
+    std::int16_t terrainTileIndex,
     std::uint32_t vertexColor,
     float normalOffset,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
-  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
-  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
-  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
-  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const int terrainTile = normalizeTerrainTileIndex(terrainTileIndex);
+  const bool flipU = usesFlippedTerrainTile(terrainTileIndex);
+  const float tileMinU = static_cast<float>((terrainTile & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTile & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTile & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTile & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
 
   for (int vertexIndex = 0; vertexIndex < 4; ++vertexIndex) {
     remixapi_HardcodedVertex vertex {};
@@ -1917,7 +2157,8 @@ void appendFaceGeometry(
     vertex.normal[0] = kFaceNormals[faceIndex][0];
     vertex.normal[1] = kFaceNormals[faceIndex][1];
     vertex.normal[2] = kFaceNormals[faceIndex][2];
-    vertex.texcoord[0] = kFaceTexcoords[faceIndex][vertexIndex][0] == 0.0f ? tileMinU : tileMaxU;
+    const float u = kFaceTexcoords[faceIndex][vertexIndex][0] == 0.0f ? tileMinU : tileMaxU;
+    vertex.texcoord[0] = flipU ? (u == tileMinU ? tileMaxU : tileMinU) : u;
     vertex.texcoord[1] = kFaceTexcoords[faceIndex][vertexIndex][1] == 0.0f ? tileMinV : tileMaxV;
     vertex.color = vertexColor;
     vertices.push_back(vertex);
@@ -2234,6 +2475,12 @@ void RemixRenderer::captureBlock(
   int texture3,
   int texture4,
   int texture5,
+  float boundsMinX,
+  float boundsMinY,
+  float boundsMinZ,
+  float boundsMaxX,
+  float boundsMaxY,
+  float boundsMaxZ,
   int blockColorRgb,
   int liquidVisibilityMask,
   float liquidHeight0,
@@ -2264,15 +2511,16 @@ void RemixRenderer::captureBlock(
   block.blockId = blockId;
   block.blockMetadata = blockMetadata;
   block.terrainTiles = {
-      static_cast<std::uint8_t>(texture0 & 0xFF),
-      static_cast<std::uint8_t>(texture1 & 0xFF),
-      static_cast<std::uint8_t>(texture2 & 0xFF),
-      static_cast<std::uint8_t>(texture3 & 0xFF),
-      static_cast<std::uint8_t>(texture4 & 0xFF),
-      static_cast<std::uint8_t>(texture5 & 0xFF),
+      static_cast<std::int16_t>(texture0),
+      static_cast<std::int16_t>(texture1),
+      static_cast<std::int16_t>(texture2),
+      static_cast<std::int16_t>(texture3),
+      static_cast<std::int16_t>(texture4),
+      static_cast<std::int16_t>(texture5),
   };
   block.renderType = renderType;
   block.materialClass = materialClassForBlock(blockId, renderType);
+    block.bounds = {boundsMinX, boundsMinY, boundsMinZ, boundsMaxX, boundsMaxY, boundsMaxZ};
   block.liquidVisibilityMask = static_cast<std::uint8_t>(liquidVisibilityMask & 0x3F);
   block.liquidHeights = {liquidHeight0, liquidHeight1, liquidHeight2, liquidHeight3};
   block.liquidFlowAngle = liquidFlowAngle;
@@ -3119,8 +3367,9 @@ bool RemixRenderer::rebuildChunkMesh(
         ? block.materialClass
         : kOpaqueTerrainMaterialClass;
     cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
-      cells[occupancyIndex].blockMetadata = static_cast<std::uint8_t>(block.blockMetadata & 0xFF);
+    cells[occupancyIndex].blockMetadata = static_cast<std::uint8_t>(block.blockMetadata & 0xFF);
     cells[occupancyIndex].renderType = static_cast<std::uint8_t>(block.renderType & 0xFF);
+    cells[occupancyIndex].bounds = block.bounds;
     cells[occupancyIndex].liquidVisibilityMask = block.liquidVisibilityMask;
     cells[occupancyIndex].liquidHeights = block.liquidHeights;
     cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
@@ -3232,6 +3481,54 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return neighborCell.blockId == kFenceBlockId && neighborCell.renderType == kFenceBlockRenderType;
   };
 
+  const auto findWorldCell = [this, &chunkKey, &meshData](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
+    ChunkKey neighborKey = chunkKey;
+    int localX = worldX - chunkKey.originX;
+    int localY = worldY - chunkKey.originY;
+    int localZ = worldZ - chunkKey.originZ;
+
+    while (localX < 0) {
+      neighborKey.originX -= kChunkDimension;
+      localX += kChunkDimension;
+    }
+    while (localX >= kChunkDimension) {
+      neighborKey.originX += kChunkDimension;
+      localX -= kChunkDimension;
+    }
+    while (localY < 0) {
+      neighborKey.originY -= kChunkDimension;
+      localY += kChunkDimension;
+    }
+    while (localY >= kChunkDimension) {
+      neighborKey.originY += kChunkDimension;
+      localY -= kChunkDimension;
+    }
+    while (localZ < 0) {
+      neighborKey.originZ -= kChunkDimension;
+      localZ += kChunkDimension;
+    }
+    while (localZ >= kChunkDimension) {
+      neighborKey.originZ += kChunkDimension;
+      localZ -= kChunkDimension;
+    }
+
+    const ChunkMeshData* targetMesh = &meshData;
+    if (!(neighborKey == chunkKey)) {
+      const auto neighborIt = chunkMeshes_.find(neighborKey);
+      if (neighborIt == chunkMeshes_.end() || !neighborIt->second.hasOccupancy) {
+        return nullptr;
+      }
+      targetMesh = &neighborIt->second;
+    }
+
+    const int neighborIndex = blockIndex(localX, localY, localZ);
+    if (targetMesh->occupancy[neighborIndex] == 0) {
+      return nullptr;
+    }
+
+    return &targetMesh->cells[neighborIndex];
+  };
+
   for (int localY = 0; localY < kChunkDimension; ++localY) {
     for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
       for (int localX = 0; localX < kChunkDimension; ++localX) {
@@ -3313,6 +3610,50 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isStairRenderType(cell.renderType) && isStairBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& stairSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendStairGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              stairSurface.vertices,
+              stairSurface.indices);
+          continue;
+        }
+
+        if (isDoorRenderType(cell.renderType) && isDoorBlockId(cell.blockId)) {
+          const int worldX = chunkKey.originX + localX;
+          const int worldY = chunkKey.originY + localY;
+          const int worldZ = chunkKey.originZ + localZ;
+          const ChunkBlockCell* pairedDoorCell = (cell.blockMetadata & 8) != 0
+              ? findWorldCell(worldX, worldY - 1, worldZ)
+              : findWorldCell(worldX, worldY + 1, worldZ);
+          int resolvedDoorMetadata = cell.blockMetadata & 0xF;
+          if ((resolvedDoorMetadata & 8) != 0) {
+            if (pairedDoorCell != nullptr && pairedDoorCell->blockId == cell.blockId) {
+              resolvedDoorMetadata = pairedDoorCell->blockMetadata & 0xF;
+            } else {
+              resolvedDoorMetadata &= 7;
+            }
+          } else if (pairedDoorCell != nullptr
+              && pairedDoorCell->blockId == cell.blockId
+              && (pairedDoorCell->blockMetadata & 4) != 0) {
+            resolvedDoorMetadata = (resolvedDoorMetadata & 3) | 4;
+          }
+
+          SurfaceBuildBuffers& doorSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendDoorGeometry(
+              cell,
+              resolvedDoorMetadata,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              doorSurface.vertices,
+              doorSurface.indices);
+          continue;
+        }
+
         if (isFenceRenderType(cell.renderType) && cell.blockId == kFenceBlockId) {
           const int worldX = chunkKey.originX + localX;
           const int worldY = chunkKey.originY + localY;
@@ -3329,6 +3670,22 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localZ),
               fenceSurface.vertices,
               fenceSurface.indices);
+          continue;
+        }
+
+        if (cell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(cell)) {
+          SurfaceBuildBuffers& partialCubeSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendBoxGeometry(
+              static_cast<float>(localX) + cell.bounds[0],
+              static_cast<float>(localY) + cell.bounds[1],
+              static_cast<float>(localZ) + cell.bounds[2],
+              static_cast<float>(localX) + cell.bounds[3],
+              static_cast<float>(localY) + cell.bounds[4],
+              static_cast<float>(localZ) + cell.bounds[5],
+              cell.terrainTiles,
+              kDefaultVertexColor,
+              partialCubeSurface.vertices,
+              partialCubeSurface.indices);
           continue;
         }
 
@@ -3406,7 +3763,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           if (cell.blockId == kGrassBlockId
               && minecraftSide >= 2
               && minecraftSide <= 5
-              && cell.terrainTiles[minecraftSide] == 3) {
+              && normalizeTerrainTileIndex(cell.terrainTiles[minecraftSide]) == 3) {
             SurfaceBuildBuffers& overlaySurface = acquireSurface(terrainMaterialHandles_[kCutoutTerrainMaterialClass]);
             appendFaceGeometry(
                 faceIndex,

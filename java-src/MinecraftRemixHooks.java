@@ -336,6 +336,8 @@ public final class MinecraftRemixHooks {
             return;
         }
 
+        blockDefinition.a(blockAccess, blockX, blockY, blockZ);
+
         int liquidVisibilityMask = 0x3F;
         float liquidHeight0 = 1.0f;
         float liquidHeight1 = 1.0f;
@@ -359,12 +361,18 @@ public final class MinecraftRemixHooks {
                 blockId,
                 blockMetadata,
                 renderType,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5),
+                (float) blockDefinition.bs,
+                (float) blockDefinition.bt,
+                (float) blockDefinition.bu,
+                (float) blockDefinition.bv,
+                (float) blockDefinition.bw,
+                (float) blockDefinition.bx,
                 blockDefinition.b(blockAccess, blockX, blockY, blockZ),
                 liquidVisibilityMask,
                 liquidHeight0,
@@ -388,6 +396,7 @@ public final class MinecraftRemixHooks {
         }
 
         xp blockAccess = world;
+    blockDefinition.a(blockAccess, blockX, blockY, blockZ);
 
         int liquidVisibilityMask = 0x3F;
         float liquidHeight0 = 1.0f;
@@ -412,12 +421,18 @@ public final class MinecraftRemixHooks {
                 blockId,
                 blockMetadata,
                 renderType,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4) & 0xFF,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4),
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5),
+                (float) blockDefinition.bs,
+                (float) blockDefinition.bt,
+                (float) blockDefinition.bu,
+                (float) blockDefinition.bv,
+                (float) blockDefinition.bw,
+                (float) blockDefinition.bx,
                 blockDefinition.b(blockAccess, blockX, blockY, blockZ),
                 liquidVisibilityMask,
                 liquidHeight0,

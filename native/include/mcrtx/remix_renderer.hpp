@@ -35,11 +35,12 @@ struct ChunkBuildState {
 };
 
 struct ChunkBlockCell {
-  std::array<std::uint8_t, 6> terrainTiles {};
+  std::array<std::int16_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
   std::uint8_t blockId {0};
   std::uint8_t blockMetadata {0};
   std::uint8_t renderType {0};
+  std::array<float, 6> bounds {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
   std::uint8_t liquidVisibilityMask {0x3F};
   std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
   float liquidFlowAngle {-1000.0f};
@@ -51,8 +52,9 @@ struct CapturedBlockInstance {
   int blockId {0};
   int blockMetadata {0};
   int renderType {0};
-  std::array<std::uint8_t, 6> terrainTiles {};
+  std::array<std::int16_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
+  std::array<float, 6> bounds {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
   std::uint8_t liquidVisibilityMask {0x3F};
   std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
   float liquidFlowAngle {-1000.0f};
@@ -190,6 +192,12 @@ public:
       int texture3,
       int texture4,
       int texture5,
+      float boundsMinX,
+      float boundsMinY,
+      float boundsMinZ,
+      float boundsMaxX,
+      float boundsMaxY,
+      float boundsMaxZ,
       int blockColorRgb,
       int liquidVisibilityMask,
       float liquidHeight0,
