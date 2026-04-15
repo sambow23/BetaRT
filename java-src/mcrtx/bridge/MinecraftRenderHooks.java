@@ -465,6 +465,7 @@ public final class MinecraftRenderHooks {
             return renderType == 0
                     || renderType == 1
                     || renderType == 2
+                    || renderType == 3
                     || renderType == DOOR_BLOCK_RENDER_TYPE
                     || renderType == 8
                     || renderType == 9

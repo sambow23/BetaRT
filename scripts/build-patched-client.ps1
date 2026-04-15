@@ -100,11 +100,201 @@ function Convert-PngToDds {
             $fileStream.Dispose()
         }
     } finally {
-        if ($bitmap -ne $null) {
+        if ($null -ne $bitmap) {
             $bitmap.Dispose()
         }
-        if ($convertedBitmap -ne $null -and $convertedBitmap -ne $bitmap) {
+        if ($null -ne $convertedBitmap -and $null -ne $bitmap -and $convertedBitmap -ne $bitmap) {
             $convertedBitmap.Dispose()
+        }
+    }
+}
+
+function Replace-TerrainFireTiles {
+    param(
+        [string]$TerrainPngPath,
+        [string]$FirePngPath
+    )
+
+    $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
+    $terrainBitmap = $null
+    $fireAtlasBitmap = $null
+    $graphics = $null
+    $fireGraphics = $null
+
+    try {
+        $terrainBitmap = New-Object System.Drawing.Bitmap($terrainSource)
+        $fireAtlasBitmap = New-Object System.Drawing.Bitmap(256, 32, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($terrainBitmap)
+        $fireGraphics = [System.Drawing.Graphics]::FromImage($fireAtlasBitmap)
+
+        function New-FireSimulation {
+            param(
+                [int]$SeedOffset
+            )
+
+            return @{
+                TileWidth = 16
+                SimulationHeight = 20
+                Current = (New-Object 'float[]' (16 * 20))
+                Next = (New-Object 'float[]' (16 * 20))
+                Random = [System.Random]::new(1337 + $SeedOffset)
+            }
+        }
+
+        function Step-FireSimulation {
+            param(
+                [hashtable]$Simulation
+            )
+
+            $tileWidth = $Simulation.TileWidth
+            $simulationHeight = $Simulation.SimulationHeight
+            $current = $Simulation.Current
+            $next = $Simulation.Next
+            $random = $Simulation.Random
+
+            for ($x = 0; $x -lt $tileWidth; $x++) {
+                for ($y = 0; $y -lt $simulationHeight; $y++) {
+                        $weight = 18
+                        $value = $current[$x + ((($y + 1) % $simulationHeight) * $tileWidth)] * $weight
+
+                        for ($sampleX = $x - 1; $sampleX -le $x + 1; $sampleX++) {
+                            for ($sampleY = $y; $sampleY -le $y + 1; $sampleY++) {
+                                if ($sampleX -ge 0 -and $sampleY -ge 0 -and $sampleX -lt $tileWidth -and $sampleY -lt $simulationHeight) {
+                                    $value += $current[$sampleX + ($sampleY * $tileWidth)]
+                                }
+                                $weight++
+                            }
+                        }
+
+                        $nextIndex = $x + ($y * $tileWidth)
+                    $next[$nextIndex] = $value / ($weight * 1.06)
+                    if ($y -eq ($simulationHeight - 1)) {
+                        $randomValue = $random.NextDouble()
+                        $randomValue *= $random.NextDouble()
+                        $randomValue *= $random.NextDouble()
+                        $next[$nextIndex] = [float]($randomValue * 4.0 + ($random.NextDouble() * 0.1) + 0.2)
+                    }
+                }
+            }
+
+            $Simulation.Current = $next
+            $Simulation.Next = $current
+        }
+
+        function New-FireTileBitmap {
+            param(
+                [hashtable]$Simulation
+            )
+
+            $tileWidth = $Simulation.TileWidth
+            $current = $Simulation.Current
+            $bitmap = New-Object System.Drawing.Bitmap($tileWidth, $tileWidth, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+            for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
+                $intensity = $current[$pixelIndex] * 1.8
+                if ($intensity -gt 1.0) {
+                    $intensity = 1.0
+                }
+                if ($intensity -lt 0.0) {
+                    $intensity = 0.0
+                }
+
+                $red = [int]($intensity * 155.0 + 100.0)
+                $green = [int]($intensity * $intensity * 255.0)
+                $blue = [int]([Math]::Pow($intensity, 10.0) * 255.0)
+                $alpha = if ($intensity -lt 0.5) { 0 } else { 255 }
+
+                $pixelX = $pixelIndex % $tileWidth
+                $pixelY = [int][Math]::Floor($pixelIndex / $tileWidth)
+                $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb($alpha, $red, $green, $blue))
+            }
+
+            return $bitmap
+        }
+
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+        $fireGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $fireGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $fireGraphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+
+        $tileSize = 16
+        $fireTerrainTileIndices = @(31, 47)
+        $frameCount = 16
+        $primarySimulation = New-FireSimulation -SeedOffset 0
+        $alternateSimulation = New-FireSimulation -SeedOffset 1
+
+        for ($warmupStep = 0; $warmupStep -lt 32; $warmupStep++) {
+            Step-FireSimulation -Simulation $primarySimulation
+            Step-FireSimulation -Simulation $alternateSimulation
+        }
+
+        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+            $primaryTileBitmap = New-FireTileBitmap -Simulation $primarySimulation
+            $alternateTileBitmap = New-FireTileBitmap -Simulation $alternateSimulation
+            try {
+                $frameDestinationX = $frameIndex * $tileSize
+                $primaryAtlasRect = New-Object System.Drawing.Rectangle($frameDestinationX, 0, $tileSize, $tileSize)
+                $alternateAtlasRect = New-Object System.Drawing.Rectangle($frameDestinationX, $tileSize, $tileSize, $tileSize)
+                $fireGraphics.DrawImage($primaryTileBitmap, $primaryAtlasRect)
+                $fireGraphics.DrawImage($alternateTileBitmap, $alternateAtlasRect)
+
+                if ($frameIndex -eq 0) {
+                    for ($tileArrayIndex = 0; $tileArrayIndex -lt $fireTerrainTileIndices.Count; $tileArrayIndex++) {
+                        $tileIndex = $fireTerrainTileIndices[$tileArrayIndex]
+                        $destinationTileX = ($tileIndex % 16) * $tileSize
+                        $destinationTileY = [int][Math]::Floor($tileIndex / 16) * $tileSize
+                        $destinationRect = New-Object System.Drawing.Rectangle($destinationTileX, $destinationTileY, $tileSize, $tileSize)
+                        $sourceBitmap = if ($tileArrayIndex -eq 0) { $primaryTileBitmap } else { $alternateTileBitmap }
+                        $graphics.DrawImage($sourceBitmap, $destinationRect)
+                    }
+                }
+            } finally {
+                $primaryTileBitmap.Dispose()
+                $alternateTileBitmap.Dispose()
+            }
+
+            Step-FireSimulation -Simulation $primarySimulation
+            Step-FireSimulation -Simulation $alternateSimulation
+        }
+
+        $fireGraphics.Dispose()
+        $fireGraphics = $null
+        $graphics.Dispose()
+        $graphics = $null
+
+        $temporaryTerrainPath = "$TerrainPngPath.tmp"
+        $temporaryFirePath = "$FirePngPath.tmp"
+        $terrainBitmap.Save($temporaryTerrainPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $fireAtlasBitmap.Save($temporaryFirePath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $fireAtlasBitmap.Dispose()
+        $fireAtlasBitmap = $null
+        $terrainBitmap.Dispose()
+        $terrainBitmap = $null
+        $terrainSource.Dispose()
+        $terrainSource = $null
+
+        Copy-Item -Force $temporaryTerrainPath $TerrainPngPath
+        Remove-Item -Force $temporaryTerrainPath
+        Copy-Item -Force $temporaryFirePath $FirePngPath
+        Remove-Item -Force $temporaryFirePath
+    } finally {
+        if ($null -ne $fireGraphics) {
+            $fireGraphics.Dispose()
+        }
+        if ($null -ne $graphics) {
+            $graphics.Dispose()
+        }
+        if ($null -ne $fireAtlasBitmap) {
+            $fireAtlasBitmap.Dispose()
+        }
+        if ($null -ne $terrainBitmap) {
+            $terrainBitmap.Dispose()
+        }
+        if ($null -ne $terrainSource) {
+            $terrainSource.Dispose()
         }
     }
 }
@@ -263,9 +453,11 @@ if ($LASTEXITCODE -ne 0) {
     throw "jar update failed with exit code $LASTEXITCODE"
 }
 
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
-Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
+Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
+Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
@@ -283,7 +475,10 @@ Write-Host "Patched client bundle ready: $OutputRoot"
 Write-Host "Patched jar: $patchedJar"
 Write-Host "Patch source jar: $MinecraftJar"
 Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"
+Write-Host "Replaced terrain fire placeholder tiles with generated Beta fire texels"
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"
+Write-Host "Generated fire animation atlas: $(Join-Path $assetsDir 'fire.png')"
+Write-Host "Converted fire animation atlas DDS: $(Join-Path $assetsDir 'fire.dds')"
 Write-Host "Extracted particles atlas: $(Join-Path $assetsDir 'particles.png')"
 Write-Host "Converted particles atlas DDS: $(Join-Path $assetsDir 'particles.dds')"
 Write-Host "Extracted GUI item atlas: $(Join-Path $assetsDir 'gui\items.png')"

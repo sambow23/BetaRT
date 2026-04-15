@@ -57,16 +57,22 @@ constexpr std::uint8_t kLeavesFastTextureBirchSpruce = 133;
 constexpr float kAtlasSizePixels = 256.0f;
 constexpr float kAtlasTileSizePixels = 16.0f;
 constexpr float kAtlasUvInsetPixels = 0.01f;
+constexpr float kFireAtlasWidthPixels = 256.0f;
+constexpr float kFireAtlasHeightPixels = 32.0f;
+constexpr std::uint32_t kFireAnimationFrameCount = 16;
+constexpr ULONGLONG kFireAnimationFrameIntervalMilliseconds = 50;
 constexpr float kFaceOverlayBias = 0.001f;
 constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
+constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
 constexpr std::uint64_t kParticleMaterialHashSeed = 0x4D43525458505443ull;
 constexpr std::uint64_t kDynamicEntityMeshHashSeed = 0x4D43525458454E00ull;
 constexpr std::uint64_t kDestroyOverlayMeshHashSeed = 0x4D43525458444F00ull;
 constexpr std::uint64_t kParticleMeshHashSeed = 0x4D43525458505100ull;
+constexpr std::uint64_t kFireMeshHashSeed = 0x4D43525458465200ull;
 constexpr std::uint64_t kTorchLightHashSeed = 0x4D435254584C4954ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
@@ -385,6 +391,10 @@ std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence) {
 
 std::uint64_t makeParticleMeshHash(std::uint64_t sequence) {
   return kParticleMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
+std::uint64_t makeFireMeshHash(std::uint64_t sequence) {
+  return kFireMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
 std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value) {
@@ -874,7 +884,7 @@ void appendCrossedQuadSheet(
       indices);
 }
 
-void appendFireSheet(
+void appendAnimatedFireSheet(
     float x0,
     float y0,
     float z0,
@@ -887,14 +897,15 @@ void appendFireSheet(
     float x3,
     float y3,
     float z3,
-    std::int16_t terrainTileIndex,
+    std::uint32_t frameIndex,
+    bool alternateRow,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const int terrainTile = normalizeTerrainTileIndex(terrainTileIndex);
-  const float tileMinU = static_cast<float>((terrainTile & 0x0F) * 16) / kAtlasSizePixels;
-  const float tileMinV = static_cast<float>(terrainTile & 0xF0) / kAtlasSizePixels;
-  const float tileMaxU = (static_cast<float>((terrainTile & 0x0F) * 16) + 15.99f) / kAtlasSizePixels;
-  const float tileMaxV = (static_cast<float>(terrainTile & 0xF0) + 15.99f) / kAtlasSizePixels;
+  const std::uint32_t clampedFrame = frameIndex % kFireAnimationFrameCount;
+  const float tileMinU = (static_cast<float>(clampedFrame) * kAtlasTileSizePixels) / kFireAtlasWidthPixels;
+  const float tileMinV = alternateRow ? (kAtlasTileSizePixels / kFireAtlasHeightPixels) : 0.0f;
+  const float tileMaxU = ((static_cast<float>(clampedFrame) * kAtlasTileSizePixels) + 15.99f) / kFireAtlasWidthPixels;
+  const float tileMaxV = tileMinV + ((kAtlasTileSizePixels - kAtlasUvInsetPixels) / kFireAtlasHeightPixels);
 
   appendCrossedQuadSheet(
       x0,
@@ -959,15 +970,12 @@ void appendFireGeometry(
     float localX,
     float localY,
     float localZ,
-    std::int16_t terrainTileIndex,
+    std::uint32_t frameIndex,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const std::int16_t primaryTile = terrainTileIndex;
-  const std::int16_t alternateTile = static_cast<std::int16_t>(normalizeTerrainTileIndex(terrainTileIndex) + 16);
-
   if (hasBase) {
     const float height = 1.4f;
-    appendFireSheet(
+    appendAnimatedFireSheet(
         localX + 0.2f,
         localY + height,
         localZ + 1.0f,
@@ -980,10 +988,11 @@ void appendFireGeometry(
         localX + 0.2f,
         localY + height,
         localZ + 0.0f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 0.8f,
         localY + height,
         localZ + 0.0f,
@@ -996,10 +1005,11 @@ void appendFireGeometry(
         localX + 0.8f,
         localY + height,
         localZ + 1.0f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 1.0f,
         localY + height,
         localZ + 0.8f,
@@ -1012,10 +1022,11 @@ void appendFireGeometry(
         localX + 0.0f,
         localY + height,
         localZ + 0.8f,
-        alternateTile,
+        frameIndex,
+        true,
         vertices,
         indices);
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 0.0f,
         localY + height,
         localZ + 0.2f,
@@ -1028,7 +1039,8 @@ void appendFireGeometry(
         localX + 1.0f,
         localY + height,
         localZ + 0.2f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
     return;
@@ -1039,7 +1051,7 @@ void appendFireGeometry(
   const float bottomY = 0.0625f;
 
   if (westNeighbor) {
-    appendFireSheet(
+    appendAnimatedFireSheet(
         localX + sideInset,
         localY + topY,
         localZ + 1.0f,
@@ -1052,12 +1064,13 @@ void appendFireGeometry(
         localX + sideInset,
         localY + topY,
         localZ + 0.0f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
   }
   if (eastNeighbor) {
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 0.8f,
         localY + topY,
         localZ + 0.0f,
@@ -1070,12 +1083,13 @@ void appendFireGeometry(
         localX + 0.8f,
         localY + topY,
         localZ + 1.0f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
   }
   if (northNeighbor) {
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 0.0f,
         localY + topY,
         localZ + sideInset,
@@ -1088,12 +1102,13 @@ void appendFireGeometry(
         localX + 1.0f,
         localY + topY,
         localZ + sideInset,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
   }
   if (southNeighbor) {
-    appendFireSheet(
+      appendAnimatedFireSheet(
         localX + 1.0f,
         localY + topY,
         localZ + 0.8f,
@@ -1106,14 +1121,15 @@ void appendFireGeometry(
         localX + 0.0f,
         localY + topY,
         localZ + 0.8f,
-        primaryTile,
+        frameIndex,
+        false,
         vertices,
         indices);
   }
   if (upNeighbor) {
     const bool rotateTop = ((worldX + worldY + worldZ + 1) & 1) == 0;
     if (rotateTop) {
-      appendFireSheet(
+      appendAnimatedFireSheet(
           localX + 0.0f,
           localY + 0.8f,
           localZ + 0.0f,
@@ -1126,10 +1142,11 @@ void appendFireGeometry(
           localX + 0.0f,
           localY + 0.8f,
           localZ + 1.0f,
-          primaryTile,
+            frameIndex,
+            false,
           vertices,
           indices);
-      appendFireSheet(
+          appendAnimatedFireSheet(
           localX + 1.0f,
           localY + 0.8f,
           localZ + 1.0f,
@@ -1142,11 +1159,12 @@ void appendFireGeometry(
           localX + 1.0f,
           localY + 0.8f,
           localZ + 0.0f,
-          alternateTile,
+            frameIndex,
+            true,
           vertices,
           indices);
     } else {
-      appendFireSheet(
+          appendAnimatedFireSheet(
           localX + 0.0f,
           localY + 0.8f,
           localZ + 1.0f,
@@ -1159,10 +1177,11 @@ void appendFireGeometry(
           localX + 1.0f,
           localY + 0.8f,
           localZ + 1.0f,
-          primaryTile,
+            frameIndex,
+            false,
           vertices,
           indices);
-      appendFireSheet(
+          appendAnimatedFireSheet(
           localX + 1.0f,
           localY + 0.8f,
           localZ + 0.0f,
@@ -1175,7 +1194,8 @@ void appendFireGeometry(
           localX + 0.0f,
           localY + 0.8f,
           localZ + 0.0f,
-          alternateTile,
+          frameIndex,
+          true,
           vertices,
           indices);
     }
@@ -2618,6 +2638,7 @@ void RemixRenderer::shutdown() {
       destroyChunkMesh(meshData);
     }
     destroyCloudMesh();
+    destroyFireMesh();
     destroyTerrainMaterials();
     remix_.Shutdown();
   }
@@ -2641,18 +2662,24 @@ void RemixRenderer::shutdown() {
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
+  lastSubmittedFireQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
   lastSubmittedDestroyOverlayCount_ = 0;
   lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
+  fireTexturePath_.clear();
   nextCloudMeshHash_ = 1;
+  nextFireMeshHash_ = 1;
   nextDestroyOverlayMeshHash_ = 1;
   nextParticleMeshHash_ = 1;
   cloudQuadCount_ = 0;
+  fireQuadCount_ = 0;
   destroyOverlayCount_ = 0;
   particleQuadCount_ = 0;
+  lastFireAnimationFrame_ = 0xFFFFFFFFu;
+  lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
   lastError_.clear();
 }
 
@@ -2924,6 +2951,7 @@ void RemixRenderer::clearWorldScene() {
   chunkMeshes_.clear();
 
   destroyCloudMesh();
+  destroyFireMesh();
   destroyDestroyOverlayMesh();
   destroyParticleMesh();
   destroyDynamicEntityMeshes();
@@ -2937,10 +2965,13 @@ void RemixRenderer::clearWorldScene() {
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
+  lastSubmittedFireQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
   lastSubmittedDestroyOverlayCount_ = 0;
   lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
+  lastFireAnimationFrame_ = 0xFFFFFFFFu;
+  lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
 
   log("Cleared cached world scene state");
 }
@@ -3213,6 +3244,31 @@ std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveFireTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"fire.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"fire.png");
+    attemptedPaths.push_back(moduleDirectory / L"fire.dds");
+    attemptedPaths.push_back(moduleDirectory / L"fire.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"fire.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"fire.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"fire.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"fire.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::string& texturePath) {
   if (texturePath.empty()) {
     return {};
@@ -3394,6 +3450,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   destroyTerrainMaterials();
   terrainAtlasPath_ = resolveTerrainAtlasPath();
   cloudTexturePath_ = resolveCloudTexturePath();
+  fireTexturePath_ = resolveFireTexturePath();
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
@@ -3445,6 +3502,39 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!waterCreated) {
     log("Water terrain material unavailable; water faces will be skipped");
+  }
+
+  if (fireTexturePath_.empty()) {
+    log("Fire texture asset not found; animated fire will be skipped");
+  } else {
+    remixapi_MaterialInfoOpaqueEXT fireOpaqueInfo {};
+    fireOpaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+    fireOpaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+    fireOpaqueInfo.opacityConstant = 1.0f;
+    fireOpaqueInfo.roughnessConstant = 1.0f;
+    fireOpaqueInfo.metallicConstant = 0.0f;
+    fireOpaqueInfo.useDrawCallAlphaState = FALSE;
+    fireOpaqueInfo.alphaTestType = 4;
+    fireOpaqueInfo.alphaReferenceValue = 1;
+
+    remixapi_MaterialInfo fireMaterialInfo {};
+    fireMaterialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+    fireMaterialInfo.pNext = &fireOpaqueInfo;
+    fireMaterialInfo.hash = kFireMaterialHash;
+    fireMaterialInfo.albedoTexture = fireTexturePath_.c_str();
+    fireMaterialInfo.emissiveIntensity = 0.0f;
+    fireMaterialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+    fireMaterialInfo.filterMode = 0;
+    fireMaterialInfo.wrapModeU = 1;
+    fireMaterialInfo.wrapModeV = 1;
+
+    const remixapi_ErrorCode fireResult = remix_.CreateMaterial(&fireMaterialInfo, &fireMaterialHandle_);
+    if (fireResult != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("CreateMaterial failed: " + errorCodeToString(fireResult));
+      fireMaterialHandle_ = nullptr;
+    } else {
+      log("Initialized animated fire material from " + fireTexturePath_.string());
+    }
   }
 
   if (cloudTexturePath_.empty()) {
@@ -3506,6 +3596,11 @@ void RemixRenderer::destroyTerrainMaterials() {
   dynamicEntityMaterialHandles_.clear();
   particleMaterialHandles_.clear();
 
+  if (remix_.DestroyMaterial != nullptr && fireMaterialHandle_ != nullptr) {
+    remix_.DestroyMaterial(fireMaterialHandle_);
+    fireMaterialHandle_ = nullptr;
+  }
+
   if (remix_.DestroyMaterial != nullptr && cloudMaterialHandle_ != nullptr) {
     remix_.DestroyMaterial(cloudMaterialHandle_);
     cloudMaterialHandle_ = nullptr;
@@ -3522,6 +3617,8 @@ void RemixRenderer::destroyTerrainMaterials() {
       materialHandle = nullptr;
     }
   }
+
+  fireTexturePath_.clear();
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {
@@ -3899,6 +3996,14 @@ void RemixRenderer::destroyCloudMesh() {
   cloudQuadCount_ = 0;
 }
 
+void RemixRenderer::destroyFireMesh() {
+  if (fireMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(fireMeshHandle_);
+  }
+  fireMeshHandle_ = nullptr;
+  fireQuadCount_ = 0;
+}
+
 void RemixRenderer::destroyDestroyOverlayMesh() {
   if (destroyOverlayMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
     remix_.DestroyMesh(destroyOverlayMeshHandle_);
@@ -4220,6 +4325,131 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   destroyDestroyOverlayMesh();
   destroyOverlayMeshHandle_ = newMeshHandle;
   destroyOverlayCount_ = overlayCount;
+  return true;
+}
+
+bool RemixRenderer::rebuildFireMesh() {
+  if (fireMaterialHandle_ == nullptr) {
+    destroyFireMesh();
+    return true;
+  }
+
+  const std::uint32_t frameIndex = static_cast<std::uint32_t>((GetTickCount64() / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
+  if (fireMeshHandle_ != nullptr
+      && lastFireAnimationFrame_ == frameIndex
+      && lastFireChunkBuildCount_ == capturedChunkBuilds_) {
+    return true;
+  }
+
+  const auto chunkOriginForWorld = [](int coordinate) {
+    return coordinate >= 0
+        ? (coordinate / kChunkDimension) * kChunkDimension
+        : (((coordinate + 1) / kChunkDimension) - 1) * kChunkDimension;
+  };
+
+  const auto findWorldCell = [this, &chunkOriginForWorld](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
+    const int originX = chunkOriginForWorld(worldX);
+    const int originY = chunkOriginForWorld(worldY);
+    const int originZ = chunkOriginForWorld(worldZ);
+    const int localX = worldX - originX;
+    const int localY = worldY - originY;
+    const int localZ = worldZ - originZ;
+    const int cellIndex = blockIndex(localX, localY, localZ);
+
+    for (int renderPass = 0; renderPass <= 1; ++renderPass) {
+      const ChunkKey chunkKey {originX, originY, originZ, renderPass};
+      const auto it = chunkMeshes_.find(chunkKey);
+      if (it == chunkMeshes_.end() || !it->second.hasOccupancy || it->second.occupancy[cellIndex] == 0) {
+        continue;
+      }
+      return &it->second.cells[cellIndex];
+    }
+
+    return nullptr;
+  };
+
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  vertices.reserve(256);
+  indices.reserve(384);
+
+  std::size_t fireCount = 0;
+  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+    if (chunkKey.renderPass != 0 || !meshData.hasOccupancy) {
+      continue;
+    }
+
+    for (int localY = 0; localY < kChunkDimension; ++localY) {
+      for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
+        for (int localX = 0; localX < kChunkDimension; ++localX) {
+          const int cellIndex = blockIndex(localX, localY, localZ);
+          if (meshData.occupancy[cellIndex] == 0) {
+            continue;
+          }
+
+          const ChunkBlockCell& cell = meshData.cells[cellIndex];
+          if (!isFireRenderType(cell.renderType)) {
+            continue;
+          }
+
+          const int worldX = chunkKey.originX + localX;
+          const int worldY = chunkKey.originY + localY;
+          const int worldZ = chunkKey.originZ + localZ;
+          appendFireGeometry(
+              worldX,
+              worldY,
+              worldZ,
+              findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
+              findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
+              findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
+              findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
+              findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
+              findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
+              static_cast<float>(worldX),
+              static_cast<float>(worldY),
+              static_cast<float>(worldZ),
+              frameIndex,
+              vertices,
+              indices);
+          ++fireCount;
+        }
+      }
+    }
+  }
+
+  if (indices.empty()) {
+    destroyFireMesh();
+    lastFireAnimationFrame_ = frameIndex;
+    lastFireChunkBuildCount_ = capturedChunkBuilds_;
+    return true;
+  }
+
+  remixapi_MeshInfoSurfaceTriangles surface {};
+  surface.vertices_values = vertices.data();
+  surface.vertices_count = vertices.size();
+  surface.indices_values = indices.data();
+  surface.indices_count = indices.size();
+  surface.skinning_hasvalue = FALSE;
+  surface.material = fireMaterialHandle_;
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeFireMeshHash(nextFireMeshHash_++);
+  meshInfo.surfaces_values = &surface;
+  meshInfo.surfaces_count = 1;
+
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  destroyFireMesh();
+  fireMeshHandle_ = newMeshHandle;
+  fireQuadCount_ = fireCount;
+  lastFireAnimationFrame_ = frameIndex;
+  lastFireChunkBuildCount_ = capturedChunkBuilds_;
   return true;
 }
 
@@ -4589,26 +4819,6 @@ bool RemixRenderer::rebuildChunkMeshFromData(
         }
 
         if (isFireRenderType(cell.renderType)) {
-          const int worldX = chunkKey.originX + localX;
-          const int worldY = chunkKey.originY + localY;
-          const int worldZ = chunkKey.originZ + localZ;
-          SurfaceBuildBuffers& fireSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
-          appendFireGeometry(
-              worldX,
-              worldY,
-              worldZ,
-              findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
-              findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
-              findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
-              findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
-              findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
-              findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
-              static_cast<float>(localX),
-              static_cast<float>(localY),
-              static_cast<float>(localZ),
-              cell.terrainTiles[0],
-              fireSurface.vertices,
-              fireSurface.indices);
           continue;
         }
 
@@ -4900,6 +5110,10 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
+  if (!rebuildFireMesh()) {
+    return false;
+  }
+
   if (!rebuildDestroyOverlayMesh()) {
     return false;
   }
@@ -4910,6 +5124,7 @@ bool RemixRenderer::drawCapturedGeometry() {
 
   if (chunkMeshes_.empty()
       && cloudMeshHandle_ == nullptr
+      && fireMeshHandle_ == nullptr
       && dynamicEntityFrameInstances_.empty()
       && destroyOverlayMeshHandle_ == nullptr
       && particleMeshHandle_ == nullptr
@@ -4924,6 +5139,7 @@ bool RemixRenderer::drawCapturedGeometry() {
   std::size_t submittedChunks = 0;
   std::size_t submittedBlocks = 0;
   std::size_t submittedCloudQuads = 0;
+  std::size_t submittedFireQuads = 0;
   std::size_t submittedDynamicEntityQuads = 0;
   std::size_t submittedDestroyOverlays = 0;
   std::size_t submittedParticleQuads = 0;
@@ -5046,6 +5262,41 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedCloudQuads = cloudQuadCount_;
   }
 
+  if (fireMeshHandle_ != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureAlphaOperation = kRtTextureOpModulate;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+    blendInfo.alphaBlendEnabled = TRUE;
+    blendInfo.srcColorBlendFactor = 6;
+    blendInfo.dstColorBlendFactor = 7;
+    blendInfo.colorBlendOp = 0;
+    blendInfo.srcAlphaBlendFactor = 1;
+    blendInfo.dstAlphaBlendFactor = 0;
+    blendInfo.alphaBlendOp = 0;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = fireMeshHandle_;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+
+    submittedFireQuads = fireQuadCount_;
+  }
+
   if (destroyOverlayMeshHandle_ != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
@@ -5139,6 +5390,7 @@ bool RemixRenderer::drawCapturedGeometry() {
       || submittedChunks != lastSubmittedChunkCount_
       || submittedBlocks != lastSubmittedBlockCount_
       || submittedCloudQuads != lastSubmittedCloudQuadCount_
+      || submittedFireQuads != lastSubmittedFireQuadCount_
       || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
       || submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
       || submittedParticleQuads != lastSubmittedParticleQuadCount_
@@ -5147,7 +5399,8 @@ bool RemixRenderer::drawCapturedGeometry() {
     stream << "Submitted " << submittedChunks
            << " chunk meshes covering " << submittedBlocks
            << " blocks and " << submittedCloudQuads
-           << " cloud quads and " << submittedDynamicEntityQuads
+          << " cloud quads and " << submittedFireQuads
+          << " fire quads and " << submittedDynamicEntityQuads
            << " dynamic entity quads and " << submittedDestroyOverlays
            << " destroy overlays and "
            << submittedParticleQuads << " particle quads and "
@@ -5159,6 +5412,7 @@ bool RemixRenderer::drawCapturedGeometry() {
   lastSubmittedChunkCount_ = submittedChunks;
   lastSubmittedBlockCount_ = submittedBlocks;
   lastSubmittedCloudQuadCount_ = submittedCloudQuads;
+  lastSubmittedFireQuadCount_ = submittedFireQuads;
   lastSubmittedDynamicEntityQuadCount_ = submittedDynamicEntityQuads;
   lastSubmittedDestroyOverlayCount_ = submittedDestroyOverlays;
   lastSubmittedParticleQuadCount_ = submittedParticleQuads;

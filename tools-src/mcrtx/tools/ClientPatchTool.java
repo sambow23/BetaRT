@@ -655,7 +655,7 @@ public final class ClientPatchTool {
     private static ClassNode readClass(byte[] content) {
         ClassNode classNode = new ClassNode();
         ClassReader classReader = new ClassReader(content);
-        classReader.accept(classNode, 0);
+        classReader.accept(classNode, ClassReader.EXPAND_FRAMES);
         return classNode;
     }
 

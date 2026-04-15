@@ -266,9 +266,9 @@ public final class MinecraftRemixHooks {
         float minV = (float) (particle.b / 16) / 16.0f;
         float maxV = minV + 0.0624375f;
         float particleScale = 0.1f * particle.g;
-        float originX = (float) (particle.aJ + (particle.aM - particle.aJ) * (double) partialTicks - xw.l);
-        float originY = (float) (particle.aK + (particle.aN - particle.aK) * (double) partialTicks - xw.m);
-        float originZ = (float) (particle.aL + (particle.aO - particle.aL) * (double) partialTicks - xw.n);
+        float originX = (float) (particle.aJ + (particle.aM - particle.aJ) * (double) partialTicks);
+        float originY = (float) (particle.aK + (particle.aN - particle.aK) * (double) partialTicks);
+        float originZ = (float) (particle.aL + (particle.aO - particle.aL) * (double) partialTicks);
         float brightness = particle.a(partialTicks);
         int colorRgba = packColor(particle.i * brightness, particle.j * brightness, particle.k * brightness, 1.0f);
 
