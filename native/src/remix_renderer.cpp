@@ -19,7 +19,12 @@ constexpr std::size_t kTerrainMaterialClassCount = 2;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
 constexpr std::uint8_t kGrassBlockId = 2;
+constexpr std::uint8_t kLeavesBlockId = 18;
 constexpr std::uint8_t kGrassOverlayTerrainTile = 38;
+constexpr std::uint8_t kLeavesFancyTextureOak = 52;
+constexpr std::uint8_t kLeavesFastTextureOak = 53;
+constexpr std::uint8_t kLeavesFancyTextureBirchSpruce = 132;
+constexpr std::uint8_t kLeavesFastTextureBirchSpruce = 133;
 constexpr float kAtlasSizePixels = 256.0f;
 constexpr float kAtlasTileSizePixels = 16.0f;
 constexpr float kAtlasUvInsetPixels = 0.01f;
@@ -244,6 +249,37 @@ std::uint32_t packVertexColor(std::uint32_t rgbColor) {
 
 int blockIndex(int x, int y, int z) {
   return x + kChunkDimension * (z + kChunkDimension * y);
+}
+
+std::uint32_t faceTintColorForBlock(std::uint8_t blockId, int minecraftSide, std::uint32_t blockColor) {
+  if (blockId == kGrassBlockId && minecraftSide == 1) {
+    return blockColor;
+  }
+
+  if (blockId == kLeavesBlockId) {
+    return blockColor;
+  }
+
+  return 0x00FFFFFFu;
+}
+
+bool usesFancyLeavesTexture(const ChunkBlockCell& cell) {
+  if (cell.blockId != kLeavesBlockId) {
+    return false;
+  }
+
+  const std::uint8_t terrainTile = cell.terrainTiles[0];
+  return terrainTile == kLeavesFancyTextureOak || terrainTile == kLeavesFancyTextureBirchSpruce;
+}
+
+bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockCell& neighborCell) {
+  if (cell.blockId == kLeavesBlockId
+      && neighborCell.blockId == kLeavesBlockId
+      && usesFancyLeavesTexture(cell)) {
+    return false;
+  }
+
+  return true;
 }
 
 void appendFaceGeometry(
@@ -924,7 +960,10 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               && neighborY >= 0 && neighborY < kChunkDimension
               && neighborZ >= 0 && neighborZ < kChunkDimension;
           if (neighborInsideChunk) {
-            faceOccluded = meshData.occupancy[blockIndex(neighborX, neighborY, neighborZ)] != 0;
+            const int neighborIndex = blockIndex(neighborX, neighborY, neighborZ);
+            if (meshData.occupancy[neighborIndex] != 0) {
+              faceOccluded = shouldCullFaceAgainstNeighbor(cell, meshData.cells[neighborIndex]);
+            }
           } else {
             ChunkKey neighborKey = chunkKey;
             int wrappedX = neighborX;
@@ -957,7 +996,10 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 
             const auto neighborIt = chunkMeshes_.find(neighborKey);
             if (neighborIt != chunkMeshes_.end() && neighborIt->second.hasOccupancy) {
-              faceOccluded = neighborIt->second.occupancy[blockIndex(wrappedX, wrappedY, wrappedZ)] != 0;
+              const int neighborIndex = blockIndex(wrappedX, wrappedY, wrappedZ);
+              if (neighborIt->second.occupancy[neighborIndex] != 0) {
+                faceOccluded = shouldCullFaceAgainstNeighbor(cell, neighborIt->second.cells[neighborIndex]);
+              }
             }
           }
 
@@ -966,15 +1008,13 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           }
 
           SurfaceBuildBuffers& faceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
-          appendFaceGeometry(
+            appendFaceGeometry(
               faceIndex,
               static_cast<float>(localX),
               static_cast<float>(localY),
               static_cast<float>(localZ),
               cell.terrainTiles[minecraftSide],
-              cell.blockId == kGrassBlockId && minecraftSide == 1
-                  ? packVertexColor(cell.blockColor)
-                  : kDefaultVertexColor,
+              packVertexColor(faceTintColorForBlock(cell.blockId, minecraftSide, cell.blockColor)),
               0.0f,
               faceSurface.vertices,
               faceSurface.indices);
