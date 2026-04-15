@@ -159,6 +159,27 @@ public final class RemixBridgeNative {
 
             public static native void nEndDynamicEntity();
 
+            public static native void nBeginDestroyOverlayFrame();
+
+            public static native void nCaptureDestroyOverlay(
+                int blockX,
+                int blockY,
+                int blockZ,
+                int blockId,
+                int blockMetadata,
+                int renderType,
+                int destroyStage);
+
+            public static native void nBeginParticleFrame();
+
+            public static native void nCaptureParticleQuad(
+                float x0, float y0, float z0, float u0, float v0,
+                float x1, float y1, float z1, float u1, float v1,
+                float x2, float y2, float z2, float u2, float v2,
+                float x3, float y3, float z3, float u3, float v3,
+                int colorRgba,
+                int textureKind);
+
             public static native void nClearWorldScene();
 
     public static native boolean nBeginChunkBuild(

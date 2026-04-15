@@ -265,6 +265,8 @@ if ($LASTEXITCODE -ne 0) {
 
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
+Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
@@ -282,6 +284,8 @@ Write-Host "Patched jar: $patchedJar"
 Write-Host "Patch source jar: $MinecraftJar"
 Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"
+Write-Host "Extracted particles atlas: $(Join-Path $assetsDir 'particles.png')"
+Write-Host "Converted particles atlas DDS: $(Join-Path $assetsDir 'particles.dds')"
 Write-Host "Extracted GUI item atlas: $(Join-Path $assetsDir 'gui\items.png')"
 Write-Host "Converted GUI item atlas DDS: $(Join-Path $assetsDir 'gui\items.dds')"
 Write-Host "Extracted cloud texture: $(Join-Path $assetsDir 'clouds.png')"

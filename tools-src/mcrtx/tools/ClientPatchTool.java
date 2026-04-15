@@ -30,6 +30,7 @@ public final class ClientPatchTool {
     private static final String MOUSE_CLASS = "org/lwjgl/input/Mouse";
     private static final String MODEL_PART_CLASS = "ps";
     private static final String TESSELLATOR_CLASS = "nw";
+    private static final String PARTICLE_CLASS = "xw";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
@@ -76,6 +77,8 @@ public final class ClientPatchTool {
                     content = patchPs(content);
                 } else if (entryName.equals(TESSELLATOR_CLASS + ".class")) {
                     content = patchNw(content);
+                } else if (entryName.equals(PARTICLE_CLASS + ".class")) {
+                    content = patchXw(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
                 }
@@ -133,6 +136,8 @@ public final class ClientPatchTool {
                 patchCloudRender(method, false);
             } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
                 patchCloudRender(method, true);
+            } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
+                patchDestroyOverlayRender(method);
             }
         }
         return writeClass(classNode);
@@ -191,6 +196,16 @@ public final class ClientPatchTool {
                 patchModelPartRender(method);
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
                 patchModelPartRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchXw(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
+                method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall());
             }
         }
         return writeClass(classNode);
@@ -333,6 +348,19 @@ public final class ClientPatchTool {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glCallList", "(I)V")) {
                 method.instructions.insertBefore(node, modelPartRenderCall());
+            }
+        }
+    }
+
+    private static void patchDestroyOverlayRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals("cv")
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Luu;IIII)V")) {
+                method.instructions.insertBefore(node, destroyOverlayRenderCall());
+                return;
             }
         }
     }
@@ -496,6 +524,43 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onFirstPersonTessellatorDraw",
                 "([IIIZZ)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList particleRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 3));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 4));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 5));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 6));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 7));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onParticleRender",
+                "(Lxw;FFFFFF)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList destroyOverlayRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "vf", "b", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "vf", "c", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "vf", "d", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "i", "F"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onDestroyOverlayRender",
+                "(IIIF)V",
                 false));
         return instructions;
     }

@@ -25,6 +25,7 @@ constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kCubeBlockRenderType = 0;
 constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
 constexpr std::uint8_t kTorchBlockRenderType = 2;
+constexpr std::uint8_t kFireBlockRenderType = 3;
 constexpr std::uint8_t kDoorBlockRenderType = 7;
 constexpr std::uint8_t kLadderBlockRenderType = 8;
 constexpr std::uint8_t kRailBlockRenderType = 9;
@@ -62,7 +63,10 @@ constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
+constexpr std::uint64_t kParticleMaterialHashSeed = 0x4D43525458505443ull;
 constexpr std::uint64_t kDynamicEntityMeshHashSeed = 0x4D43525458454E00ull;
+constexpr std::uint64_t kDestroyOverlayMeshHashSeed = 0x4D43525458444F00ull;
+constexpr std::uint64_t kParticleMeshHashSeed = 0x4D43525458505100ull;
 constexpr std::uint64_t kTorchLightHashSeed = 0x4D435254584C4954ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
@@ -246,6 +250,10 @@ bool isCrossedQuadRenderType(int renderType) {
   return renderType == kCrossedQuadBlockRenderType;
 }
 
+bool isFireRenderType(int renderType) {
+  return renderType == kFireBlockRenderType;
+}
+
 bool isTorchRenderType(int renderType) {
   return renderType == kTorchBlockRenderType;
 }
@@ -290,6 +298,7 @@ bool isSupportedPass0RenderType(int renderType) {
   switch (renderType) {
     case kCubeBlockRenderType:
     case kCrossedQuadBlockRenderType:
+    case kFireBlockRenderType:
     case kTorchBlockRenderType:
     case kDoorBlockRenderType:
     case kLadderBlockRenderType:
@@ -321,6 +330,7 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
 
 bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   if (isCrossedQuadRenderType(renderType)
+  || isFireRenderType(renderType)
       || isTorchRenderType(renderType)
       || isDoorRenderType(renderType)
       || isLadderRenderType(renderType)
@@ -367,6 +377,14 @@ std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
 
 std::uint64_t makeDynamicEntityMeshHash(std::uint64_t geometryFingerprint) {
   return kDynamicEntityMeshHashSeed ^ geometryFingerprint;
+}
+
+std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence) {
+  return kDestroyOverlayMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
+std::uint64_t makeParticleMeshHash(std::uint64_t sequence) {
+  return kParticleMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
 std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value) {
@@ -854,6 +872,314 @@ void appendCrossedQuadSheet(
       vertexColor,
       vertices,
       indices);
+}
+
+void appendFireSheet(
+    float x0,
+    float y0,
+    float z0,
+    float x1,
+    float y1,
+    float z1,
+    float x2,
+    float y2,
+    float z2,
+    float x3,
+    float y3,
+    float z3,
+    std::int16_t terrainTileIndex,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const int terrainTile = normalizeTerrainTileIndex(terrainTileIndex);
+  const float tileMinU = static_cast<float>((terrainTile & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTile & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTile & 0x0F) * 16) + 15.99f) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTile & 0xF0) + 15.99f) / kAtlasSizePixels;
+
+  appendCrossedQuadSheet(
+      x0,
+      y0,
+      z0,
+      tileMaxU,
+      tileMinV,
+      x1,
+      y1,
+      z1,
+      tileMaxU,
+      tileMaxV,
+      x2,
+      y2,
+      z2,
+      tileMinU,
+      tileMaxV,
+      x3,
+      y3,
+      z3,
+      tileMinU,
+      tileMinV,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+  appendCrossedQuadSheet(
+      x3,
+      y3,
+      z3,
+      tileMinU,
+      tileMinV,
+      x2,
+      y2,
+      z2,
+      tileMinU,
+      tileMaxV,
+      x1,
+      y1,
+      z1,
+      tileMaxU,
+      tileMaxV,
+      x0,
+      y0,
+      z0,
+      tileMaxU,
+      tileMinV,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+}
+
+void appendFireGeometry(
+    int worldX,
+    int worldY,
+    int worldZ,
+    bool hasBase,
+    bool westNeighbor,
+    bool eastNeighbor,
+    bool northNeighbor,
+    bool southNeighbor,
+    bool upNeighbor,
+    float localX,
+    float localY,
+    float localZ,
+    std::int16_t terrainTileIndex,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::int16_t primaryTile = terrainTileIndex;
+  const std::int16_t alternateTile = static_cast<std::int16_t>(normalizeTerrainTileIndex(terrainTileIndex) + 16);
+
+  if (hasBase) {
+    const float height = 1.4f;
+    appendFireSheet(
+        localX + 0.2f,
+        localY + height,
+        localZ + 1.0f,
+        localX + 0.7f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.7f,
+        localY,
+        localZ + 0.0f,
+        localX + 0.2f,
+        localY + height,
+        localZ + 0.0f,
+        primaryTile,
+        vertices,
+        indices);
+    appendFireSheet(
+        localX + 0.8f,
+        localY + height,
+        localZ + 0.0f,
+        localX + 0.3f,
+        localY,
+        localZ + 0.0f,
+        localX + 0.3f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.8f,
+        localY + height,
+        localZ + 1.0f,
+        primaryTile,
+        vertices,
+        indices);
+    appendFireSheet(
+        localX + 1.0f,
+        localY + height,
+        localZ + 0.8f,
+        localX + 1.0f,
+        localY,
+        localZ + 0.3f,
+        localX + 0.0f,
+        localY,
+        localZ + 0.3f,
+        localX + 0.0f,
+        localY + height,
+        localZ + 0.8f,
+        alternateTile,
+        vertices,
+        indices);
+    appendFireSheet(
+        localX + 0.0f,
+        localY + height,
+        localZ + 0.2f,
+        localX + 0.0f,
+        localY,
+        localZ + 0.7f,
+        localX + 1.0f,
+        localY,
+        localZ + 0.7f,
+        localX + 1.0f,
+        localY + height,
+        localZ + 0.2f,
+        primaryTile,
+        vertices,
+        indices);
+    return;
+  }
+
+  const float sideInset = 0.2f;
+  const float topY = 1.4625f;
+  const float bottomY = 0.0625f;
+
+  if (westNeighbor) {
+    appendFireSheet(
+        localX + sideInset,
+        localY + topY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY + bottomY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY + bottomY,
+        localZ + 0.0f,
+        localX + sideInset,
+        localY + topY,
+        localZ + 0.0f,
+        primaryTile,
+        vertices,
+        indices);
+  }
+  if (eastNeighbor) {
+    appendFireSheet(
+        localX + 0.8f,
+        localY + topY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY + bottomY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY + bottomY,
+        localZ + 1.0f,
+        localX + 0.8f,
+        localY + topY,
+        localZ + 1.0f,
+        primaryTile,
+        vertices,
+        indices);
+  }
+  if (northNeighbor) {
+    appendFireSheet(
+        localX + 0.0f,
+        localY + topY,
+        localZ + sideInset,
+        localX + 0.0f,
+        localY + bottomY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY + bottomY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY + topY,
+        localZ + sideInset,
+        primaryTile,
+        vertices,
+        indices);
+  }
+  if (southNeighbor) {
+    appendFireSheet(
+        localX + 1.0f,
+        localY + topY,
+        localZ + 0.8f,
+        localX + 1.0f,
+        localY + bottomY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY + bottomY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY + topY,
+        localZ + 0.8f,
+        primaryTile,
+        vertices,
+        indices);
+  }
+  if (upNeighbor) {
+    const bool rotateTop = ((worldX + worldY + worldZ + 1) & 1) == 0;
+    if (rotateTop) {
+      appendFireSheet(
+          localX + 0.0f,
+          localY + 0.8f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 0.8f,
+          localZ + 1.0f,
+          primaryTile,
+          vertices,
+          indices);
+      appendFireSheet(
+          localX + 1.0f,
+          localY + 0.8f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 1.0f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 0.8f,
+          localZ + 0.0f,
+          alternateTile,
+          vertices,
+          indices);
+    } else {
+      appendFireSheet(
+          localX + 0.0f,
+          localY + 0.8f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 1.0f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 0.8f,
+          localZ + 1.0f,
+          primaryTile,
+          vertices,
+          indices);
+      appendFireSheet(
+          localX + 1.0f,
+          localY + 0.8f,
+          localZ + 0.0f,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          localX + 0.0f,
+          localY + 0.8f,
+          localZ + 0.0f,
+          alternateTile,
+          vertices,
+          indices);
+    }
+  }
 }
 
 void appendCrossedQuadGeometry(
@@ -2305,6 +2631,8 @@ void RemixRenderer::shutdown() {
   chunkMeshes_.clear();
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
+  destroyOverlayInstances_.clear();
+  particleQuads_.clear();
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
@@ -2314,11 +2642,17 @@ void RemixRenderer::shutdown() {
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
+  lastSubmittedDestroyOverlayCount_ = 0;
+  lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   nextCloudMeshHash_ = 1;
+  nextDestroyOverlayMeshHash_ = 1;
+  nextParticleMeshHash_ = 1;
   cloudQuadCount_ = 0;
+  destroyOverlayCount_ = 0;
+  particleQuadCount_ = 0;
   lastError_.clear();
 }
 
@@ -2484,6 +2818,98 @@ void RemixRenderer::endDynamicEntity() {
   activeDynamicEntity_ = {};
 }
 
+void RemixRenderer::beginDestroyOverlayFrame() {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  destroyOverlayInstances_.clear();
+}
+
+void RemixRenderer::captureDestroyOverlay(
+    int blockX,
+    int blockY,
+    int blockZ,
+    int blockId,
+    int blockMetadata,
+    int renderType,
+    int destroyStage) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  DestroyOverlayInstance overlay;
+  overlay.blockX = blockX;
+  overlay.blockY = blockY;
+  overlay.blockZ = blockZ;
+  overlay.blockId = blockId;
+  overlay.blockMetadata = blockMetadata;
+  overlay.renderType = renderType;
+  overlay.destroyStage = destroyStage;
+  destroyOverlayInstances_.push_back(overlay);
+}
+
+void RemixRenderer::beginParticleFrame() {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  particleQuads_.clear();
+}
+
+void RemixRenderer::captureParticleQuad(
+    float x0,
+    float y0,
+    float z0,
+    float u0,
+    float v0,
+    float x1,
+    float y1,
+    float z1,
+    float u1,
+    float v1,
+    float x2,
+    float y2,
+    float z2,
+    float u2,
+    float v2,
+    float x3,
+    float y3,
+    float z3,
+    float u3,
+    float v3,
+    std::uint32_t colorRgba,
+    std::uint32_t textureKind) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  ParticleQuad quad;
+  quad.positions = {
+      x0, y0, z0,
+      x1, y1, z1,
+      x2, y2, z2,
+      x3, y3, z3,
+  };
+  quad.texcoords = {
+      u0, v0,
+      u1, v1,
+      u2, v2,
+      u3, v3,
+  };
+  quad.color = colorRgba;
+  quad.textureKind = textureKind;
+  particleQuads_.push_back(std::move(quad));
+}
+
 void RemixRenderer::clearWorldScene() {
   std::scoped_lock lock(mutex_);
 
@@ -2498,8 +2924,12 @@ void RemixRenderer::clearWorldScene() {
   chunkMeshes_.clear();
 
   destroyCloudMesh();
+  destroyDestroyOverlayMesh();
+  destroyParticleMesh();
   destroyDynamicEntityMeshes();
   clearDynamicEntityFrameInstances();
+  destroyOverlayInstances_.clear();
+  particleQuads_.clear();
   activeDynamicEntity_ = {};
   activeChunkBlocks_.clear();
   activeChunkBuild_ = {};
@@ -2508,6 +2938,8 @@ void RemixRenderer::clearWorldScene() {
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
+  lastSubmittedDestroyOverlayCount_ = 0;
+  lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
 
   log("Cleared cached world scene state");
@@ -2831,6 +3263,44 @@ std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveParticleTexturePath(std::uint32_t textureKind) {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const bool useParticlesAtlas = textureKind == 0;
+  const bool useItemAtlas = textureKind == 2;
+  if (!useParticlesAtlas && !useItemAtlas) {
+    return {};
+  }
+
+  const std::filesystem::path ddsPath = useParticlesAtlas
+      ? std::filesystem::path(L"particles.dds")
+      : std::filesystem::path(L"gui") / L"items.dds";
+  const std::filesystem::path pngPath = useParticlesAtlas
+      ? std::filesystem::path(L"particles.png")
+      : std::filesystem::path(L"gui") / L"items.png";
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / ddsPath);
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / pngPath);
+    attemptedPaths.push_back(moduleDirectory / ddsPath);
+    attemptedPaths.push_back(moduleDirectory / pngPath);
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / ddsPath);
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / pngPath);
+  attemptedPaths.push_back(std::filesystem::current_path() / ddsPath);
+  attemptedPaths.push_back(std::filesystem::current_path() / pngPath);
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
@@ -3016,6 +3486,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
 
 void RemixRenderer::destroyTerrainMaterials() {
   destroyCloudMesh();
+  destroyDestroyOverlayMesh();
+  destroyParticleMesh();
   destroyDynamicEntityMeshes();
 
   if (remix_.DestroyMaterial != nullptr) {
@@ -3024,8 +3496,15 @@ void RemixRenderer::destroyTerrainMaterials() {
         remix_.DestroyMaterial(materialHandle);
       }
     }
+    for (auto& [textureKind, materialHandle] : particleMaterialHandles_) {
+      (void)textureKind;
+      if (materialHandle != nullptr) {
+        remix_.DestroyMaterial(materialHandle);
+      }
+    }
   }
   dynamicEntityMaterialHandles_.clear();
+  particleMaterialHandles_.clear();
 
   if (remix_.DestroyMaterial != nullptr && cloudMaterialHandle_ != nullptr) {
     remix_.DestroyMaterial(cloudMaterialHandle_);
@@ -3085,6 +3564,53 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   }
 
   dynamicEntityMaterialHandles_.emplace(texturePath, materialHandle);
+  return materialHandle;
+}
+
+remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t textureKind) {
+  if (textureKind == 1 || textureKind == 3) {
+    return terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  }
+
+  const auto existing = particleMaterialHandles_.find(textureKind);
+  if (existing != particleMaterialHandles_.end()) {
+    return existing->second;
+  }
+
+  const std::filesystem::path resolvedTexturePath = resolveParticleTexturePath(textureKind);
+  if (resolvedTexturePath.empty()) {
+    return nullptr;
+  }
+
+  remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
+  opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+  opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+  opaqueInfo.opacityConstant = 1.0f;
+  opaqueInfo.roughnessConstant = 1.0f;
+  opaqueInfo.metallicConstant = 0.0f;
+  opaqueInfo.useDrawCallAlphaState = FALSE;
+  opaqueInfo.alphaTestType = 4;
+  opaqueInfo.alphaReferenceValue = 1;
+
+  remixapi_MaterialInfo materialInfo {};
+  materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+  materialInfo.pNext = &opaqueInfo;
+  materialInfo.hash = kParticleMaterialHashSeed ^ static_cast<std::uint64_t>(textureKind);
+  materialInfo.albedoTexture = resolvedTexturePath.c_str();
+  materialInfo.emissiveIntensity = 0.0f;
+  materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+  materialInfo.filterMode = 0;
+  materialInfo.wrapModeU = 1;
+  materialInfo.wrapModeV = 1;
+
+  remixapi_MaterialHandle materialHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMaterial failed: " + errorCodeToString(result));
+    return nullptr;
+  }
+
+  particleMaterialHandles_.emplace(textureKind, materialHandle);
   return materialHandle;
 }
 
@@ -3373,6 +3899,22 @@ void RemixRenderer::destroyCloudMesh() {
   cloudQuadCount_ = 0;
 }
 
+void RemixRenderer::destroyDestroyOverlayMesh() {
+  if (destroyOverlayMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(destroyOverlayMeshHandle_);
+  }
+  destroyOverlayMeshHandle_ = nullptr;
+  destroyOverlayCount_ = 0;
+}
+
+void RemixRenderer::destroyParticleMesh() {
+  if (particleMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(particleMeshHandle_);
+  }
+  particleMeshHandle_ = nullptr;
+  particleQuadCount_ = 0;
+}
+
 void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
   if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
     remix_.DestroyMesh(meshData.meshHandle);
@@ -3422,6 +3964,355 @@ void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
   meshData.geometryFingerprint = 0;
   meshData.quadCount = 0;
   meshData.boneCount = 0;
+}
+
+bool RemixRenderer::rebuildDestroyOverlayMesh() {
+  if (destroyOverlayInstances_.empty()) {
+    destroyDestroyOverlayMesh();
+    return true;
+  }
+
+  remixapi_MaterialHandle overlayMaterial = terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  if (overlayMaterial == nullptr) {
+    destroyDestroyOverlayMesh();
+    return true;
+  }
+
+  const auto chunkOriginForWorld = [](int coordinate) {
+    return coordinate >= 0
+        ? (coordinate / kChunkDimension) * kChunkDimension
+        : (((coordinate + 1) / kChunkDimension) - 1) * kChunkDimension;
+  };
+
+  const auto findWorldCell = [this, &chunkOriginForWorld](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
+    const int originX = chunkOriginForWorld(worldX);
+    const int originY = chunkOriginForWorld(worldY);
+    const int originZ = chunkOriginForWorld(worldZ);
+    const int localX = worldX - originX;
+    const int localY = worldY - originY;
+    const int localZ = worldZ - originZ;
+    const int cellIndex = blockIndex(localX, localY, localZ);
+
+    for (int renderPass = 0; renderPass <= 1; ++renderPass) {
+      const ChunkKey chunkKey {originX, originY, originZ, renderPass};
+      const auto it = chunkMeshes_.find(chunkKey);
+      if (it == chunkMeshes_.end() || !it->second.hasOccupancy || it->second.occupancy[cellIndex] == 0) {
+        continue;
+      }
+      return &it->second.cells[cellIndex];
+    }
+
+    return nullptr;
+  };
+
+  const auto hasFenceNeighbor = [&findWorldCell](int worldX, int worldY, int worldZ) {
+    const ChunkBlockCell* neighborCell = findWorldCell(worldX, worldY, worldZ);
+    return neighborCell != nullptr
+        && neighborCell->blockId == kFenceBlockId
+        && neighborCell->renderType == kFenceBlockRenderType;
+  };
+
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  vertices.reserve(destroyOverlayInstances_.size() * 24);
+  indices.reserve(destroyOverlayInstances_.size() * 36);
+
+  std::size_t overlayCount = 0;
+  for (const DestroyOverlayInstance& overlay : destroyOverlayInstances_) {
+    const int destroyTile = 240 + std::clamp(overlay.destroyStage, 0, 9);
+    ChunkBlockCell resolvedCell {};
+    if (const ChunkBlockCell* worldCell = findWorldCell(overlay.blockX, overlay.blockY, overlay.blockZ); worldCell != nullptr) {
+      resolvedCell = *worldCell;
+    } else {
+      resolvedCell.blockId = static_cast<std::uint8_t>(overlay.blockId);
+      resolvedCell.blockMetadata = static_cast<std::uint8_t>(overlay.blockMetadata);
+      resolvedCell.renderType = static_cast<std::uint8_t>(overlay.renderType);
+    }
+    resolvedCell.terrainTiles.fill(static_cast<std::int16_t>(destroyTile));
+
+    const float localX = static_cast<float>(overlay.blockX);
+    const float localY = static_cast<float>(overlay.blockY);
+    const float localZ = static_cast<float>(overlay.blockZ);
+
+    if (resolvedCell.renderType == kLiquidBlockRenderType) {
+      continue;
+    }
+
+    if (isCrossedQuadRenderType(resolvedCell.renderType)) {
+      appendCrossedQuadGeometry(
+          resolvedCell,
+          overlay.blockX,
+          overlay.blockY,
+          overlay.blockZ,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isTorchRenderType(resolvedCell.renderType)) {
+      appendTorchGeometry(
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isLadderRenderType(resolvedCell.renderType)) {
+      appendLadderGeometry(
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isRailRenderType(resolvedCell.renderType) && isRailBlockId(resolvedCell.blockId)) {
+      appendRailGeometry(
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isStairRenderType(resolvedCell.renderType) && isStairBlockId(resolvedCell.blockId)) {
+      appendStairGeometry(
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isDoorRenderType(resolvedCell.renderType) && isDoorBlockId(resolvedCell.blockId)) {
+      const ChunkBlockCell* pairedDoorCell = (resolvedCell.blockMetadata & 8) != 0
+          ? findWorldCell(overlay.blockX, overlay.blockY - 1, overlay.blockZ)
+          : findWorldCell(overlay.blockX, overlay.blockY + 1, overlay.blockZ);
+      int resolvedDoorMetadata = resolvedCell.blockMetadata & 0xF;
+      if ((resolvedDoorMetadata & 8) != 0) {
+        if (pairedDoorCell != nullptr && pairedDoorCell->blockId == resolvedCell.blockId) {
+          resolvedDoorMetadata = pairedDoorCell->blockMetadata & 0xF;
+        } else {
+          resolvedDoorMetadata &= 7;
+        }
+      } else if (pairedDoorCell != nullptr
+          && pairedDoorCell->blockId == resolvedCell.blockId
+          && (pairedDoorCell->blockMetadata & 4) != 0) {
+        resolvedDoorMetadata = (resolvedDoorMetadata & 3) | 4;
+      }
+
+      appendDoorGeometry(
+          resolvedCell,
+          resolvedDoorMetadata,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (isFenceRenderType(resolvedCell.renderType) && resolvedCell.blockId == kFenceBlockId) {
+      appendFenceGeometry(
+          hasFenceNeighbor(overlay.blockX - 1, overlay.blockY, overlay.blockZ),
+          hasFenceNeighbor(overlay.blockX + 1, overlay.blockY, overlay.blockZ),
+          hasFenceNeighbor(overlay.blockX, overlay.blockY, overlay.blockZ - 1),
+          hasFenceNeighbor(overlay.blockX, overlay.blockY, overlay.blockZ + 1),
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    if (resolvedCell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(resolvedCell)) {
+      appendBoxGeometry(
+          localX + resolvedCell.bounds[0],
+          localY + resolvedCell.bounds[1],
+          localZ + resolvedCell.bounds[2],
+          localX + resolvedCell.bounds[3],
+          localY + resolvedCell.bounds[4],
+          localZ + resolvedCell.bounds[5],
+          resolvedCell.terrainTiles,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
+    bool emittedFace = false;
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+      const ChunkBlockCell* neighborCell = findWorldCell(
+          overlay.blockX + kNeighborOffsets[faceIndex][0],
+          overlay.blockY + kNeighborOffsets[faceIndex][1],
+          overlay.blockZ + kNeighborOffsets[faceIndex][2]);
+      if (neighborCell != nullptr && shouldCullFaceAgainstNeighbor(resolvedCell, *neighborCell)) {
+        continue;
+      }
+
+      const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
+      appendFaceGeometry(
+          faceIndex,
+          localX,
+          localY,
+          localZ,
+          resolvedCell.terrainTiles[minecraftSide],
+          kDefaultVertexColor,
+          kFaceOverlayBias,
+          vertices,
+          indices);
+      emittedFace = true;
+    }
+
+    if (emittedFace) {
+      ++overlayCount;
+    }
+  }
+
+  if (indices.empty()) {
+    destroyDestroyOverlayMesh();
+    return true;
+  }
+
+  remixapi_MeshInfoSurfaceTriangles surface {};
+  surface.vertices_values = vertices.data();
+  surface.vertices_count = vertices.size();
+  surface.indices_values = indices.data();
+  surface.indices_count = indices.size();
+  surface.skinning_hasvalue = FALSE;
+  surface.material = overlayMaterial;
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeDestroyOverlayMeshHash(nextDestroyOverlayMeshHash_++);
+  meshInfo.surfaces_values = &surface;
+  meshInfo.surfaces_count = 1;
+
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  destroyDestroyOverlayMesh();
+  destroyOverlayMeshHandle_ = newMeshHandle;
+  destroyOverlayCount_ = overlayCount;
+  return true;
+}
+
+bool RemixRenderer::rebuildParticleMesh() {
+  if (particleQuads_.empty()) {
+    destroyParticleMesh();
+    return true;
+  }
+
+  std::vector<SurfaceBuildBuffers> surfacesToBuild;
+  surfacesToBuild.reserve(4);
+  std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
+
+  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](remixapi_MaterialHandle materialHandle) -> SurfaceBuildBuffers& {
+    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(materialHandle);
+    const auto it = surfaceIndexByHandle.find(materialKey);
+    if (it != surfaceIndexByHandle.end()) {
+      return surfacesToBuild[it->second];
+    }
+
+    SurfaceBuildBuffers surface;
+    surface.materialHandle = materialHandle;
+    surface.vertices.reserve(256);
+    surface.indices.reserve(384);
+    const std::size_t surfaceIndex = surfacesToBuild.size();
+    surfacesToBuild.push_back(std::move(surface));
+    surfaceIndexByHandle.emplace(materialKey, surfaceIndex);
+    return surfacesToBuild.back();
+  };
+
+  std::size_t quadCount = 0;
+  for (const ParticleQuad& quad : particleQuads_) {
+    remixapi_MaterialHandle materialHandle = acquireParticleMaterial(quad.textureKind);
+    if (materialHandle == nullptr) {
+      continue;
+    }
+
+    const auto normal = computeQuadNormal(
+        quad.positions[0], quad.positions[1], quad.positions[2],
+        quad.positions[3], quad.positions[4], quad.positions[5],
+        quad.positions[6], quad.positions[7], quad.positions[8]);
+    SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+    appendCloudQuad(
+        quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
+        quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
+        quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
+        quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
+        normal[0], normal[1], normal[2],
+        quad.color,
+        surface.vertices,
+        surface.indices);
+    ++quadCount;
+  }
+
+  std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
+  surfaces.reserve(surfacesToBuild.size());
+  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+    if (surfaceBuild.indices.empty()) {
+      continue;
+    }
+
+    remixapi_MeshInfoSurfaceTriangles surface {};
+    surface.vertices_values = surfaceBuild.vertices.data();
+    surface.vertices_count = surfaceBuild.vertices.size();
+    surface.indices_values = surfaceBuild.indices.data();
+    surface.indices_count = surfaceBuild.indices.size();
+    surface.skinning_hasvalue = FALSE;
+    surface.material = surfaceBuild.materialHandle;
+    surfaces.push_back(surface);
+  }
+
+  if (surfaces.empty()) {
+    destroyParticleMesh();
+    return true;
+  }
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeParticleMeshHash(nextParticleMeshHash_++);
+  meshInfo.surfaces_values = surfaces.data();
+  meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
+
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  destroyParticleMesh();
+  particleMeshHandle_ = newMeshHandle;
+  particleQuadCount_ = quadCount;
+  return true;
 }
 
 void RemixRenderer::resetLoadedRemix() {
@@ -3694,6 +4585,30 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localZ),
               floraSurface.vertices,
               floraSurface.indices);
+          continue;
+        }
+
+        if (isFireRenderType(cell.renderType)) {
+          const int worldX = chunkKey.originX + localX;
+          const int worldY = chunkKey.originY + localY;
+          const int worldZ = chunkKey.originZ + localZ;
+          SurfaceBuildBuffers& fireSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendFireGeometry(
+              worldX,
+              worldY,
+              worldZ,
+              findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
+              findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
+              findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
+              findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
+              findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
+              findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              cell.terrainTiles[0],
+              fireSurface.vertices,
+              fireSurface.indices);
           continue;
         }
 
@@ -3985,7 +4900,20 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
-  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityFrameInstances_.empty() && torchLights_.empty()) {
+  if (!rebuildDestroyOverlayMesh()) {
+    return false;
+  }
+
+  if (!rebuildParticleMesh()) {
+    return false;
+  }
+
+  if (chunkMeshes_.empty()
+      && cloudMeshHandle_ == nullptr
+      && dynamicEntityFrameInstances_.empty()
+      && destroyOverlayMeshHandle_ == nullptr
+      && particleMeshHandle_ == nullptr
+      && torchLights_.empty()) {
     if (presentedFrames_ < 4) {
       log("No captured scene meshes available yet");
     }
@@ -3997,6 +4925,8 @@ bool RemixRenderer::drawCapturedGeometry() {
   std::size_t submittedBlocks = 0;
   std::size_t submittedCloudQuads = 0;
   std::size_t submittedDynamicEntityQuads = 0;
+  std::size_t submittedDestroyOverlays = 0;
+  std::size_t submittedParticleQuads = 0;
   std::size_t submittedTorchLights = 0;
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.meshHandle == nullptr) {
@@ -4116,6 +5046,69 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedCloudQuads = cloudQuadCount_;
   }
 
+  if (destroyOverlayMeshHandle_ != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = destroyOverlayMeshHandle_;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+
+    submittedDestroyOverlays = destroyOverlayCount_;
+  }
+
+  if (particleMeshHandle_ != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureAlphaOperation = kRtTextureOpModulate;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+    blendInfo.alphaBlendEnabled = TRUE;
+    blendInfo.srcColorBlendFactor = 6;
+    blendInfo.dstColorBlendFactor = 7;
+    blendInfo.colorBlendOp = 0;
+    blendInfo.srcAlphaBlendFactor = 1;
+    blendInfo.dstAlphaBlendFactor = 0;
+    blendInfo.alphaBlendOp = 0;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = particleMeshHandle_;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+
+    submittedParticleQuads = particleQuadCount_;
+  }
+
   if (!torchLights_.empty()) {
     if (remix_.AutoInstancePersistentLights != nullptr) {
       const remixapi_ErrorCode result = remix_.AutoInstancePersistentLights();
@@ -4147,13 +5140,18 @@ bool RemixRenderer::drawCapturedGeometry() {
       || submittedBlocks != lastSubmittedBlockCount_
       || submittedCloudQuads != lastSubmittedCloudQuadCount_
       || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
+      || submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
+      || submittedParticleQuads != lastSubmittedParticleQuadCount_
       || submittedTorchLights != lastSubmittedTorchLightCount_) {
     std::ostringstream stream;
     stream << "Submitted " << submittedChunks
            << " chunk meshes covering " << submittedBlocks
            << " blocks and " << submittedCloudQuads
            << " cloud quads and " << submittedDynamicEntityQuads
-           << " dynamic entity quads and " << submittedTorchLights
+           << " dynamic entity quads and " << submittedDestroyOverlays
+           << " destroy overlays and "
+           << submittedParticleQuads << " particle quads and "
+           << submittedTorchLights
            << " torch lights";
     log(stream.str());
   }
@@ -4162,6 +5160,8 @@ bool RemixRenderer::drawCapturedGeometry() {
   lastSubmittedBlockCount_ = submittedBlocks;
   lastSubmittedCloudQuadCount_ = submittedCloudQuads;
   lastSubmittedDynamicEntityQuadCount_ = submittedDynamicEntityQuads;
+  lastSubmittedDestroyOverlayCount_ = submittedDestroyOverlays;
+  lastSubmittedParticleQuadCount_ = submittedParticleQuads;
   lastSubmittedTorchLightCount_ = submittedTorchLights;
   ++presentedFrames_;
   return true;

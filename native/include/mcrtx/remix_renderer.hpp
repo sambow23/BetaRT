@@ -141,6 +141,23 @@ struct DynamicEntityFrameInstance {
   std::vector<remixapi_Transform> boneTransforms {};
 };
 
+struct DestroyOverlayInstance {
+  int blockX {0};
+  int blockY {0};
+  int blockZ {0};
+  int blockId {0};
+  int blockMetadata {0};
+  int renderType {0};
+  int destroyStage {0};
+};
+
+struct ParticleQuad {
+  std::array<float, 12> positions {};
+  std::array<float, 8> texcoords {};
+  std::uint32_t color {0xFFFFFFFFu};
+  std::uint32_t textureKind {0};
+};
+
 class RemixRenderer {
 public:
   static RemixRenderer& instance();
@@ -189,6 +206,39 @@ public:
         std::uint32_t colorRgba,
         std::uint32_t boneIndex);
   void endDynamicEntity();
+  void beginDestroyOverlayFrame();
+  void captureDestroyOverlay(
+      int blockX,
+      int blockY,
+      int blockZ,
+      int blockId,
+      int blockMetadata,
+      int renderType,
+      int destroyStage);
+  void beginParticleFrame();
+  void captureParticleQuad(
+      float x0,
+      float y0,
+      float z0,
+      float u0,
+      float v0,
+      float x1,
+      float y1,
+      float z1,
+      float u1,
+      float v1,
+      float x2,
+      float y2,
+      float z2,
+      float u2,
+      float v2,
+      float x3,
+      float y3,
+      float z3,
+      float u3,
+      float v3,
+      std::uint32_t colorRgba,
+      std::uint32_t textureKind);
   void clearWorldScene();
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
   void captureBlock(
@@ -240,6 +290,7 @@ private:
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   remixapi_MaterialHandle acquireDynamicEntityMaterial(const std::string& texturePath);
+  remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
   bool createTorchLight(const TorchLightPlacement& placement);
   bool updateTorchLight(const TorchLightPlacement& placement);
   bool reconcileChunkTorchLights(ChunkMeshData& meshData, const std::vector<TorchLightPlacement>& desiredTorchLights);
@@ -256,10 +307,14 @@ private:
   DynamicEntityMeshData* findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
+  bool rebuildDestroyOverlayMesh();
   static std::filesystem::path resolveCloudTexturePath();
   static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
+  static std::filesystem::path resolveParticleTexturePath(std::uint32_t textureKind);
   static std::filesystem::path resolveTerrainAtlasPath();
   void destroyCloudMesh();
+  void destroyDestroyOverlayMesh();
+  void destroyParticleMesh();
   void destroyChunkMeshHandle(ChunkMeshData& meshData);
   void destroyChunkTorchLights(ChunkMeshData& meshData);
   void destroyTorchLight(const WorldBlockPosition& position);
@@ -267,6 +322,7 @@ private:
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
+  bool rebuildParticleMesh();
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   bool drawCapturedGeometry();
   bool submitCamera();
@@ -293,18 +349,29 @@ private:
   std::size_t lastSubmittedBlockCount_ {0};
   std::size_t lastSubmittedCloudQuadCount_ {0};
   std::size_t lastSubmittedDynamicEntityQuadCount_ {0};
+  std::size_t lastSubmittedDestroyOverlayCount_ {0};
+  std::size_t lastSubmittedParticleQuadCount_ {0};
   std::size_t lastSubmittedTorchLightCount_ {0};
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::array<remixapi_MaterialHandle, 3> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
+  remixapi_MeshHandle destroyOverlayMeshHandle_ {nullptr};
   std::uint64_t nextCloudMeshHash_ {1};
+  std::uint64_t nextDestroyOverlayMeshHash_ {1};
+  std::uint64_t nextParticleMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
+  std::size_t destroyOverlayCount_ {0};
+  std::size_t particleQuadCount_ {0};
   DynamicEntityBuildState activeDynamicEntity_ {};
   std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
+  std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
+  std::vector<ParticleQuad> particleQuads_ {};
   std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
+  std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
+  remixapi_MeshHandle particleMeshHandle_ {nullptr};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
   std::string lastError_;

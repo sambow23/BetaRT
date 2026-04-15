@@ -215,6 +215,86 @@ public final class MinecraftRemixHooks {
 
     public static void onLivingEntityFrameBegin() {
         MinecraftRenderHooks.beginDynamicEntityFrame();
+        MinecraftRenderHooks.beginDestroyOverlayFrame();
+        MinecraftRenderHooks.beginParticleFrame();
+    }
+
+    public static void onDestroyOverlayRender(int blockX, int blockY, int blockZ, float destroyProgress) {
+        if (!MinecraftRenderHooks.isInitialized() || attachedWorld == null) {
+            return;
+        }
+
+        int blockId = attachedWorld.a(blockX, blockY, blockZ);
+        if (blockId <= 0 || blockId >= uu.m.length) {
+            return;
+        }
+
+        uu blockDefinition = uu.m[blockId];
+        if (blockDefinition == null) {
+            return;
+        }
+
+        int destroyStage = (int) (destroyProgress * 10.0f);
+        if (destroyStage < 0) {
+            destroyStage = 0;
+        } else if (destroyStage > 9) {
+            destroyStage = 9;
+        }
+
+        MinecraftRenderHooks.captureDestroyOverlay(
+                blockX,
+                blockY,
+                blockZ,
+                blockId,
+                attachedWorld.e(blockX, blockY, blockZ),
+                blockDefinition.b(),
+                destroyStage);
+    }
+
+    public static void onParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+        if (!MinecraftRenderHooks.isInitialized() || particle == null) {
+            return;
+        }
+
+        int textureKind = particle.c_();
+        if (textureKind < 0 || textureKind > 3) {
+            return;
+        }
+
+        float minU = (float) (particle.b % 16) / 16.0f;
+        float maxU = minU + 0.0624375f;
+        float minV = (float) (particle.b / 16) / 16.0f;
+        float maxV = minV + 0.0624375f;
+        float particleScale = 0.1f * particle.g;
+        float originX = (float) (particle.aJ + (particle.aM - particle.aJ) * (double) partialTicks - xw.l);
+        float originY = (float) (particle.aK + (particle.aN - particle.aK) * (double) partialTicks - xw.m);
+        float originZ = (float) (particle.aL + (particle.aO - particle.aL) * (double) partialTicks - xw.n);
+        float brightness = particle.a(partialTicks);
+        int colorRgba = packColor(particle.i * brightness, particle.j * brightness, particle.k * brightness, 1.0f);
+
+        MinecraftRenderHooks.captureParticleQuad(
+                originX - f3 * particleScale - f6 * particleScale,
+                originY - f4 * particleScale,
+                originZ - f5 * particleScale - f7 * particleScale,
+                maxU,
+                maxV,
+                originX - f3 * particleScale + f6 * particleScale,
+                originY + f4 * particleScale,
+                originZ - f5 * particleScale + f7 * particleScale,
+                maxU,
+                minV,
+                originX + f3 * particleScale + f6 * particleScale,
+                originY + f4 * particleScale,
+                originZ + f5 * particleScale + f7 * particleScale,
+                minU,
+                minV,
+                originX + f3 * particleScale - f6 * particleScale,
+                originY - f4 * particleScale,
+                originZ + f5 * particleScale - f7 * particleScale,
+                minU,
+                maxV,
+                colorRgba,
+                textureKind);
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
