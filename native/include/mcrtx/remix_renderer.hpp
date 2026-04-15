@@ -61,7 +61,10 @@ struct ChunkKeyHash {
 struct ChunkMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
+  std::uint64_t geometryFingerprint {0};
   std::size_t blockCount {0};
+  std::array<std::uint8_t, 4096> occupancy {};
+  bool hasOccupancy {false};
 };
 
 class RemixRenderer {
@@ -96,7 +99,9 @@ private:
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
+  bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
   void destroyChunkMesh(ChunkMeshData& meshData);
+  void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   bool drawCapturedGeometry();
   bool submitCamera();
   void setError(std::string message);

@@ -12,42 +12,44 @@ namespace {
 
 constexpr wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
 constexpr wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
-constexpr std::size_t kMaxOpaqueBlocksPerChunk = 1024;
+constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
+constexpr int kChunkDimension = 16;
+constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
 
-constexpr remixapi_HardcodedVertex kCubeVertices[] = {
-  {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 0.0f, 1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
-  {{1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
-  {{0.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+constexpr float kFaceVertexOffsets[6][4][3] = {
+  {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
+  {{0.0f, 0.0f, 1.0f}, {0.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 1.0f}},
+  {{0.0f, 0.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}},
+  {{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 1.0f}, {1.0f, 1.0f, 1.0f}, {1.0f, 1.0f, 0.0f}},
+  {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}},
+  {{0.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 1.0f}},
 };
 
-constexpr std::uint32_t kCubeIndices[] = {
-  0, 1, 2, 0, 2, 3,
-  4, 6, 5, 4, 7, 6,
-  8, 9, 10, 8, 10, 11,
-  12, 14, 13, 12, 15, 14,
-  16, 18, 17, 16, 19, 18,
-  20, 21, 22, 20, 22, 23,
+constexpr float kFaceNormals[6][3] = {
+  {0.0f, 0.0f, -1.0f},
+  {0.0f, 0.0f, 1.0f},
+  {-1.0f, 0.0f, 0.0f},
+  {1.0f, 0.0f, 0.0f},
+  {0.0f, -1.0f, 0.0f},
+  {0.0f, 1.0f, 0.0f},
+};
+
+constexpr float kFaceTexcoords[4][2] = {
+  {0.0f, 0.0f},
+  {1.0f, 0.0f},
+  {1.0f, 1.0f},
+  {0.0f, 1.0f},
+};
+
+constexpr std::uint32_t kFaceIndices[6] = {0, 1, 2, 0, 2, 3};
+
+constexpr int kNeighborOffsets[6][3] = {
+  {0, 0, -1},
+  {0, 0, 1},
+  {-1, 0, 0},
+  {1, 0, 0},
+  {0, -1, 0},
+  {0, 1, 0},
 };
 
 HMODULE getCurrentModuleHandle() {
@@ -161,34 +163,47 @@ remixapi_Transform makeTranslationTransform(float x, float y, float z) {
 }
 
 std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
-  std::uint64_t hash = 0x4D43525458000000ull;
-  hash ^= (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originX)) << 32);
-  hash ^= (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originY)) << 16);
-  hash ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originZ));
-  hash ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.renderPass)) << 48;
-  hash ^= sequence;
-  return hash;
+  (void)key;
+  return 0x4D43525458000000ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
-void appendCubeGeometry(
+std::uint64_t computeOccupancyFingerprint(const std::array<std::uint8_t, kBlocksPerChunk>& occupancy) {
+  std::uint64_t fingerprint = 1469598103934665603ull;
+  for (std::uint8_t occupied : occupancy) {
+    fingerprint ^= static_cast<std::uint64_t>(occupied);
+    fingerprint *= 1099511628211ull;
+  }
+  return fingerprint;
+}
+
+int blockIndex(int x, int y, int z) {
+  return x + kChunkDimension * (z + kChunkDimension * y);
+}
+
+void appendFaceGeometry(
+    int faceIndex,
     float localX,
     float localY,
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
-  vertices.reserve(vertices.size() + std::size(kCubeVertices));
-  indices.reserve(indices.size() + std::size(kCubeIndices));
 
-  for (const remixapi_HardcodedVertex& baseVertexData : kCubeVertices) {
-    remixapi_HardcodedVertex vertex = baseVertexData;
-    vertex.position[0] += localX;
-    vertex.position[1] += localY;
-    vertex.position[2] += localZ;
+  for (int vertexIndex = 0; vertexIndex < 4; ++vertexIndex) {
+    remixapi_HardcodedVertex vertex {};
+    vertex.position[0] = localX + kFaceVertexOffsets[faceIndex][vertexIndex][0];
+    vertex.position[1] = localY + kFaceVertexOffsets[faceIndex][vertexIndex][1];
+    vertex.position[2] = localZ + kFaceVertexOffsets[faceIndex][vertexIndex][2];
+    vertex.normal[0] = kFaceNormals[faceIndex][0];
+    vertex.normal[1] = kFaceNormals[faceIndex][1];
+    vertex.normal[2] = kFaceNormals[faceIndex][2];
+    vertex.texcoord[0] = kFaceTexcoords[vertexIndex][0];
+    vertex.texcoord[1] = kFaceTexcoords[vertexIndex][1];
+    vertex.color = 0xFFFFFFFFu;
     vertices.push_back(vertex);
   }
 
-  for (const std::uint32_t baseIndex : kCubeIndices) {
+  for (const std::uint32_t baseIndex : kFaceIndices) {
     indices.push_back(baseVertex + baseIndex);
   }
 }
@@ -359,11 +374,13 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
       activeChunkBuild_ = {};
       return;
     }
+    refreshNeighborChunkMeshes(chunkKey);
   } else {
     auto chunkIt = chunkMeshes_.find(chunkKey);
     if (chunkIt != chunkMeshes_.end()) {
       destroyChunkMesh(chunkIt->second);
       chunkMeshes_.erase(chunkIt);
+      refreshNeighborChunkMeshes(chunkKey);
     }
   }
 
@@ -598,21 +615,148 @@ bool RemixRenderer::rebuildChunkMesh(
     ChunkMeshData& meshData) {
   if (blocks.empty()) {
     destroyChunkMesh(meshData);
+    meshData.geometryFingerprint = 0;
+    meshData.blockCount = 0;
+    meshData.occupancy.fill(0);
+    meshData.hasOccupancy = false;
+    return true;
+  }
+
+  std::array<std::uint8_t, kBlocksPerChunk> occupancy {};
+  std::size_t occupiedBlocks = 0;
+  for (const CapturedBlockInstance& block : blocks) {
+    const int localX = block.position[0] - chunkKey.originX;
+    const int localY = block.position[1] - chunkKey.originY;
+    const int localZ = block.position[2] - chunkKey.originZ;
+    if (localX < 0 || localX >= kChunkDimension
+        || localY < 0 || localY >= kChunkDimension
+        || localZ < 0 || localZ >= kChunkDimension) {
+      continue;
+    }
+    const int occupancyIndex = blockIndex(localX, localY, localZ);
+    if (occupancy[occupancyIndex] == 0) {
+      occupancy[occupancyIndex] = 1;
+      ++occupiedBlocks;
+    }
+  }
+
+  if (occupiedBlocks == 0) {
+    destroyChunkMesh(meshData);
+    meshData.geometryFingerprint = 0;
+    meshData.blockCount = 0;
+    meshData.occupancy.fill(0);
+    meshData.hasOccupancy = false;
+    return true;
+  }
+
+  const std::uint64_t geometryFingerprint = computeOccupancyFingerprint(occupancy);
+  if (meshData.blockCount == occupiedBlocks
+      && meshData.geometryFingerprint == geometryFingerprint
+      && meshData.hasOccupancy) {
+    return true;
+  }
+
+  meshData.geometryFingerprint = geometryFingerprint;
+  meshData.blockCount = occupiedBlocks;
+  meshData.occupancy = occupancy;
+  meshData.hasOccupancy = true;
+  return rebuildChunkMeshFromData(chunkKey, meshData, false);
+}
+
+bool RemixRenderer::rebuildChunkMeshFromData(
+    const ChunkKey& chunkKey,
+    ChunkMeshData& meshData,
+    bool forceRebuild) {
+  if (!meshData.hasOccupancy || meshData.blockCount == 0) {
+    destroyChunkMesh(meshData);
+    return true;
+  }
+
+  if (!forceRebuild
+      && meshData.meshHandle != nullptr
+      && meshData.blockCount != 0) {
     return true;
   }
 
   std::vector<remixapi_HardcodedVertex> vertices;
   std::vector<std::uint32_t> indices;
-  vertices.reserve(blocks.size() * std::size(kCubeVertices));
-  indices.reserve(blocks.size() * std::size(kCubeIndices));
+  vertices.reserve(meshData.blockCount * 24);
+  indices.reserve(meshData.blockCount * 36);
 
-  for (const CapturedBlockInstance& block : blocks) {
-    appendCubeGeometry(
-        static_cast<float>(block.position[0] - chunkKey.originX),
-        static_cast<float>(block.position[1] - chunkKey.originY),
-        static_cast<float>(block.position[2] - chunkKey.originZ),
-        vertices,
-        indices);
+  for (int localY = 0; localY < kChunkDimension; ++localY) {
+    for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
+      for (int localX = 0; localX < kChunkDimension; ++localX) {
+        if (meshData.occupancy[blockIndex(localX, localY, localZ)] == 0) {
+          continue;
+        }
+
+        for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+          const int neighborX = localX + kNeighborOffsets[faceIndex][0];
+          const int neighborY = localY + kNeighborOffsets[faceIndex][1];
+          const int neighborZ = localZ + kNeighborOffsets[faceIndex][2];
+
+          bool faceOccluded = false;
+          const bool neighborInsideChunk =
+              neighborX >= 0 && neighborX < kChunkDimension
+              && neighborY >= 0 && neighborY < kChunkDimension
+              && neighborZ >= 0 && neighborZ < kChunkDimension;
+          if (neighborInsideChunk) {
+            faceOccluded = meshData.occupancy[blockIndex(neighborX, neighborY, neighborZ)] != 0;
+          } else {
+            ChunkKey neighborKey = chunkKey;
+            int wrappedX = neighborX;
+            int wrappedY = neighborY;
+            int wrappedZ = neighborZ;
+
+            if (wrappedX < 0) {
+              neighborKey.originX -= kChunkDimension;
+              wrappedX += kChunkDimension;
+            } else if (wrappedX >= kChunkDimension) {
+              neighborKey.originX += kChunkDimension;
+              wrappedX -= kChunkDimension;
+            }
+
+            if (wrappedY < 0) {
+              neighborKey.originY -= kChunkDimension;
+              wrappedY += kChunkDimension;
+            } else if (wrappedY >= kChunkDimension) {
+              neighborKey.originY += kChunkDimension;
+              wrappedY -= kChunkDimension;
+            }
+
+            if (wrappedZ < 0) {
+              neighborKey.originZ -= kChunkDimension;
+              wrappedZ += kChunkDimension;
+            } else if (wrappedZ >= kChunkDimension) {
+              neighborKey.originZ += kChunkDimension;
+              wrappedZ -= kChunkDimension;
+            }
+
+            const auto neighborIt = chunkMeshes_.find(neighborKey);
+            if (neighborIt != chunkMeshes_.end() && neighborIt->second.hasOccupancy) {
+              faceOccluded = neighborIt->second.occupancy[blockIndex(wrappedX, wrappedY, wrappedZ)] != 0;
+            }
+          }
+
+          if (faceOccluded) {
+            continue;
+          }
+
+          appendFaceGeometry(
+              faceIndex,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              vertices,
+              indices);
+        }
+      }
+    }
+  }
+
+  if (indices.empty()) {
+    destroyChunkMesh(meshData);
+    return true;
   }
 
   remixapi_MeshInfoSurfaceTriangles surface {};
@@ -639,7 +783,6 @@ bool RemixRenderer::rebuildChunkMesh(
   destroyChunkMesh(meshData);
   meshData.meshHandle = newMeshHandle;
   meshData.meshHash = meshInfo.hash;
-  meshData.blockCount = blocks.size();
   return true;
 }
 
@@ -647,7 +790,30 @@ void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
   if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
     remix_.DestroyMesh(meshData.meshHandle);
   }
-  meshData = {};
+  meshData.meshHandle = nullptr;
+  meshData.meshHash = 0;
+}
+
+void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
+  for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+    ChunkKey neighborKey = chunkKey;
+    neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;
+    neighborKey.originY += kNeighborOffsets[faceIndex][1] * kChunkDimension;
+    neighborKey.originZ += kNeighborOffsets[faceIndex][2] * kChunkDimension;
+
+    const auto neighborIt = chunkMeshes_.find(neighborKey);
+    if (neighborIt == chunkMeshes_.end()) {
+      continue;
+    }
+
+    if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
+      continue;
+    }
+
+    if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
+      return;
+    }
+  }
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
@@ -666,24 +832,24 @@ bool RemixRenderer::drawCapturedGeometry() {
       continue;
     }
 
-      remixapi_InstanceInfo instanceInfo {};
-      instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-      instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-      instanceInfo.mesh = meshData.meshHandle;
-      instanceInfo.transform = makeTranslationTransform(
-          static_cast<float>(chunkKey.originX),
-          static_cast<float>(chunkKey.originY),
-          static_cast<float>(chunkKey.originZ));
-      instanceInfo.doubleSided = FALSE;
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = meshData.meshHandle;
+    instanceInfo.transform = makeTranslationTransform(
+        static_cast<float>(chunkKey.originX),
+        static_cast<float>(chunkKey.originY),
+        static_cast<float>(chunkKey.originZ));
+    instanceInfo.doubleSided = FALSE;
 
-      const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
-      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-        setError("DrawInstance failed: " + errorCodeToString(result));
-        return false;
-      }
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
 
-      ++submittedChunks;
-      submittedBlocks += meshData.blockCount;
+    ++submittedChunks;
+    submittedBlocks += meshData.blockCount;
   }
 
   if (presentedFrames_ < 8
@@ -703,6 +869,10 @@ bool RemixRenderer::drawCapturedGeometry() {
 }
 
 bool RemixRenderer::submitCamera() {
+  const float nearPlane = camera_.nearPlane > 0.001f ? camera_.nearPlane : 0.05f;
+  const float farPlane = camera_.farPlane > nearPlane ? camera_.farPlane : (nearPlane + 1024.0f);
+  const float aspect = camera_.aspect > 0.001f ? camera_.aspect : 1.0f;
+
   remixapi_CameraInfoParameterizedEXT params {};
   params.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
   params.position = {camera_.position[0], camera_.position[1], camera_.position[2]};
@@ -710,9 +880,9 @@ bool RemixRenderer::submitCamera() {
   params.up = {camera_.up[0], camera_.up[1], camera_.up[2]};
   params.right = {camera_.right[0], camera_.right[1], camera_.right[2]};
   params.fovYInDegrees = camera_.fovYDegrees;
-  params.aspect = camera_.aspect;
-  params.nearPlane = camera_.nearPlane;
-  params.farPlane = camera_.farPlane;
+  params.aspect = aspect;
+  params.nearPlane = nearPlane;
+  params.farPlane = farPlane;
 
   remixapi_CameraInfo info {};
   info.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;

@@ -1,7 +1,7 @@
 package mcrtx.bridge;
 
 public final class MinecraftRenderHooks {
-    private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 1024;
+    private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
 
     private static volatile boolean initialized;
     private static boolean chunkBuildCaptureActive;

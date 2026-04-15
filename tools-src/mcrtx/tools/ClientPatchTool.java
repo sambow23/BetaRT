@@ -181,6 +181,7 @@ public final class ClientPatchTool {
                     insertionPoint = insertionPoint.getPrevious();
                 }
                 method.instructions.insertBefore(insertionPoint, captureChunkBlockCall(chunkBuildEnabledLocal));
+                break;
             }
         }
 

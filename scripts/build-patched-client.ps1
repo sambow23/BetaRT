@@ -15,6 +15,12 @@ param(
 $ErrorActionPreference = "Stop"
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$backupMinecraftJar = Join-Path $repoRoot "out\deploy-state\minecraft-b1.7.3-client.original.jar"
+
+if (Test-Path $backupMinecraftJar) {
+    $MinecraftJar = $backupMinecraftJar
+}
+
 if (-not $OutputRoot) {
     $OutputRoot = Join-Path $repoRoot "out\patched-client"
 }
@@ -84,3 +90,4 @@ Copy-Item $nativeDll (Join-Path $OutputRoot "mcrtx_jni.dll") -Force
 
 Write-Host "Patched client bundle ready: $OutputRoot"
 Write-Host "Patched jar: $patchedJar"
+Write-Host "Patch source jar: $MinecraftJar"
