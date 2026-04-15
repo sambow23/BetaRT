@@ -299,6 +299,7 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ILOAD, chunkBuildEnabledLocal));
         instructions.add(new JumpInsnNode(Opcodes.IFEQ, skip));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 9));
         instructions.add(new VarInsnNode(Opcodes.ILOAD, 17));
         instructions.add(new VarInsnNode(Opcodes.ILOAD, 15));
         instructions.add(new VarInsnNode(Opcodes.ILOAD, 16));
@@ -314,7 +315,7 @@ public final class ClientPatchTool {
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
                 "onChunkBlock",
-                "(IIIIII)V",
+            "(Lew;IIIIII)V",
                 false));
         instructions.add(skip);
         return instructions;

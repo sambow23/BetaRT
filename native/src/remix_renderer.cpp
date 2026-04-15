@@ -18,11 +18,15 @@ constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimens
 constexpr std::size_t kTerrainMaterialClassCount = 2;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
+constexpr std::uint8_t kGrassBlockId = 2;
+constexpr std::uint8_t kGrassOverlayTerrainTile = 38;
 constexpr float kAtlasSizePixels = 256.0f;
 constexpr float kAtlasTileSizePixels = 16.0f;
 constexpr float kAtlasUvInsetPixels = 0.01f;
+constexpr float kFaceOverlayBias = 0.001f;
 constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
+constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 
 constexpr float kFaceVertexOffsets[6][4][3] = {
   {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
@@ -211,12 +215,20 @@ std::uint64_t computeChunkFingerprint(
 
     fingerprint ^= static_cast<std::uint64_t>(cells[index].materialClass);
     fingerprint *= 1099511628211ull;
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockId);
+    fingerprint *= 1099511628211ull;
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockColor);
+    fingerprint *= 1099511628211ull;
     for (const std::uint8_t tileIndex : cells[index].terrainTiles) {
       fingerprint ^= static_cast<std::uint64_t>(tileIndex);
       fingerprint *= 1099511628211ull;
     }
   }
   return fingerprint;
+}
+
+std::uint32_t packVertexColor(std::uint32_t rgbColor) {
+  return 0xFF000000u | (rgbColor & 0x00FFFFFFu);
 }
 
 int blockIndex(int x, int y, int z) {
@@ -229,6 +241,8 @@ void appendFaceGeometry(
     float localY,
     float localZ,
     std::uint8_t terrainTileIndex,
+    std::uint32_t vertexColor,
+    float normalOffset,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
@@ -239,15 +253,15 @@ void appendFaceGeometry(
 
   for (int vertexIndex = 0; vertexIndex < 4; ++vertexIndex) {
     remixapi_HardcodedVertex vertex {};
-    vertex.position[0] = localX + kFaceVertexOffsets[faceIndex][vertexIndex][0];
-    vertex.position[1] = localY + kFaceVertexOffsets[faceIndex][vertexIndex][1];
-    vertex.position[2] = localZ + kFaceVertexOffsets[faceIndex][vertexIndex][2];
+    vertex.position[0] = localX + kFaceVertexOffsets[faceIndex][vertexIndex][0] + kFaceNormals[faceIndex][0] * normalOffset;
+    vertex.position[1] = localY + kFaceVertexOffsets[faceIndex][vertexIndex][1] + kFaceNormals[faceIndex][1] * normalOffset;
+    vertex.position[2] = localZ + kFaceVertexOffsets[faceIndex][vertexIndex][2] + kFaceNormals[faceIndex][2] * normalOffset;
     vertex.normal[0] = kFaceNormals[faceIndex][0];
     vertex.normal[1] = kFaceNormals[faceIndex][1];
     vertex.normal[2] = kFaceNormals[faceIndex][2];
     vertex.texcoord[0] = kFaceTexcoords[faceIndex][vertexIndex][0] == 0.0f ? tileMinU : tileMaxU;
     vertex.texcoord[1] = kFaceTexcoords[faceIndex][vertexIndex][1] == 0.0f ? tileMinV : tileMaxV;
-    vertex.color = 0xFFFFFFFFu;
+    vertex.color = vertexColor;
     vertices.push_back(vertex);
   }
 
@@ -395,7 +409,8 @@ void RemixRenderer::captureBlock(
   int texture2,
   int texture3,
   int texture4,
-  int texture5) {
+  int texture5,
+  int blockColorRgb) {
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !chunkBuildActive_) {
@@ -427,6 +442,7 @@ void RemixRenderer::captureBlock(
       static_cast<std::uint8_t>(texture5 & 0xFF),
   };
   block.materialClass = usesCutoutMaterialForBlock(blockId) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
+  block.blockColor = static_cast<std::uint32_t>(blockColorRgb) & 0x00FFFFFFu;
   activeChunkBlocks_.push_back(block);
 }
 
@@ -697,7 +713,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     materialInfo.albedoTexture = terrainAtlasPath_.c_str();
     materialInfo.emissiveIntensity = 0.0f;
     materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
-    materialInfo.filterMode = 1;
+    materialInfo.filterMode = 0;
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
 
@@ -810,6 +826,8 @@ bool RemixRenderer::rebuildChunkMesh(
     cells[occupancyIndex].materialClass = block.materialClass < kTerrainMaterialClassCount
         ? block.materialClass
         : kOpaqueTerrainMaterialClass;
+    cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
+    cells[occupancyIndex].blockColor = block.blockColor;
   }
 
   if (occupiedBlocks == 0) {
@@ -873,6 +891,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
             : kOpaqueTerrainMaterialClass;
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+          const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
           const int neighborX = localX + kNeighborOffsets[faceIndex][0];
           const int neighborY = localY + kNeighborOffsets[faceIndex][1];
           const int neighborZ = localZ + kNeighborOffsets[faceIndex][2];
@@ -929,9 +948,29 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localX),
               static_cast<float>(localY),
               static_cast<float>(localZ),
-              cell.terrainTiles[kNativeFaceToMinecraftSide[faceIndex]],
+              cell.terrainTiles[minecraftSide],
+              cell.blockId == kGrassBlockId && minecraftSide == 1
+                  ? packVertexColor(cell.blockColor)
+                  : kDefaultVertexColor,
+              0.0f,
               verticesByMaterial[materialClass],
               indicesByMaterial[materialClass]);
+
+          if (cell.blockId == kGrassBlockId
+              && minecraftSide >= 2
+              && minecraftSide <= 5
+              && cell.terrainTiles[minecraftSide] == 3) {
+            appendFaceGeometry(
+                faceIndex,
+                static_cast<float>(localX),
+                static_cast<float>(localY),
+                static_cast<float>(localZ),
+                kGrassOverlayTerrainTile,
+                packVertexColor(cell.blockColor),
+                kFaceOverlayBias,
+                verticesByMaterial[kCutoutTerrainMaterialClass],
+                indicesByMaterial[kCutoutTerrainMaterialClass]);
+          }
         }
       }
     }

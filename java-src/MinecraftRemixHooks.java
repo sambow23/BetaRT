@@ -82,6 +82,7 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onChunkBlock(
+            ew blockAccess,
             int blockX,
             int blockY,
             int blockZ,
@@ -89,7 +90,7 @@ public final class MinecraftRemixHooks {
             int blockMetadata,
             int renderType) {
         uu blockDefinition = blockId >= 0 && blockId < uu.m.length ? uu.m[blockId] : null;
-        if (blockDefinition == null) {
+        if (blockDefinition == null || blockAccess == null) {
             return;
         }
 
@@ -100,12 +101,13 @@ public final class MinecraftRemixHooks {
                 blockId,
                 blockMetadata,
                 renderType,
-                blockDefinition.a(0, blockMetadata) & 0xFF,
-                blockDefinition.a(1, blockMetadata) & 0xFF,
-                blockDefinition.a(2, blockMetadata) & 0xFF,
-                blockDefinition.a(3, blockMetadata) & 0xFF,
-                blockDefinition.a(4, blockMetadata) & 0xFF,
-                blockDefinition.a(5, blockMetadata) & 0xFF);
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4) & 0xFF,
+                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5) & 0xFF,
+                blockDefinition.b(blockAccess, blockX, blockY, blockZ));
     }
 
     public static void onChunkBuildEnd(boolean emittedGeometry) {

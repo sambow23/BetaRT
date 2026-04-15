@@ -37,6 +37,8 @@ struct ChunkBuildState {
 struct ChunkBlockCell {
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
+  std::uint8_t blockId {0};
+  std::uint32_t blockColor {0x00FFFFFFu};
 };
 
 struct CapturedBlockInstance {
@@ -45,6 +47,7 @@ struct CapturedBlockInstance {
   int blockMetadata {0};
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
+  std::uint32_t blockColor {0x00FFFFFFu};
 };
 
 struct ChunkKey {
@@ -97,7 +100,8 @@ public:
       int texture2,
       int texture3,
       int texture4,
-      int texture5);
+      int texture5,
+      int blockColorRgb);
   void endChunkBuild(bool emittedGeometry);
   bool present();
 

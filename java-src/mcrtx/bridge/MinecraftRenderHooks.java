@@ -184,7 +184,8 @@ public final class MinecraftRenderHooks {
             int texture2,
             int texture3,
             int texture4,
-            int texture5) {
+            int texture5,
+            int blockColorRgb) {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
@@ -204,7 +205,8 @@ public final class MinecraftRenderHooks {
                 texture2,
                 texture3,
                 texture4,
-                texture5);
+                texture5,
+                blockColorRgb);
     }
 
     public static void endChunkBuild(boolean emittedGeometry) {

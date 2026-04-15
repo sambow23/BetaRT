@@ -145,7 +145,8 @@ public final class RemixBridgeNative {
             int texture2,
             int texture3,
             int texture4,
-            int texture5);
+            int texture5,
+            int blockColorRgb);
 
     public static native void nEndChunkBuild(boolean emittedGeometry);
 

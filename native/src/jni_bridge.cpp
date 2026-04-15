@@ -79,7 +79,8 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
     jint blockX, jint blockY, jint blockZ,
     jint blockId, jint blockMetadata, jint renderType,
     jint texture0, jint texture1, jint texture2,
-    jint texture3, jint texture4, jint texture5) {
+  jint texture3, jint texture4, jint texture5,
+  jint blockColorRgb) {
   RemixRenderer::instance().captureBlock(
       blockX,
       blockY,
@@ -92,7 +93,8 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
       texture2,
       texture3,
       texture4,
-      texture5);
+      texture5,
+      blockColorRgb);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(
