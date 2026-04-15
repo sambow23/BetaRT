@@ -27,12 +27,15 @@ if (-not $BundleRoot) {
 
 $patchedJar = Join-Path $BundleRoot "minecraft-b1.7.3-client-mcrtx.jar"
 $patchedDll = Join-Path $BundleRoot "mcrtx_jni.dll"
+$bundleAssetsDir = Join-Path $BundleRoot "mcrtx_assets"
 $libraryJarDirectory = Split-Path $MinecraftLibraryJar -Parent
 $deployedDllPath = Join-Path $libraryJarDirectory "mcrtx_jni.dll"
+$sharedAssetsDir = Join-Path $libraryJarDirectory "mcrtx_assets"
 $legacyInstanceDllPath = Join-Path (Join-Path $InstanceRoot "natives") "mcrtx_jni.dll"
 $instanceLibrariesDir = Join-Path $InstanceRoot "libraries"
 $instanceMinecraftDir = Join-Path $InstanceRoot "minecraft"
 $instanceLibraryDllPath = Join-Path $instanceLibrariesDir "mcrtx_jni.dll"
+$instanceAssetsDir = Join-Path $instanceLibrariesDir "mcrtx_assets"
 $instanceMinecraftDllPath = Join-Path $instanceMinecraftDir "mcrtx_jni.dll"
 $instanceConfigPath = Join-Path $InstanceRoot "instance.cfg"
 $deployStateDir = Join-Path $repoRoot "out\deploy-state"
@@ -153,6 +156,14 @@ if ($Restore) {
         }
     }
 
+    foreach ($assetsPath in @($sharedAssetsDir, $instanceAssetsDir)) {
+        if (Test-Path $assetsPath) {
+            if ($PSCmdlet.ShouldProcess($assetsPath, "Remove deployed mcrtx atlas assets")) {
+                Remove-Item $assetsPath -Recurse -Force
+            }
+        }
+    }
+
     if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove Prism pre-launch sync command")) {
         Remove-PrismPreLaunchSync -InstanceConfig $instanceConfigPath
     }
@@ -162,7 +173,7 @@ if ($Restore) {
     return
 }
 
-foreach ($requiredPath in @($MinecraftLibraryJar, $patchedJar, $patchedDll)) {
+foreach ($requiredPath in @($MinecraftLibraryJar, $patchedJar, $patchedDll, $bundleAssetsDir)) {
     if (-not (Test-Path $requiredPath)) {
         throw "Required path not found: $requiredPath"
     }
@@ -212,6 +223,15 @@ foreach ($dllTarget in @($instanceLibraryDllPath, $instanceMinecraftDllPath)) {
     }
 }
 
+foreach ($assetsTarget in @($sharedAssetsDir, $instanceAssetsDir)) {
+    if (Test-Path $assetsTarget) {
+        Remove-Item $assetsTarget -Recurse -Force
+    }
+    if ($PSCmdlet.ShouldProcess($assetsTarget, "Deploy mcrtx atlas assets")) {
+        Copy-Item $bundleAssetsDir $assetsTarget -Recurse -Force
+    }
+}
+
 if (Test-Path $legacyInstanceDllPath) {
     if ($PSCmdlet.ShouldProcess($legacyInstanceDllPath, "Remove stale instance-native mcrtx JNI DLL")) {
         Remove-Item $legacyInstanceDllPath -Force
@@ -225,6 +245,8 @@ $deploymentRecord = [ordered]@{
     deployedDll = $deployedDllPath
     instanceLibraryDll = $instanceLibraryDllPath
     instanceMinecraftDll = $instanceMinecraftDllPath
+    sharedAssetsDir = $sharedAssetsDir
+    instanceAssetsDir = $instanceAssetsDir
     customJarTargets = $customJarTargets
     bundleRoot = $BundleRoot
     configuration = $Configuration
@@ -261,6 +283,9 @@ if ($didCopyDll) {
     Write-Host "Deployed mcrtx_jni.dll to $deployedDllPath"
     Write-Host "Deployed instance-local mcrtx_jni.dll to $instanceLibraryDllPath"
 }
+
+Write-Host "Deployed terrain atlas assets to $sharedAssetsDir"
+Write-Host "Deployed terrain atlas assets to $instanceAssetsDir"
 
 if ($didWriteMarker) {
     Write-Host "Updated deployment marker at $deploymentInfo"

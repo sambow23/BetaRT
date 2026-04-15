@@ -178,7 +178,13 @@ public final class MinecraftRenderHooks {
             int blockZ,
             int blockId,
             int blockMetadata,
-            int renderType) {
+            int renderType,
+            int texture0,
+            int texture1,
+            int texture2,
+            int texture3,
+            int texture4,
+            int texture5) {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
@@ -186,7 +192,19 @@ public final class MinecraftRenderHooks {
             return;
         }
         capturedChunkBlocks += 1;
-        RemixBridgeNative.nCaptureBlock(blockX, blockY, blockZ, blockId, blockMetadata, renderType);
+        RemixBridgeNative.nCaptureBlock(
+                blockX,
+                blockY,
+                blockZ,
+                blockId,
+                blockMetadata,
+                renderType,
+                texture0,
+                texture1,
+                texture2,
+                texture3,
+                texture4,
+                texture5);
     }
 
     public static void endChunkBuild(boolean emittedGeometry) {

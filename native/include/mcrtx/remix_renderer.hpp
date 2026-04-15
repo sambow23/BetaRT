@@ -34,10 +34,17 @@ struct ChunkBuildState {
   std::array<std::uint32_t, 256> blockIdCounts {};
 };
 
+struct ChunkBlockCell {
+  std::array<std::uint8_t, 6> terrainTiles {};
+  std::uint8_t materialClass {0};
+};
+
 struct CapturedBlockInstance {
   int position[3] {0, 0, 0};
   int blockId {0};
   int blockMetadata {0};
+  std::array<std::uint8_t, 6> terrainTiles {};
+  std::uint8_t materialClass {0};
 };
 
 struct ChunkKey {
@@ -64,6 +71,7 @@ struct ChunkMeshData {
   std::uint64_t geometryFingerprint {0};
   std::size_t blockCount {0};
   std::array<std::uint8_t, 4096> occupancy {};
+  std::array<ChunkBlockCell, 4096> cells {};
   bool hasOccupancy {false};
 };
 
@@ -77,7 +85,19 @@ public:
   void resize(std::uint32_t width, std::uint32_t height);
   void updateCamera(const CameraState& camera);
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
-  void captureBlock(int blockX, int blockY, int blockZ, int blockId, int blockMetadata, int renderType);
+  void captureBlock(
+      int blockX,
+      int blockY,
+      int blockZ,
+      int blockId,
+      int blockMetadata,
+      int renderType,
+      int texture0,
+      int texture1,
+      int texture2,
+      int texture3,
+      int texture4,
+      int texture5);
   void endChunkBuild(bool emittedGeometry);
   bool present();
 
@@ -96,10 +116,13 @@ private:
   void destroyOutputWindow();
   void pumpOutputWindowMessages();
   void updateOutputWindowSize() const;
+  bool initializeTerrainMaterials();
+  void destroyTerrainMaterials();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
+  static std::filesystem::path resolveTerrainAtlasPath();
   void destroyChunkMesh(ChunkMeshData& meshData);
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   bool drawCapturedGeometry();
@@ -125,6 +148,8 @@ private:
   std::uint64_t presentedFrames_ {0};
   std::size_t lastSubmittedChunkCount_ {0};
   std::size_t lastSubmittedBlockCount_ {0};
+  std::filesystem::path terrainAtlasPath_ {};
+  std::array<remixapi_MaterialHandle, 2> terrainMaterialHandles_ {};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::string lastError_;
 };

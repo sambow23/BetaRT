@@ -88,7 +88,24 @@ public final class MinecraftRemixHooks {
             int blockId,
             int blockMetadata,
             int renderType) {
-        MinecraftRenderHooks.captureBlock(blockX, blockY, blockZ, blockId, blockMetadata, renderType);
+        uu blockDefinition = blockId >= 0 && blockId < uu.m.length ? uu.m[blockId] : null;
+        if (blockDefinition == null) {
+            return;
+        }
+
+        MinecraftRenderHooks.captureBlock(
+                blockX,
+                blockY,
+                blockZ,
+                blockId,
+                blockMetadata,
+                renderType,
+                blockDefinition.a(0, blockMetadata) & 0xFF,
+                blockDefinition.a(1, blockMetadata) & 0xFF,
+                blockDefinition.a(2, blockMetadata) & 0xFF,
+                blockDefinition.a(3, blockMetadata) & 0xFF,
+                blockDefinition.a(4, blockMetadata) & 0xFF,
+                blockDefinition.a(5, blockMetadata) & 0xFF);
     }
 
     public static void onChunkBuildEnd(boolean emittedGeometry) {

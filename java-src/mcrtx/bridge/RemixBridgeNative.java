@@ -124,7 +124,7 @@ public final class RemixBridgeNative {
             float nearPlane,
             float farPlane);
 
-        public static native boolean nBeginChunkBuild(
+    public static native boolean nBeginChunkBuild(
             int originX,
             int originY,
             int originZ,
@@ -133,15 +133,21 @@ public final class RemixBridgeNative {
             int sizeZ,
             int renderPass);
 
-        public static native void nCaptureBlock(
+    public static native void nCaptureBlock(
             int blockX,
             int blockY,
             int blockZ,
             int blockId,
             int blockMetadata,
-            int renderType);
+            int renderType,
+            int texture0,
+            int texture1,
+            int texture2,
+            int texture3,
+            int texture4,
+            int texture5);
 
-        public static native void nEndChunkBuild(boolean emittedGeometry);
+    public static native void nEndChunkBuild(boolean emittedGeometry);
 
     public static native boolean nPresent();
 

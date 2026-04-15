@@ -15,6 +15,14 @@ constexpr wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
 constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 constexpr int kChunkDimension = 16;
 constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
+constexpr std::size_t kTerrainMaterialClassCount = 2;
+constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
+constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
+constexpr float kAtlasSizePixels = 256.0f;
+constexpr float kAtlasTileSizePixels = 16.0f;
+constexpr float kAtlasUvInsetPixels = 0.01f;
+constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
+constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 
 constexpr float kFaceVertexOffsets[6][4][3] = {
   {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},
@@ -34,11 +42,22 @@ constexpr float kFaceNormals[6][3] = {
   {0.0f, 1.0f, 0.0f},
 };
 
-constexpr float kFaceTexcoords[4][2] = {
-  {0.0f, 0.0f},
-  {1.0f, 0.0f},
-  {1.0f, 1.0f},
-  {0.0f, 1.0f},
+constexpr int kNativeFaceToMinecraftSide[6] = {
+  2,
+  3,
+  4,
+  5,
+  0,
+  1,
+};
+
+constexpr float kFaceTexcoords[6][4][2] = {
+  {{1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}},
+  {{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}},
+  {{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}},
+  {{1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}},
+  {{0.0f, 0.0f}, {0.0f, 1.0f}, {1.0f, 1.0f}, {1.0f, 0.0f}},
+  {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}},
 };
 
 constexpr std::uint32_t kFaceIndices[6] = {0, 1, 2, 0, 2, 3};
@@ -151,6 +170,17 @@ bool shouldCaptureBlock(int blockId, int renderType) {
   return blockId > 0 && renderType == 0;
 }
 
+bool usesCutoutMaterialForBlock(int blockId) {
+  switch (blockId) {
+    case 18:
+    case 20:
+    case 52:
+      return true;
+    default:
+      return false;
+  }
+}
+
 remixapi_Transform makeTranslationTransform(float x, float y, float z) {
   remixapi_Transform transform {};
   transform.matrix[0][0] = 1.0f;
@@ -167,11 +197,24 @@ std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
   return 0x4D43525458000000ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
-std::uint64_t computeOccupancyFingerprint(const std::array<std::uint8_t, kBlocksPerChunk>& occupancy) {
+std::uint64_t computeChunkFingerprint(
+    const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
+    const std::array<ChunkBlockCell, kBlocksPerChunk>& cells) {
   std::uint64_t fingerprint = 1469598103934665603ull;
-  for (std::uint8_t occupied : occupancy) {
+  for (std::size_t index = 0; index < occupancy.size(); ++index) {
+    const std::uint8_t occupied = occupancy[index];
     fingerprint ^= static_cast<std::uint64_t>(occupied);
     fingerprint *= 1099511628211ull;
+    if (occupied == 0) {
+      continue;
+    }
+
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].materialClass);
+    fingerprint *= 1099511628211ull;
+    for (const std::uint8_t tileIndex : cells[index].terrainTiles) {
+      fingerprint ^= static_cast<std::uint64_t>(tileIndex);
+      fingerprint *= 1099511628211ull;
+    }
   }
   return fingerprint;
 }
@@ -185,9 +228,14 @@ void appendFaceGeometry(
     float localX,
     float localY,
     float localZ,
+    std::uint8_t terrainTileIndex,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
 
   for (int vertexIndex = 0; vertexIndex < 4; ++vertexIndex) {
     remixapi_HardcodedVertex vertex {};
@@ -197,8 +245,8 @@ void appendFaceGeometry(
     vertex.normal[0] = kFaceNormals[faceIndex][0];
     vertex.normal[1] = kFaceNormals[faceIndex][1];
     vertex.normal[2] = kFaceNormals[faceIndex][2];
-    vertex.texcoord[0] = kFaceTexcoords[vertexIndex][0];
-    vertex.texcoord[1] = kFaceTexcoords[vertexIndex][1];
+    vertex.texcoord[0] = kFaceTexcoords[faceIndex][vertexIndex][0] == 0.0f ? tileMinU : tileMaxU;
+    vertex.texcoord[1] = kFaceTexcoords[faceIndex][vertexIndex][1] == 0.0f ? tileMinV : tileMaxV;
     vertex.color = 0xFFFFFFFFu;
     vertices.push_back(vertex);
   }
@@ -264,6 +312,8 @@ bool RemixRenderer::initialize(
     return false;
   }
 
+  initializeTerrainMaterials();
+
   initialized_ = true;
   log("Remix renderer initialized in separate output window");
   return true;
@@ -276,6 +326,7 @@ void RemixRenderer::shutdown() {
     for (auto& [chunkKey, meshData] : chunkMeshes_) {
       destroyChunkMesh(meshData);
     }
+    destroyTerrainMaterials();
     remix_.Shutdown();
   }
   resetLoadedRemix();
@@ -290,6 +341,7 @@ void RemixRenderer::shutdown() {
   presentedFrames_ = 0;
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
+  terrainAtlasPath_.clear();
   lastError_.clear();
 }
 
@@ -332,7 +384,18 @@ bool RemixRenderer::beginChunkBuild(
 }
 
 void RemixRenderer::captureBlock(
-    int blockX, int blockY, int blockZ, int blockId, int blockMetadata, int renderType) {
+  int blockX,
+  int blockY,
+  int blockZ,
+  int blockId,
+  int blockMetadata,
+  int renderType,
+  int texture0,
+  int texture1,
+  int texture2,
+  int texture3,
+  int texture4,
+  int texture5) {
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !chunkBuildActive_) {
@@ -355,6 +418,15 @@ void RemixRenderer::captureBlock(
   block.position[2] = blockZ;
   block.blockId = blockId;
   block.blockMetadata = blockMetadata;
+  block.terrainTiles = {
+      static_cast<std::uint8_t>(texture0 & 0xFF),
+      static_cast<std::uint8_t>(texture1 & 0xFF),
+      static_cast<std::uint8_t>(texture2 & 0xFF),
+      static_cast<std::uint8_t>(texture3 & 0xFF),
+      static_cast<std::uint8_t>(texture4 & 0xFF),
+      static_cast<std::uint8_t>(texture5 & 0xFF),
+  };
+  block.materialClass = usesCutoutMaterialForBlock(blockId) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
   activeChunkBlocks_.push_back(block);
 }
 
@@ -485,6 +557,31 @@ std::filesystem::path RemixRenderer::resolveRemixDllPath() {
   return std::filesystem::path(L"d3d9.dll");
 }
 
+std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain.png");
+    attemptedPaths.push_back(moduleDirectory / L"terrain.dds");
+    attemptedPaths.push_back(moduleDirectory / L"terrain.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
@@ -574,6 +671,75 @@ void RemixRenderer::updateOutputWindowSize() const {
       SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
 }
 
+bool RemixRenderer::initializeTerrainMaterials() {
+  destroyTerrainMaterials();
+  terrainAtlasPath_ = resolveTerrainAtlasPath();
+  if (terrainAtlasPath_.empty()) {
+    log("Terrain atlas asset not found; continuing without Remix materials");
+    return false;
+  }
+
+  const auto createTerrainMaterial = [this](std::size_t materialClass, bool cutout) {
+    remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
+    opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+    opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+    opaqueInfo.opacityConstant = 1.0f;
+    opaqueInfo.roughnessConstant = 1.0f;
+    opaqueInfo.metallicConstant = 0.0f;
+    opaqueInfo.useDrawCallAlphaState = FALSE;
+    opaqueInfo.alphaTestType = cutout ? 4 : 7;
+    opaqueInfo.alphaReferenceValue = cutout ? 1 : 0;
+
+    remixapi_MaterialInfo materialInfo {};
+    materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+    materialInfo.pNext = &opaqueInfo;
+    materialInfo.hash = cutout ? kCutoutTerrainMaterialHash : kOpaqueTerrainMaterialHash;
+    materialInfo.albedoTexture = terrainAtlasPath_.c_str();
+    materialInfo.emissiveIntensity = 0.0f;
+    materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+    materialInfo.filterMode = 1;
+    materialInfo.wrapModeU = 1;
+    materialInfo.wrapModeV = 1;
+
+    remixapi_MaterialHandle materialHandle = nullptr;
+    const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      log(std::string("CreateMaterial failed for terrain material class ")
+          + std::to_string(materialClass)
+          + ": "
+          + errorCodeToString(result));
+      return false;
+    }
+
+    terrainMaterialHandles_[materialClass] = materialHandle;
+    return true;
+  };
+
+  const bool opaqueCreated = createTerrainMaterial(kOpaqueTerrainMaterialClass, false);
+  const bool cutoutCreated = createTerrainMaterial(kCutoutTerrainMaterialClass, true);
+  if (opaqueCreated) {
+    log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
+  }
+  if (!cutoutCreated) {
+    log("Cutout terrain material unavailable; cutout faces will use fallback material");
+  }
+  return opaqueCreated;
+}
+
+void RemixRenderer::destroyTerrainMaterials() {
+  if (remix_.DestroyMaterial == nullptr) {
+    terrainMaterialHandles_ = {};
+    return;
+  }
+
+  for (remixapi_MaterialHandle& materialHandle : terrainMaterialHandles_) {
+    if (materialHandle != nullptr) {
+      remix_.DestroyMaterial(materialHandle);
+      materialHandle = nullptr;
+    }
+  }
+}
+
 void RemixRenderer::resetLoadedRemix() {
   if (remixDll_ != nullptr) {
     remixapi_lib_shutdownAndUnloadRemixDll(&remix_, remixDll_);
@@ -618,11 +784,13 @@ bool RemixRenderer::rebuildChunkMesh(
     meshData.geometryFingerprint = 0;
     meshData.blockCount = 0;
     meshData.occupancy.fill(0);
+    meshData.cells.fill(ChunkBlockCell {});
     meshData.hasOccupancy = false;
     return true;
   }
 
   std::array<std::uint8_t, kBlocksPerChunk> occupancy {};
+  std::array<ChunkBlockCell, kBlocksPerChunk> cells {};
   std::size_t occupiedBlocks = 0;
   for (const CapturedBlockInstance& block : blocks) {
     const int localX = block.position[0] - chunkKey.originX;
@@ -638,6 +806,10 @@ bool RemixRenderer::rebuildChunkMesh(
       occupancy[occupancyIndex] = 1;
       ++occupiedBlocks;
     }
+    cells[occupancyIndex].terrainTiles = block.terrainTiles;
+    cells[occupancyIndex].materialClass = block.materialClass < kTerrainMaterialClassCount
+        ? block.materialClass
+        : kOpaqueTerrainMaterialClass;
   }
 
   if (occupiedBlocks == 0) {
@@ -645,11 +817,12 @@ bool RemixRenderer::rebuildChunkMesh(
     meshData.geometryFingerprint = 0;
     meshData.blockCount = 0;
     meshData.occupancy.fill(0);
+    meshData.cells.fill(ChunkBlockCell {});
     meshData.hasOccupancy = false;
     return true;
   }
 
-  const std::uint64_t geometryFingerprint = computeOccupancyFingerprint(occupancy);
+  const std::uint64_t geometryFingerprint = computeChunkFingerprint(occupancy, cells);
   if (meshData.blockCount == occupiedBlocks
       && meshData.geometryFingerprint == geometryFingerprint
       && meshData.hasOccupancy) {
@@ -659,6 +832,7 @@ bool RemixRenderer::rebuildChunkMesh(
   meshData.geometryFingerprint = geometryFingerprint;
   meshData.blockCount = occupiedBlocks;
   meshData.occupancy = occupancy;
+  meshData.cells = cells;
   meshData.hasOccupancy = true;
   return rebuildChunkMeshFromData(chunkKey, meshData, false);
 }
@@ -678,17 +852,25 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return true;
   }
 
-  std::vector<remixapi_HardcodedVertex> vertices;
-  std::vector<std::uint32_t> indices;
-  vertices.reserve(meshData.blockCount * 24);
-  indices.reserve(meshData.blockCount * 36);
+  std::array<std::vector<remixapi_HardcodedVertex>, kTerrainMaterialClassCount> verticesByMaterial;
+  std::array<std::vector<std::uint32_t>, kTerrainMaterialClassCount> indicesByMaterial;
+  for (std::size_t materialClass = 0; materialClass < kTerrainMaterialClassCount; ++materialClass) {
+    verticesByMaterial[materialClass].reserve(meshData.blockCount * 12);
+    indicesByMaterial[materialClass].reserve(meshData.blockCount * 18);
+  }
 
   for (int localY = 0; localY < kChunkDimension; ++localY) {
     for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
       for (int localX = 0; localX < kChunkDimension; ++localX) {
-        if (meshData.occupancy[blockIndex(localX, localY, localZ)] == 0) {
+        const int cellIndex = blockIndex(localX, localY, localZ);
+        if (meshData.occupancy[cellIndex] == 0) {
           continue;
         }
+
+        const ChunkBlockCell& cell = meshData.cells[cellIndex];
+        const std::size_t materialClass = cell.materialClass < kTerrainMaterialClassCount
+            ? cell.materialClass
+            : kOpaqueTerrainMaterialClass;
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
           const int neighborX = localX + kNeighborOffsets[faceIndex][0];
@@ -747,31 +929,41 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localX),
               static_cast<float>(localY),
               static_cast<float>(localZ),
-              vertices,
-              indices);
+              cell.terrainTiles[kNativeFaceToMinecraftSide[faceIndex]],
+              verticesByMaterial[materialClass],
+              indicesByMaterial[materialClass]);
         }
       }
     }
   }
 
-  if (indices.empty()) {
+  std::array<remixapi_MeshInfoSurfaceTriangles, kTerrainMaterialClassCount> surfaces {};
+  std::size_t surfaceCount = 0;
+  for (std::size_t materialClass = 0; materialClass < kTerrainMaterialClassCount; ++materialClass) {
+    if (indicesByMaterial[materialClass].empty()) {
+      continue;
+    }
+
+    remixapi_MeshInfoSurfaceTriangles surface {};
+    surface.vertices_values = verticesByMaterial[materialClass].data();
+    surface.vertices_count = verticesByMaterial[materialClass].size();
+    surface.indices_values = indicesByMaterial[materialClass].data();
+    surface.indices_count = indicesByMaterial[materialClass].size();
+    surface.skinning_hasvalue = FALSE;
+    surface.material = terrainMaterialHandles_[materialClass];
+    surfaces[surfaceCount++] = surface;
+  }
+
+  if (surfaceCount == 0) {
     destroyChunkMesh(meshData);
     return true;
   }
 
-  remixapi_MeshInfoSurfaceTriangles surface {};
-  surface.vertices_values = vertices.data();
-  surface.vertices_count = vertices.size();
-  surface.indices_values = indices.data();
-  surface.indices_count = indices.size();
-  surface.skinning_hasvalue = FALSE;
-  surface.material = nullptr;
-
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
   meshInfo.hash = makeChunkMeshHash(chunkKey, nextChunkMeshHash_++);
-  meshInfo.surfaces_values = &surface;
-  meshInfo.surfaces_count = 1;
+  meshInfo.surfaces_values = surfaces.data();
+  meshInfo.surfaces_count = surfaceCount;
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);

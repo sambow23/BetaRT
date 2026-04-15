@@ -77,9 +77,22 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
     JNIEnv*, jclass,
     jint blockX, jint blockY, jint blockZ,
-    jint blockId, jint blockMetadata, jint renderType) {
+    jint blockId, jint blockMetadata, jint renderType,
+    jint texture0, jint texture1, jint texture2,
+    jint texture3, jint texture4, jint texture5) {
   RemixRenderer::instance().captureBlock(
-      blockX, blockY, blockZ, blockId, blockMetadata, renderType);
+      blockX,
+      blockY,
+      blockZ,
+      blockId,
+      blockMetadata,
+      renderType,
+      texture0,
+      texture1,
+      texture2,
+      texture3,
+      texture4,
+      texture5);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(
