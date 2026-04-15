@@ -1,0 +1,6 @@
+build/
+.vs/
+out/
+work/jar-contents/
+work/decompiled-vineflower/
+work/reports/*.log

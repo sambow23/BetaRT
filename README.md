@@ -1,0 +1,93 @@
+# mc-rtx
+
+Minecraft Beta 1.7.3 Remix port workspace.
+
+This repo keeps three things together:
+
+1. A repeatable decompilation workflow for the Beta 1.7.3 client jar.
+2. Notes about the real Java-side hook points found in the decompiled client.
+3. A native x64 JNI scaffold that will host the direct RTX Remix renderer integration.
+
+## Current state
+
+The Beta client jar has been extracted and decompiled with CFR into `work/decompiled-cfr`.
+
+The key render pipeline classes identified so far are:
+
+1. `net.minecraft.client.Minecraft` for startup, the main loop, resize, and shutdown.
+2. `px` for camera setup and the world render pass.
+3. `n` for chunk visibility, world rendering, and chunk renderer management.
+4. `dk` for chunk display-list compilation.
+5. `dn` for particles.
+6. `mk` for the loading screen.
+
+See `docs/hook-points.md` for the first mapping report.
+
+## Layout
+
+1. `scripts/` contains repeatable extraction and decompilation helpers.
+2. `docs/` contains notes and mapping reports.
+3. `java-src/` contains support classes for the future Java-side JNI seam.
+4. `native/` contains the Windows x64 Remix/JNI implementation scaffold.
+5. `work/` contains extracted and decompiled artifacts and should be treated as working data, not polished source.
+
+## Native build
+
+The native project expects a sibling checkout of `dxvk-remix-gmod` at `../dxvk-remix-gmod`.
+
+Example configure command:
+
+```powershell
+cmake -S . -B build -G "Visual Studio 17 2022" -A x64
+cmake --build build --config Debug
+```
+
+## Decompilation workflow
+
+The helper script reruns extraction and both decompilers:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\decompile-minecraft.ps1
+```
+
+## Patched client build
+
+The patched client build script compiles the bridge/helper classes for Java 8,
+bytecode-patches the original Beta client classes that need runtime hooks, and
+stages `mcrtx_jni.dll` next to the patched jar:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\build-patched-client.ps1
+```
+
+The output bundle is written to `out/patched-client`.
+
+## Quick deployment for testing
+
+For the local PrismLauncher `b1.7.3` instance, deploy the latest patched jar and
+JNI DLL with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-test-build.ps1 -Build
+```
+
+That command builds the native JNI bridge in `Release`, rebuilds the patched
+client bundle, replaces PrismLauncher's shared `minecraft-b1.7.3-client.jar`,
+and copies `mcrtx_jni.dll` next to that shared jar. The bridge loads the DLL
+from the jar directory because PrismLauncher recreates the instance `natives`
+directory on each launch.
+
+The deploy script also configures the PrismLauncher `b1.7.3` instance with a
+pre-launch command that re-runs the deploy script without `-Build`. That keeps
+the patched jar and JNI DLL synced immediately before the JVM starts, which is
+necessary because Prism may refresh the shared Beta client jar during launch.
+
+Restore the vanilla jar with:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\deploy-test-build.ps1 -Restore
+```
+
+The script keeps a one-time backup under `out/deploy-state`. Because PrismLauncher
+uses a shared Beta 1.7.3 library jar, deployment affects any instance that points
+at the same `com.mojang:minecraft:b1.7.3:client` artifact.
