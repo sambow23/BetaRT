@@ -1,7 +1,11 @@
 package mcrtx.bridge;
 
 public final class MinecraftRenderHooks {
+    private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 1024;
+
     private static volatile boolean initialized;
+    private static boolean chunkBuildCaptureActive;
+    private static int capturedChunkBlocks;
     private static String lastError = "";
     private static String lastReportedMessage = "";
 
@@ -156,8 +160,16 @@ public final class MinecraftRenderHooks {
             int sizeY,
             int sizeZ,
             int renderPass) {
-        return initialized
-                && RemixBridgeNative.nBeginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        if (!initialized) {
+            chunkBuildCaptureActive = false;
+            capturedChunkBlocks = 0;
+            return false;
+        }
+
+        boolean active = RemixBridgeNative.nBeginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        chunkBuildCaptureActive = active;
+        capturedChunkBlocks = 0;
+        return active;
     }
 
     public static void captureBlock(
@@ -167,17 +179,23 @@ public final class MinecraftRenderHooks {
             int blockId,
             int blockMetadata,
             int renderType) {
-        if (!initialized) {
+        if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
+        if (blockId <= 0 || renderType != 0 || capturedChunkBlocks >= MAX_CAPTURED_BLOCKS_PER_CHUNK) {
+            return;
+        }
+        capturedChunkBlocks += 1;
         RemixBridgeNative.nCaptureBlock(blockX, blockY, blockZ, blockId, blockMetadata, renderType);
     }
 
     public static void endChunkBuild(boolean emittedGeometry) {
-        if (!initialized) {
+        if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
-        RemixBridgeNative.nEndChunkBuild(emittedGeometry);
+        RemixBridgeNative.nEndChunkBuild(emittedGeometry && capturedChunkBlocks > 0);
+        chunkBuildCaptureActive = false;
+        capturedChunkBlocks = 0;
     }
 
     public static synchronized boolean isInitialized() {

@@ -12,8 +12,43 @@ namespace {
 
 constexpr wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
 constexpr wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
-constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
-constexpr std::size_t kMaxDrawnBlocksPerFrame = 32768;
+constexpr std::size_t kMaxOpaqueBlocksPerChunk = 1024;
+
+constexpr remixapi_HardcodedVertex kCubeVertices[] = {
+  {{0.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 0.0f}, {0.0f, 0.0f, -1.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 1.0f}, {0.0f, 0.0f, 1.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 0.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 0.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 1.0f}, {-1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 0.0f, 1.0f}, {-1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 1.0f}, {1.0f, 0.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 0.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 0.0f, 1.0f}, {0.0f, -1.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 0.0f}, 0xFFFFFFFFu},
+  {{1.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {1.0f, 1.0f}, 0xFFFFFFFFu},
+  {{0.0f, 1.0f, 1.0f}, {0.0f, 1.0f, 0.0f}, {0.0f, 1.0f}, 0xFFFFFFFFu},
+};
+
+constexpr std::uint32_t kCubeIndices[] = {
+  0, 1, 2, 0, 2, 3,
+  4, 6, 5, 4, 7, 6,
+  8, 9, 10, 8, 10, 11,
+  12, 14, 13, 12, 15, 14,
+  16, 18, 17, 16, 19, 18,
+  20, 21, 22, 20, 22, 23,
+};
 
 HMODULE getCurrentModuleHandle() {
   HMODULE moduleHandle = nullptr;
@@ -114,28 +149,6 @@ bool shouldCaptureBlock(int blockId, int renderType) {
   return blockId > 0 && renderType == 0;
 }
 
-remixapi_HardcodedVertex makeVertex(
-    float px,
-    float py,
-    float pz,
-    float nx,
-    float ny,
-    float nz,
-    float u,
-    float v) {
-  remixapi_HardcodedVertex vertex {};
-  vertex.position[0] = px;
-  vertex.position[1] = py;
-  vertex.position[2] = pz;
-  vertex.normal[0] = nx;
-  vertex.normal[1] = ny;
-  vertex.normal[2] = nz;
-  vertex.texcoord[0] = u;
-  vertex.texcoord[1] = v;
-  vertex.color = 0xFFFFFFFFu;
-  return vertex;
-}
-
 remixapi_Transform makeTranslationTransform(float x, float y, float z) {
   remixapi_Transform transform {};
   transform.matrix[0][0] = 1.0f;
@@ -145,6 +158,39 @@ remixapi_Transform makeTranslationTransform(float x, float y, float z) {
   transform.matrix[1][3] = y;
   transform.matrix[2][3] = z;
   return transform;
+}
+
+std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
+  std::uint64_t hash = 0x4D43525458000000ull;
+  hash ^= (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originX)) << 32);
+  hash ^= (static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originY)) << 16);
+  hash ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.originZ));
+  hash ^= static_cast<std::uint64_t>(static_cast<std::uint32_t>(key.renderPass)) << 48;
+  hash ^= sequence;
+  return hash;
+}
+
+void appendCubeGeometry(
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+  vertices.reserve(vertices.size() + std::size(kCubeVertices));
+  indices.reserve(indices.size() + std::size(kCubeIndices));
+
+  for (const remixapi_HardcodedVertex& baseVertexData : kCubeVertices) {
+    remixapi_HardcodedVertex vertex = baseVertexData;
+    vertex.position[0] += localX;
+    vertex.position[1] += localY;
+    vertex.position[2] += localZ;
+    vertices.push_back(vertex);
+  }
+
+  for (const std::uint32_t baseIndex : kCubeIndices) {
+    indices.push_back(baseVertex + baseIndex);
+  }
 }
 
 }  // namespace
@@ -212,9 +258,8 @@ void RemixRenderer::shutdown() {
   std::scoped_lock lock(mutex_);
 
   if (initialized_ && remix_.Shutdown) {
-    if (blockCubeMesh_ != nullptr && remix_.DestroyMesh != nullptr) {
-      remix_.DestroyMesh(blockCubeMesh_);
-      blockCubeMesh_ = nullptr;
+    for (auto& [chunkKey, meshData] : chunkMeshes_) {
+      destroyChunkMesh(meshData);
     }
     remix_.Shutdown();
   }
@@ -225,8 +270,10 @@ void RemixRenderer::shutdown() {
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
   activeChunkBlocks_.clear();
-  capturedChunks_.clear();
+  chunkMeshes_.clear();
+  nextChunkMeshHash_ = 1;
   presentedFrames_ = 0;
+  lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastError_.clear();
 }
@@ -305,9 +352,19 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
 
   const ChunkKey chunkKey = makeChunkKey(activeChunkBuild_);
   if (emittedGeometry && !activeChunkBlocks_.empty()) {
-    capturedChunks_[chunkKey] = activeChunkBlocks_;
+    ChunkMeshData& meshData = chunkMeshes_[chunkKey];
+    if (!rebuildChunkMesh(chunkKey, activeChunkBlocks_, meshData)) {
+      activeChunkBlocks_.clear();
+      chunkBuildActive_ = false;
+      activeChunkBuild_ = {};
+      return;
+    }
   } else {
-    capturedChunks_.erase(chunkKey);
+    auto chunkIt = chunkMeshes_.find(chunkKey);
+    if (chunkIt != chunkMeshes_.end()) {
+      destroyChunkMesh(chunkIt->second);
+      chunkMeshes_.erase(chunkIt);
+    }
   }
 
   ++capturedChunkBuilds_;
@@ -326,7 +383,7 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
            << " capturedOpaqueBlocks=" << activeChunkBlocks_.size()
            << " uniqueBlockIds=" << countUniqueBlockIds(activeChunkBuild_)
            << " emittedGeometry=" << (emittedGeometry ? "true" : "false")
-           << " storedChunks=" << capturedChunks_.size()
+           << " storedChunks=" << chunkMeshes_.size()
            << " totalCapturedBlocks=" << capturedBlocks_;
     log(stream.str());
   }
@@ -535,98 +592,88 @@ bool RemixRenderer::startup(HWND hwnd) {
   return true;
 }
 
-bool RemixRenderer::ensureBlockCubeMesh() {
-  if (blockCubeMesh_ != nullptr) {
+bool RemixRenderer::rebuildChunkMesh(
+    const ChunkKey& chunkKey,
+    const std::vector<CapturedBlockInstance>& blocks,
+    ChunkMeshData& meshData) {
+  if (blocks.empty()) {
+    destroyChunkMesh(meshData);
     return true;
   }
 
-  static const remixapi_HardcodedVertex vertices[] = {
-      makeVertex(0.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f),
-      makeVertex(1.0f, 0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 1.0f, 1.0f),
-      makeVertex(0.0f, 1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f),
-      makeVertex(0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f),
-      makeVertex(1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f),
-      makeVertex(0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f),
-      makeVertex(0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-      makeVertex(0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-      makeVertex(0.0f, 1.0f, 1.0f, -1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-      makeVertex(0.0f, 0.0f, 1.0f, -1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
-      makeVertex(1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 1.0f),
-      makeVertex(1.0f, 0.0f, 1.0f, 1.0f, 0.0f, 0.0f, 0.0f, 1.0f),
-      makeVertex(0.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 0.0f, 0.0f),
-      makeVertex(1.0f, 0.0f, 0.0f, 0.0f, -1.0f, 0.0f, 1.0f, 0.0f),
-      makeVertex(1.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 1.0f, 1.0f),
-      makeVertex(0.0f, 0.0f, 1.0f, 0.0f, -1.0f, 0.0f, 0.0f, 1.0f),
-      makeVertex(0.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 0.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 0.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f),
-      makeVertex(1.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 1.0f),
-      makeVertex(0.0f, 1.0f, 1.0f, 0.0f, 1.0f, 0.0f, 0.0f, 1.0f),
-  };
-  static const std::uint32_t indices[] = {
-      0, 1, 2, 0, 2, 3,
-      4, 6, 5, 4, 7, 6,
-      8, 9, 10, 8, 10, 11,
-      12, 14, 13, 12, 15, 14,
-      16, 18, 17, 16, 19, 18,
-      20, 21, 22, 20, 22, 23,
-  };
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  vertices.reserve(blocks.size() * std::size(kCubeVertices));
+  indices.reserve(blocks.size() * std::size(kCubeIndices));
+
+  for (const CapturedBlockInstance& block : blocks) {
+    appendCubeGeometry(
+        static_cast<float>(block.position[0] - chunkKey.originX),
+        static_cast<float>(block.position[1] - chunkKey.originY),
+        static_cast<float>(block.position[2] - chunkKey.originZ),
+        vertices,
+        indices);
+  }
 
   remixapi_MeshInfoSurfaceTriangles surface {};
-  surface.vertices_values = vertices;
-  surface.vertices_count = std::size(vertices);
-  surface.indices_values = indices;
-  surface.indices_count = std::size(indices);
+  surface.vertices_values = vertices.data();
+  surface.vertices_count = vertices.size();
+  surface.indices_values = indices.data();
+  surface.indices_count = indices.size();
   surface.skinning_hasvalue = FALSE;
   surface.material = nullptr;
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = 0x4D43525458435542ull;
+  meshInfo.hash = makeChunkMeshHash(chunkKey, nextChunkMeshHash_++);
   meshInfo.surfaces_values = &surface;
   meshInfo.surfaces_count = 1;
 
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &blockCubeMesh_);
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;
   }
 
-  log("Registered block cube mesh");
+  destroyChunkMesh(meshData);
+  meshData.meshHandle = newMeshHandle;
+  meshData.meshHash = meshInfo.hash;
+  meshData.blockCount = blocks.size();
   return true;
 }
 
+void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
+  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(meshData.meshHandle);
+  }
+  meshData = {};
+}
+
 bool RemixRenderer::drawCapturedGeometry() {
-  if (capturedChunks_.empty()) {
+  if (chunkMeshes_.empty()) {
     if (presentedFrames_ < 4) {
-      log("No captured chunk geometry available yet");
+      log("No captured chunk meshes available yet");
     }
     ++presentedFrames_;
     return true;
   }
 
-  if (!ensureBlockCubeMesh()) {
-    return false;
-  }
-
-  std::size_t drawnBlocks = 0;
-  for (const auto& [chunkKey, blocks] : capturedChunks_) {
-    for (const CapturedBlockInstance& block : blocks) {
-      if (drawnBlocks >= kMaxDrawnBlocksPerFrame) {
-        break;
-      }
+  std::size_t submittedChunks = 0;
+  std::size_t submittedBlocks = 0;
+  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+    if (meshData.meshHandle == nullptr) {
+      continue;
+    }
 
       remixapi_InstanceInfo instanceInfo {};
       instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
       instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-      instanceInfo.mesh = blockCubeMesh_;
+      instanceInfo.mesh = meshData.meshHandle;
       instanceInfo.transform = makeTranslationTransform(
-          static_cast<float>(block.position[0]),
-          static_cast<float>(block.position[1]),
-          static_cast<float>(block.position[2]));
+          static_cast<float>(chunkKey.originX),
+          static_cast<float>(chunkKey.originY),
+          static_cast<float>(chunkKey.originZ));
       instanceInfo.doubleSided = FALSE;
 
       const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
@@ -635,26 +682,22 @@ bool RemixRenderer::drawCapturedGeometry() {
         return false;
       }
 
-      ++drawnBlocks;
-    }
-
-    if (drawnBlocks >= kMaxDrawnBlocksPerFrame) {
-      break;
-    }
+      ++submittedChunks;
+      submittedBlocks += meshData.blockCount;
   }
 
-  if (presentedFrames_ < 8 || drawnBlocks != lastSubmittedBlockCount_) {
+  if (presentedFrames_ < 8
+      || submittedChunks != lastSubmittedChunkCount_
+      || submittedBlocks != lastSubmittedBlockCount_) {
     std::ostringstream stream;
-    stream << "Submitted " << drawnBlocks
-           << " block instances from " << capturedChunks_.size()
-           << " captured chunks";
-    if (drawnBlocks >= kMaxDrawnBlocksPerFrame) {
-      stream << " (capped)";
-    }
+    stream << "Submitted " << submittedChunks
+           << " chunk meshes covering " << submittedBlocks
+           << " blocks";
     log(stream.str());
   }
 
-  lastSubmittedBlockCount_ = drawnBlocks;
+  lastSubmittedChunkCount_ = submittedChunks;
+  lastSubmittedBlockCount_ = submittedBlocks;
   ++presentedFrames_;
   return true;
 }

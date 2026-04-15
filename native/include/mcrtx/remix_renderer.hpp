@@ -58,6 +58,12 @@ struct ChunkKeyHash {
   std::size_t operator()(const ChunkKey& key) const noexcept;
 };
 
+struct ChunkMeshData {
+  remixapi_MeshHandle meshHandle {nullptr};
+  std::uint64_t meshHash {0};
+  std::size_t blockCount {0};
+};
+
 class RemixRenderer {
 public:
   static RemixRenderer& instance();
@@ -89,7 +95,8 @@ private:
   void updateOutputWindowSize() const;
   void resetLoadedRemix();
   bool startup(HWND hwnd);
-  bool ensureBlockCubeMesh();
+  bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
+  void destroyChunkMesh(ChunkMeshData& meshData);
   bool drawCapturedGeometry();
   bool submitCamera();
   void setError(std::string message);
@@ -98,7 +105,6 @@ private:
   mutable std::mutex mutex_;
   remixapi_Interface remix_ {};
   HMODULE remixDll_ {nullptr};
-  remixapi_MeshHandle blockCubeMesh_ {nullptr};
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool initialized_ {false};
@@ -110,9 +116,11 @@ private:
   std::vector<CapturedBlockInstance> activeChunkBlocks_ {};
   std::uint64_t capturedChunkBuilds_ {0};
   std::uint64_t capturedBlocks_ {0};
+  std::uint64_t nextChunkMeshHash_ {1};
   std::uint64_t presentedFrames_ {0};
+  std::size_t lastSubmittedChunkCount_ {0};
   std::size_t lastSubmittedBlockCount_ {0};
-  std::unordered_map<ChunkKey, std::vector<CapturedBlockInstance>, ChunkKeyHash> capturedChunks_ {};
+  std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::string lastError_;
 };
 
