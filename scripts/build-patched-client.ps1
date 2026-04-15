@@ -142,6 +142,58 @@ function Export-ZipEntryFile {
     }
 }
 
+function Export-ZipEntriesByPrefix {
+    param(
+        [string]$ArchivePath,
+        [string[]]$Prefixes,
+        [string]$DestinationRoot,
+        [switch]$ConvertToDds
+    )
+
+    $archive = [System.IO.Compression.ZipFile]::OpenRead($ArchivePath)
+    try {
+        foreach ($entry in $archive.Entries) {
+            if ($entry.FullName.EndsWith('/')) {
+                continue
+            }
+
+            $matchesPrefix = $false
+            foreach ($prefix in $Prefixes) {
+                if ($entry.FullName.StartsWith($prefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+                    $matchesPrefix = $true
+                    break
+                }
+            }
+
+            if (-not $matchesPrefix) {
+                continue
+            }
+
+            $destinationPath = Join-Path $DestinationRoot ($entry.FullName -replace '/', '\\')
+            $destinationDirectory = Split-Path $destinationPath -Parent
+            New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
+
+            $entryStream = $entry.Open()
+            try {
+                $outputStream = [System.IO.File]::Open($destinationPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+                try {
+                    $entryStream.CopyTo($outputStream)
+                } finally {
+                    $outputStream.Dispose()
+                }
+            } finally {
+                $entryStream.Dispose()
+            }
+
+            if ($ConvertToDds -and $destinationPath.EndsWith('.png', [System.StringComparison]::OrdinalIgnoreCase)) {
+                Convert-PngToDds -SourcePngPath $destinationPath -DestinationDdsPath ([System.IO.Path]::ChangeExtension($destinationPath, '.dds'))
+            }
+        }
+    } finally {
+        $archive.Dispose()
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $backupMinecraftJar = Join-Path $repoRoot "out\deploy-state\minecraft-b1.7.3-client.original.jar"
 
@@ -215,6 +267,7 @@ Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -Destina
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "clouds.png") -DestinationDdsPath (Join-Path $assetsDir "clouds.dds")
+Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
 
 if (-not (Test-Path $nativeDll)) {
     throw "Native DLL not found at $nativeDll. Build it first with: cmake --build build --config $Configuration --target mcrtx_jni"
@@ -229,3 +282,4 @@ Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"
 Write-Host "Extracted cloud texture: $(Join-Path $assetsDir 'clouds.png')"
 Write-Host "Converted cloud texture DDS: $(Join-Path $assetsDir 'clouds.dds')"
+Write-Host "Extracted entity texture directories under: $(Join-Path $assetsDir 'entities')"

@@ -39,6 +39,7 @@ constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
+constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
 constexpr std::uint32_t kRtTextureArgTexture = 1;
@@ -263,6 +264,10 @@ std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
   return 0x4D43525458434C00ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
+std::uint64_t makeDynamicEntityMeshHash(std::uint64_t sequence) {
+  return 0x4D43525458454E00ull | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
 std::uint8_t clampColorChannel(float value) {
   const float clampedValue = std::clamp(value, 0.0f, 1.0f);
   return static_cast<std::uint8_t>(std::lround(clampedValue * 255.0f));
@@ -311,6 +316,34 @@ std::uint64_t computeChunkFingerprint(
 
 std::uint32_t packVertexColor(std::uint32_t rgbColor) {
   return 0xFF000000u | (rgbColor & 0x00FFFFFFu);
+}
+
+std::array<float, 3> computeQuadNormal(
+    float x0,
+    float y0,
+    float z0,
+    float x1,
+    float y1,
+    float z1,
+    float x2,
+    float y2,
+    float z2) {
+  const float edgeAx = x1 - x0;
+  const float edgeAy = y1 - y0;
+  const float edgeAz = z1 - z0;
+  const float edgeBx = x2 - x0;
+  const float edgeBy = y2 - y0;
+  const float edgeBz = z2 - z0;
+
+  float normalX = edgeAy * edgeBz - edgeAz * edgeBy;
+  float normalY = edgeAz * edgeBx - edgeAx * edgeBz;
+  float normalZ = edgeAx * edgeBy - edgeAy * edgeBx;
+  const float normalLength = std::sqrt(normalX * normalX + normalY * normalY + normalZ * normalZ);
+  if (normalLength <= 0.00001f) {
+    return {0.0f, 1.0f, 0.0f};
+  }
+
+  return {normalX / normalLength, normalY / normalLength, normalZ / normalLength};
 }
 
 int blockIndex(int x, int y, int z) {
@@ -1037,14 +1070,19 @@ void RemixRenderer::shutdown() {
   activeChunkBuild_ = {};
   activeChunkBlocks_.clear();
   chunkMeshes_.clear();
+  dynamicEntityMeshes_.clear();
+  dynamicEntityMaterialHandles_.clear();
+  activeDynamicEntity_ = {};
   nextChunkMeshHash_ = 1;
   presentedFrames_ = 0;
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
+  lastSubmittedDynamicEntityQuadCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   nextCloudMeshHash_ = 1;
+  nextDynamicEntityMeshHash_ = 1;
   cloudQuadCount_ = 0;
   lastError_.clear();
 }
@@ -1084,6 +1122,100 @@ void RemixRenderer::updateCloudLayer(
 void RemixRenderer::clearCloudLayer() {
   std::scoped_lock lock(mutex_);
   destroyCloudMesh();
+}
+
+void RemixRenderer::beginDynamicEntityFrame() {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  destroyDynamicEntityMeshes();
+  activeDynamicEntity_ = {};
+}
+
+void RemixRenderer::beginDynamicEntity(int entityId) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  activeDynamicEntity_ = {};
+  activeDynamicEntity_.entityId = entityId;
+  activeDynamicEntity_.active = entityId >= 0;
+  activeDynamicEntity_.quads.reserve(256);
+}
+
+void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || !activeDynamicEntity_.active) {
+    return;
+  }
+
+  activeDynamicEntity_.currentTexturePath = texturePath;
+}
+
+void RemixRenderer::captureDynamicEntityQuad(
+    float x0,
+    float y0,
+    float z0,
+    float u0,
+    float v0,
+    float x1,
+    float y1,
+    float z1,
+    float u1,
+    float v1,
+    float x2,
+    float y2,
+    float z2,
+    float u2,
+    float v2,
+    float x3,
+    float y3,
+    float z3,
+    float u3,
+    float v3,
+    std::uint32_t colorRgba) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTexturePath.empty()) {
+    return;
+  }
+
+  DynamicEntityQuad quad;
+  quad.positions = {
+      x0, y0, z0,
+      x1, y1, z1,
+      x2, y2, z2,
+      x3, y3, z3,
+  };
+  quad.texcoords = {
+      u0, v0,
+      u1, v1,
+      u2, v2,
+      u3, v3,
+  };
+  quad.color = colorRgba;
+  quad.texturePath = activeDynamicEntity_.currentTexturePath;
+  activeDynamicEntity_.quads.push_back(std::move(quad));
+}
+
+void RemixRenderer::endDynamicEntity() {
+  std::scoped_lock lock(mutex_);
+
+  if (!activeDynamicEntity_.active) {
+    return;
+  }
+
+  if (!activeDynamicEntity_.quads.empty()) {
+    rebuildDynamicEntityMesh(activeDynamicEntity_.entityId, activeDynamicEntity_.quads);
+  }
+
+  activeDynamicEntity_ = {};
 }
 
 bool RemixRenderer::beginChunkBuild(
@@ -1346,6 +1478,40 @@ std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::string& texturePath) {
+  if (texturePath.empty()) {
+    return {};
+  }
+
+  std::string normalized = texturePath;
+  if (!normalized.empty() && normalized.front() == '/') {
+    normalized.erase(normalized.begin());
+  }
+
+  std::filesystem::path relativePath(normalized);
+  relativePath.make_preferred();
+  std::filesystem::path ddsPath = relativePath;
+  ddsPath.replace_extension(L".dds");
+
+  std::vector<std::filesystem::path> attemptedPaths;
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"entities" / ddsPath);
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"entities" / relativePath);
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / ddsPath);
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / relativePath);
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
@@ -1531,6 +1697,16 @@ bool RemixRenderer::initializeTerrainMaterials() {
 
 void RemixRenderer::destroyTerrainMaterials() {
   destroyCloudMesh();
+  destroyDynamicEntityMeshes();
+
+  if (remix_.DestroyMaterial != nullptr) {
+    for (auto& [texturePath, materialHandle] : dynamicEntityMaterialHandles_) {
+      if (materialHandle != nullptr) {
+        remix_.DestroyMaterial(materialHandle);
+      }
+    }
+  }
+  dynamicEntityMaterialHandles_.clear();
 
   if (remix_.DestroyMaterial != nullptr && cloudMaterialHandle_ != nullptr) {
     remix_.DestroyMaterial(cloudMaterialHandle_);
@@ -1548,6 +1724,49 @@ void RemixRenderer::destroyTerrainMaterials() {
       materialHandle = nullptr;
     }
   }
+}
+
+remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {
+  const auto existing = dynamicEntityMaterialHandles_.find(texturePath);
+  if (existing != dynamicEntityMaterialHandles_.end()) {
+    return existing->second;
+  }
+
+  const std::filesystem::path resolvedTexturePath = resolveDynamicEntityTexturePath(texturePath);
+  if (resolvedTexturePath.empty()) {
+    return nullptr;
+  }
+
+  remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
+  opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+  opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+  opaqueInfo.opacityConstant = 1.0f;
+  opaqueInfo.roughnessConstant = 1.0f;
+  opaqueInfo.metallicConstant = 0.0f;
+  opaqueInfo.useDrawCallAlphaState = FALSE;
+  opaqueInfo.alphaTestType = 4;
+  opaqueInfo.alphaReferenceValue = 1;
+
+  remixapi_MaterialInfo materialInfo {};
+  materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+  materialInfo.pNext = &opaqueInfo;
+  materialInfo.hash = kDynamicEntityMaterialHashSeed ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath));
+  materialInfo.albedoTexture = resolvedTexturePath.c_str();
+  materialInfo.emissiveIntensity = 0.0f;
+  materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+  materialInfo.filterMode = 0;
+  materialInfo.wrapModeU = 1;
+  materialInfo.wrapModeV = 1;
+
+  remixapi_MaterialHandle materialHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMaterial failed: " + errorCodeToString(result));
+    return nullptr;
+  }
+
+  dynamicEntityMaterialHandles_.emplace(texturePath, materialHandle);
+  return materialHandle;
 }
 
 bool RemixRenderer::rebuildCloudMesh(
@@ -1608,12 +1827,120 @@ bool RemixRenderer::rebuildCloudMesh(
   return true;
 }
 
+bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<DynamicEntityQuad>& quads) {
+  if (quads.empty()) {
+    return true;
+  }
+
+  std::vector<SurfaceBuildBuffers> surfacesToBuild;
+  surfacesToBuild.reserve(8);
+  std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
+
+  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](remixapi_MaterialHandle materialHandle) -> SurfaceBuildBuffers& {
+    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(materialHandle);
+    const auto it = surfaceIndexByHandle.find(materialKey);
+    if (it != surfaceIndexByHandle.end()) {
+      return surfacesToBuild[it->second];
+    }
+
+    SurfaceBuildBuffers surface;
+    surface.materialHandle = materialHandle;
+    surface.vertices.reserve(256);
+    surface.indices.reserve(384);
+    const std::size_t surfaceIndex = surfacesToBuild.size();
+    surfacesToBuild.push_back(std::move(surface));
+    surfaceIndexByHandle.emplace(materialKey, surfaceIndex);
+    return surfacesToBuild.back();
+  };
+
+  std::size_t quadCount = 0;
+  for (const DynamicEntityQuad& quad : quads) {
+    remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(quad.texturePath);
+    if (materialHandle == nullptr) {
+      continue;
+    }
+
+    const auto normal = computeQuadNormal(
+        quad.positions[0], quad.positions[1], quad.positions[2],
+        quad.positions[3], quad.positions[4], quad.positions[5],
+        quad.positions[6], quad.positions[7], quad.positions[8]);
+    SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+    appendCloudQuad(
+        quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
+        quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
+        quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
+        quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
+        normal[0], normal[1], normal[2],
+        quad.color,
+        surface.vertices,
+        surface.indices);
+    ++quadCount;
+  }
+
+  std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
+  surfaces.reserve(surfacesToBuild.size());
+  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+    if (surfaceBuild.indices.empty()) {
+      continue;
+    }
+
+    remixapi_MeshInfoSurfaceTriangles surface {};
+    surface.vertices_values = surfaceBuild.vertices.data();
+    surface.vertices_count = surfaceBuild.vertices.size();
+    surface.indices_values = surfaceBuild.indices.data();
+    surface.indices_count = surfaceBuild.indices.size();
+    surface.skinning_hasvalue = FALSE;
+    surface.material = surfaceBuild.materialHandle;
+    surfaces.push_back(surface);
+  }
+
+  if (surfaces.empty()) {
+    return true;
+  }
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeDynamicEntityMeshHash(nextDynamicEntityMeshHash_++);
+  meshInfo.surfaces_values = surfaces.data();
+  meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
+
+  remixapi_MeshHandle meshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &meshHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  DynamicEntityMeshData& meshData = dynamicEntityMeshes_[entityId];
+  destroyDynamicEntityMesh(meshData);
+  meshData.meshHandle = meshHandle;
+  meshData.meshHash = meshInfo.hash;
+  meshData.quadCount = quadCount;
+  return true;
+}
+
 void RemixRenderer::destroyCloudMesh() {
   if (cloudMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
     remix_.DestroyMesh(cloudMeshHandle_);
   }
   cloudMeshHandle_ = nullptr;
   cloudQuadCount_ = 0;
+}
+
+void RemixRenderer::destroyDynamicEntityMeshes() {
+  for (auto& [entityId, meshData] : dynamicEntityMeshes_) {
+    destroyDynamicEntityMesh(meshData);
+  }
+  dynamicEntityMeshes_.clear();
+}
+
+void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
+  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(meshData.meshHandle);
+  }
+  meshData.meshHandle = nullptr;
+  meshData.meshHash = 0;
+  meshData.quadCount = 0;
 }
 
 void RemixRenderer::resetLoadedRemix() {
@@ -1943,7 +2270,7 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
-  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr) {
+  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityMeshes_.empty()) {
     if (presentedFrames_ < 4) {
       log("No captured scene meshes available yet");
     }
@@ -1954,6 +2281,7 @@ bool RemixRenderer::drawCapturedGeometry() {
   std::size_t submittedChunks = 0;
   std::size_t submittedBlocks = 0;
   std::size_t submittedCloudQuads = 0;
+  std::size_t submittedDynamicEntityQuads = 0;
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.meshHandle == nullptr) {
       continue;
@@ -1999,6 +2327,38 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedBlocks += meshData.blockCount;
   }
 
+  for (const auto& [entityId, meshData] : dynamicEntityMeshes_) {
+    if (meshData.meshHandle == nullptr) {
+      continue;
+    }
+
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = meshData.meshHandle;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+
+    submittedDynamicEntityQuads += meshData.quadCount;
+  }
+
   if (cloudMeshHandle_ != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
@@ -2037,18 +2397,21 @@ bool RemixRenderer::drawCapturedGeometry() {
   if (presentedFrames_ < 8
       || submittedChunks != lastSubmittedChunkCount_
       || submittedBlocks != lastSubmittedBlockCount_
-      || submittedCloudQuads != lastSubmittedCloudQuadCount_) {
+      || submittedCloudQuads != lastSubmittedCloudQuadCount_
+      || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_) {
     std::ostringstream stream;
     stream << "Submitted " << submittedChunks
            << " chunk meshes covering " << submittedBlocks
            << " blocks and " << submittedCloudQuads
-           << " cloud quads";
+           << " cloud quads and " << submittedDynamicEntityQuads
+           << " dynamic entity quads";
     log(stream.str());
   }
 
   lastSubmittedChunkCount_ = submittedChunks;
   lastSubmittedBlockCount_ = submittedBlocks;
   lastSubmittedCloudQuadCount_ = submittedCloudQuads;
+  lastSubmittedDynamicEntityQuadCount_ = submittedDynamicEntityQuads;
   ++presentedFrames_;
   return true;
 }

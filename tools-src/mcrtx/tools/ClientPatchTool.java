@@ -28,8 +28,11 @@ public final class ClientPatchTool {
     private static final String MINECRAFT_CLASS = "net/minecraft/client/Minecraft";
     private static final String DISPLAY_CLASS = "org/lwjgl/opengl/Display";
     private static final String MOUSE_CLASS = "org/lwjgl/input/Mouse";
+    private static final String MODEL_PART_CLASS = "ps";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
+    private static final String LIVING_RENDER_MANAGER_CLASS = "th";
+    private static final String BASE_RENDERER_CLASS = "bw";
     private static final String WORLD_RENDERER_CLASS = "n";
 
     private ClientPatchTool() {
@@ -61,6 +64,12 @@ public final class ClientPatchTool {
                     content = patchPx(content);
                 } else if (entryName.equals(CHUNK_RENDERER_CLASS + ".class")) {
                     content = patchDk(content);
+                } else if (entryName.equals(LIVING_RENDER_MANAGER_CLASS + ".class")) {
+                    content = patchTh(content);
+                } else if (entryName.equals(BASE_RENDERER_CLASS + ".class")) {
+                    content = patchBw(content);
+                } else if (entryName.equals(MODEL_PART_CLASS + ".class")) {
+                    content = patchPs(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
                 }
@@ -116,6 +125,42 @@ public final class ClientPatchTool {
                 patchCloudRender(method, false);
             } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
                 patchCloudRender(method, true);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchTh(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lfd;Lji;Lsj;Lls;Lkv;F)V")) {
+                patchLivingEntityFrameBegin(method);
+            } else if (method.name.equals("a") && method.desc.equals("(Lsn;DDDFF)V")) {
+                patchLivingEntityRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchBw(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;)V")) {
+                method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallSingle());
+            } else if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;Ljava/lang/String;)Z")) {
+                method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallFallback());
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchPs(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(F)V")) {
+                patchModelPartRender(method);
+            } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
+                patchModelPartRender(method);
             }
         }
         return writeClass(classNode);
@@ -212,6 +257,32 @@ public final class ClientPatchTool {
         method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall(fancy));
     }
 
+    private static void patchLivingEntityFrameBegin(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onLivingEntityFrameBegin", "()V"));
+    }
+
+    private static void patchLivingEntityRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(BASE_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lsn;DDDFF)V")) {
+                method.instructions.insertBefore(node, livingEntityRenderStartCall());
+                method.instructions.insert(node, staticHelperCall("onLivingEntityRenderEnd", "()V"));
+                return;
+            }
+        }
+    }
+
+    private static void patchModelPartRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glCallList", "(I)V")) {
+                method.instructions.insertBefore(node, modelPartRenderCall());
+            }
+        }
+    }
+
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {
         if (!(node instanceof MethodInsnNode methodInsnNode)) {
             return false;
@@ -285,6 +356,53 @@ public final class ClientPatchTool {
     private static InsnList staticHelperCall(String name, String descriptor) {
         InsnList instructions = new InsnList();
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, name, descriptor, false));
+        return instructions;
+    }
+
+    private static InsnList livingEntityRenderStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onLivingEntityRenderStart", "(Lsn;)V", false));
+        return instructions;
+    }
+
+    private static InsnList entityTextureBindCallSingle() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new InsnNode(Opcodes.ACONST_NULL));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onEntityTextureBind",
+                "(Ljava/lang/String;Ljava/lang/String;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList entityTextureBindCallFallback() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onEntityTextureBind",
+                "(Ljava/lang/String;Ljava/lang/String;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList modelPartRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MODEL_PART_CLASS, "k", "[Ltz;"));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 1));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onModelPartRender",
+                "([Ltz;F)V",
+                false));
         return instructions;
     }
 

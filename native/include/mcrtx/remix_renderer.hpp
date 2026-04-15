@@ -84,6 +84,26 @@ struct ChunkMeshData {
   bool hasOccupancy {false};
 };
 
+struct DynamicEntityQuad {
+  std::array<float, 12> positions {};
+  std::array<float, 8> texcoords {};
+  std::uint32_t color {0xFFFFFFFFu};
+  std::string texturePath {};
+};
+
+struct DynamicEntityBuildState {
+  int entityId {-1};
+  std::string currentTexturePath {};
+  std::vector<DynamicEntityQuad> quads {};
+  bool active {false};
+};
+
+struct DynamicEntityMeshData {
+  remixapi_MeshHandle meshHandle {nullptr};
+  std::uint64_t meshHash {0};
+  std::size_t quadCount {0};
+};
+
 class RemixRenderer {
 public:
   static RemixRenderer& instance();
@@ -93,7 +113,7 @@ public:
 
   void resize(std::uint32_t width, std::uint32_t height);
   void updateCamera(const CameraState& camera);
-    void updateCloudLayer(
+  void updateCloudLayer(
       bool fancy,
       float cameraX,
       float cameraY,
@@ -103,7 +123,33 @@ public:
       float colorR,
       float colorG,
       float colorB);
-    void clearCloudLayer();
+  void clearCloudLayer();
+  void beginDynamicEntityFrame();
+  void beginDynamicEntity(int entityId);
+  void setDynamicEntityTexture(const std::string& texturePath);
+  void captureDynamicEntityQuad(
+      float x0,
+      float y0,
+      float z0,
+      float u0,
+      float v0,
+      float x1,
+      float y1,
+      float z1,
+      float u1,
+      float v1,
+      float x2,
+      float y2,
+      float z2,
+      float u2,
+      float v2,
+      float x3,
+      float y3,
+      float z3,
+      float u3,
+      float v3,
+      std::uint32_t colorRgba);
+  void endDynamicEntity();
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
   void captureBlock(
       int blockX,
@@ -147,6 +193,7 @@ private:
   void destroyTerrainMaterials();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
+  remixapi_MaterialHandle acquireDynamicEntityMaterial(const std::string& texturePath);
   bool rebuildCloudMesh(
       bool fancy,
       float cameraX,
@@ -157,11 +204,15 @@ private:
       float colorR,
       float colorG,
       float colorB);
+  bool rebuildDynamicEntityMesh(int entityId, const std::vector<DynamicEntityQuad>& quads);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
   static std::filesystem::path resolveCloudTexturePath();
+  static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
   static std::filesystem::path resolveTerrainAtlasPath();
   void destroyCloudMesh();
+  void destroyDynamicEntityMeshes();
+  void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   bool drawCapturedGeometry();
@@ -188,13 +239,18 @@ private:
   std::size_t lastSubmittedChunkCount_ {0};
   std::size_t lastSubmittedBlockCount_ {0};
   std::size_t lastSubmittedCloudQuadCount_ {0};
+  std::size_t lastSubmittedDynamicEntityQuadCount_ {0};
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::array<remixapi_MaterialHandle, 3> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
   std::uint64_t nextCloudMeshHash_ {1};
+  std::uint64_t nextDynamicEntityMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
+  DynamicEntityBuildState activeDynamicEntity_ {};
+  std::unordered_map<int, DynamicEntityMeshData> dynamicEntityMeshes_ {};
+  std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::string lastError_;
 };
