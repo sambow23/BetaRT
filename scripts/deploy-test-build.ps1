@@ -55,18 +55,37 @@ function Set-InstanceConfigValue {
         [string]$Value
     )
 
-    $content = Get-Content -Path $Path -Raw
-    $escapedKey = [regex]::Escape($Key)
-    $pattern = "(?m)^$escapedKey=.*$"
     $replacement = "$Key=$Value"
+    $contentLines = [System.Collections.Generic.List[string]]::new()
+    foreach ($contentLine in Get-Content -Path $Path) {
+        $contentLines.Add($contentLine)
+    }
+    $escapedKey = [regex]::Escape($Key)
+    $pattern = "^$escapedKey=.*$"
+    $matchingIndices = @()
 
-    if ([regex]::IsMatch($content, $pattern)) {
-        $content = [regex]::Replace($content, $pattern, $replacement)
-    } else {
-        $content = $content.TrimEnd("`r", "`n") + "`r`n$replacement`r`n"
+    for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -match $pattern) {
+            $matchingIndices += $lineIndex
+        }
     }
 
-    Set-Content -Path $Path -Value $content -Encoding ASCII
+    if ($matchingIndices.Count -gt 0) {
+        $contentLines[$matchingIndices[0]] = $replacement
+        for ($matchIndex = $matchingIndices.Count - 1; $matchIndex -gt 0; $matchIndex -= 1) {
+            $contentLines.RemoveAt($matchingIndices[$matchIndex])
+        }
+    } else {
+        $contentLines.Add($replacement)
+    }
+
+    Set-Content -Path $Path -Value $contentLines -Encoding ASCII
+}
+
+function Convert-ToPrismPath {
+    param([string]$Path)
+
+    return $Path.Replace("\", "/")
 }
 
 function Ensure-PrismPreLaunchSync {
@@ -76,7 +95,8 @@ function Ensure-PrismPreLaunchSync {
         [string]$ConfigurationName
     )
 
-    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File "' + $ScriptPath + '" -Configuration ' + $ConfigurationName
+    $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
+    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File ' + $prismScriptPath + ' -Configuration ' + $ConfigurationName
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideCommands" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value $command
     return $command

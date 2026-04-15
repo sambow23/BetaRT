@@ -74,10 +74,10 @@ constexpr float kFancyCloudInset = 1.0f / 1024.0f;
 constexpr float kTorchLightOffsetX = 0.5f;
 constexpr float kTorchLightOffsetY = 0.70f;
 constexpr float kTorchLightOffsetZ = 0.5f;
-constexpr float kTorchLightRadius = 0.04f;
+constexpr float kTorchLightRadius = 0.06f;
 constexpr float kWallTorchLightHorizontalOffset = 0.27f;
 constexpr float kWallTorchLightVerticalOffset = 0.22f;
-constexpr remixapi_Float3D kTorchLightRadiance = {180.0f, 110.5f, 40.5f};
+constexpr remixapi_Float3D kTorchLightRadiance = {540.0f, 331.5f, 121.5f};
 
 struct SurfaceBuildBuffers {
   remixapi_MaterialHandle materialHandle {nullptr};
@@ -3130,12 +3130,6 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     bool forceRebuild) {
   if (!meshData.hasOccupancy || meshData.blockCount == 0) {
     destroyChunkMesh(meshData);
-    return true;
-  }
-
-  if (!forceRebuild
-      && meshData.meshHandle != nullptr
-      && meshData.blockCount != 0) {
     return true;
   }
 

@@ -121,7 +121,9 @@ public final class ClientPatchTool {
     private static byte[] patchN(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
-            if (method.name.equals("b") && method.desc.equals("(F)V")) {
+            if (method.name.equals("a") && method.desc.equals("(Lfd;)V")) {
+                method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
+            } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
                 patchCloudRender(method, false);
             } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
                 patchCloudRender(method, true);
@@ -332,6 +334,13 @@ public final class ClientPatchTool {
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "e", "I"));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onResize", "(II)V", false));
+        return instructions;
+    }
+
+    private static InsnList worldChangedCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onWorldChanged", "(Lfd;)V", false));
         return instructions;
     }
 

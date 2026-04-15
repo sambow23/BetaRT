@@ -81,6 +81,8 @@ The deploy script also configures the PrismLauncher `b1.7.3` instance with a
 pre-launch command that re-runs the deploy script without `-Build`. That keeps
 the patched jar and JNI DLL synced immediately before the JVM starts, which is
 necessary because Prism may refresh the shared Beta client jar during launch.
+The command is written with forward slashes because Prism stores instance
+commands in an INI format that strips raw backslashes from Windows paths.
 
 Restore the vanilla jar with:
 

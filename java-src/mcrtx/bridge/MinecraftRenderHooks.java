@@ -329,6 +329,10 @@ public final class MinecraftRenderHooks {
         capturedChunkBlocks = 0;
     }
 
+    public static synchronized boolean isChunkBuildCaptureActive() {
+        return chunkBuildCaptureActive;
+    }
+
     private static boolean shouldCaptureBlock(int blockId, int renderType) {
         if (blockId <= 0) {
             return false;
