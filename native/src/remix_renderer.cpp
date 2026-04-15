@@ -2730,6 +2730,18 @@ std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::
   attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / ddsPath);
   attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / relativePath);
 
+  const bool hasDirectory = relativePath.has_parent_path();
+  if (!hasDirectory) {
+    const std::filesystem::path mobDdsPath = std::filesystem::path(L"mob") / ddsPath;
+    const std::filesystem::path mobRelativePath = std::filesystem::path(L"mob") / relativePath;
+    if (!moduleDirectory.empty()) {
+      attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"entities" / mobDdsPath);
+      attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"entities" / mobRelativePath);
+    }
+    attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / mobDdsPath);
+    attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"entities" / mobRelativePath);
+  }
+
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {
       return path;

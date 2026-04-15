@@ -8,6 +8,7 @@ import org.lwjgl.opengl.GL11;
 public final class MinecraftRemixHooks {
     private static final int CHUNK_DIMENSION = 16;
     private static final int MAX_RECAPTURE_SECTIONS_PER_PRESENT = 8;
+    private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final int WATER_STILL_BLOCK_ID = 8;
@@ -37,6 +38,8 @@ public final class MinecraftRemixHooks {
     private static boolean dynamicEntityActive;
     private static int activeDynamicEntityId = -1;
     private static String activeDynamicEntityTexture = "";
+    private static boolean firstPersonActive;
+    private static String activeFirstPersonTexture = "";
     private static fd attachedWorld;
 
     static {
@@ -231,6 +234,27 @@ public final class MinecraftRemixHooks {
         activeDynamicEntityTexture = "";
     }
 
+    public static void onFirstPersonRenderStart() {
+        if (!MinecraftRenderHooks.isInitialized()) {
+            return;
+        }
+
+        firstPersonActive = true;
+        activeFirstPersonTexture = "/mob/char.png";
+        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID);
+        MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
+    }
+
+    public static void onFirstPersonRenderEnd() {
+        if (!firstPersonActive) {
+            return;
+        }
+
+        MinecraftRenderHooks.endDynamicEntity();
+        firstPersonActive = false;
+        activeFirstPersonTexture = "";
+    }
+
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
         if (!dynamicEntityActive) {
             return;
@@ -244,7 +268,8 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onModelPartRender(tz[] polygons, float scale) {
-        if (!dynamicEntityActive || polygons == null || polygons.length == 0 || activeDynamicEntityTexture.isEmpty()) {
+        String activeTexture = activeCaptureTexture();
+        if (activeTexture.isEmpty() || polygons == null || polygons.length == 0) {
             return;
         }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
@@ -305,6 +330,8 @@ public final class MinecraftRemixHooks {
             dynamicEntityActive = false;
             activeDynamicEntityId = -1;
             activeDynamicEntityTexture = "";
+            firstPersonActive = false;
+            activeFirstPersonTexture = "";
         }
     }
 
@@ -725,6 +752,16 @@ public final class MinecraftRemixHooks {
             }
         }
         return normalized;
+    }
+
+    private static String activeCaptureTexture() {
+        if (dynamicEntityActive && !activeDynamicEntityTexture.isEmpty()) {
+            return activeDynamicEntityTexture;
+        }
+        if (firstPersonActive && !activeFirstPersonTexture.isEmpty()) {
+            return activeFirstPersonTexture;
+        }
+        return "";
     }
 
     private static float[] buildInverseViewMatrix() {

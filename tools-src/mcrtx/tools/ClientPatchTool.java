@@ -33,6 +33,7 @@ public final class ClientPatchTool {
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
     private static final String BASE_RENDERER_CLASS = "bw";
+    private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
 
     private ClientPatchTool() {
@@ -68,6 +69,8 @@ public final class ClientPatchTool {
                     content = patchTh(content);
                 } else if (entryName.equals(BASE_RENDERER_CLASS + ".class")) {
                     content = patchBw(content);
+                } else if (entryName.equals(FIRST_PERSON_RENDERER_CLASS + ".class")) {
+                    content = patchRa(content);
                 } else if (entryName.equals(MODEL_PART_CLASS + ".class")) {
                     content = patchPs(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
@@ -156,6 +159,16 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchRa(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(F)V")) {
+                patchFirstPersonRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchPs(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
@@ -173,6 +186,18 @@ public final class ClientPatchTool {
             if (isStaticCall(node, DISPLAY_CLASS, "create", "()V")) {
                 method.instructions.insert(node, onDisplayCreatedCall());
             }
+        }
+    }
+
+    private static void patchFirstPersonRender(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onFirstPersonRenderStart", "()V"));
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onFirstPersonRenderEnd", "()V"));
+            }
+            node = next;
         }
     }
 
