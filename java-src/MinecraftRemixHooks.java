@@ -255,6 +255,15 @@ public final class MinecraftRemixHooks {
         activeFirstPersonTexture = "";
     }
 
+    public static void onFirstPersonItemRender(iz itemStack) {
+        if (!firstPersonActive || itemStack == null) {
+            return;
+        }
+
+        activeFirstPersonTexture = itemStack.c < 256 ? "/terrain.png" : "/gui/items.png";
+        MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
+    }
+
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
         if (!dynamicEntityActive) {
             return;
@@ -319,6 +328,69 @@ public final class MinecraftRemixHooks {
                         positions[2][0], positions[2][1], positions[2][2], texcoords[2][0], texcoords[2][1],
                         positions[3][0], positions[3][1], positions[3][2], texcoords[3][0], texcoords[3][1],
                         colorRgba);
+            }
+        } catch (RuntimeException exception) {
+            MinecraftRenderHooks.endDynamicEntity();
+            if (!loggedDynamicEntityHookFailure) {
+                loggedDynamicEntityHookFailure = true;
+                System.err.println("[mcrtx] dynamic entity capture disabled after hook failure");
+                exception.printStackTrace();
+            }
+            dynamicEntityActive = false;
+            activeDynamicEntityId = -1;
+            activeDynamicEntityTexture = "";
+            firstPersonActive = false;
+            activeFirstPersonTexture = "";
+        }
+    }
+
+    public static void onFirstPersonTessellatorDraw(
+            int[] rawVertexData,
+            int vertexCount,
+            int drawMode,
+            boolean hasTexture,
+            boolean hasColor) {
+        if (!firstPersonActive || activeFirstPersonTexture.isEmpty()) {
+            return;
+        }
+        if (rawVertexData == null || vertexCount < 6 || drawMode != 7 || !hasTexture) {
+            return;
+        }
+        if (vertexCount % 6 != 0) {
+            return;
+        }
+        if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
+            return;
+        }
+
+        try {
+            MODEL_VIEW_BUFFER.clear();
+            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+            float[] modelView = new float[16];
+            MODEL_VIEW_BUFFER.get(modelView);
+
+            COLOR_BUFFER.clear();
+            GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
+            float[] currentColor = new float[4];
+            COLOR_BUFFER.get(currentColor);
+
+            float[] modelToWorld = multiplyColumnMajor(buildInverseViewMatrix(), modelView);
+            int fallbackColorRgba = sanitizePackedColor(packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
+
+            for (int vertexIndex = 0; vertexIndex + 5 < vertexCount; vertexIndex += 6) {
+                int quadColor = hasColor ? sanitizePackedColor(unpackTessellatorColor(rawVertexData, vertexIndex * 8 + 5)) : fallbackColorRgba;
+
+                float[] p0 = transformTessellatorVertex(modelToWorld, rawVertexData, vertexIndex * 8);
+                float[] p1 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 1) * 8);
+                float[] p2 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 2) * 8);
+                float[] p3 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 5) * 8);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        p0[0], p0[1], p0[2], Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]), Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]),
+                        p1[0], p1[1], p1[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 4]),
+                        p2[0], p2[1], p2[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 4]),
+                        p3[0], p3[1], p3[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 4]),
+                        quadColor);
             }
         } catch (RuntimeException exception) {
             MinecraftRenderHooks.endDynamicEntity();
@@ -805,6 +877,32 @@ public final class MinecraftRemixHooks {
                 matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
                 matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]
         };
+    }
+
+    private static float[] transformTessellatorVertex(float[] matrix, int[] rawVertexData, int baseIndex) {
+        return transformPoint(
+                matrix,
+                Float.intBitsToFloat(rawVertexData[baseIndex]),
+                Float.intBitsToFloat(rawVertexData[baseIndex + 1]),
+                Float.intBitsToFloat(rawVertexData[baseIndex + 2]));
+    }
+
+    private static int unpackTessellatorColor(int[] rawVertexData, int colorIndex) {
+        int packedColor = rawVertexData[colorIndex];
+        int red = packedColor & 0xFF;
+        int green = (packedColor >> 8) & 0xFF;
+        int blue = (packedColor >> 16) & 0xFF;
+        int alpha = (packedColor >> 24) & 0xFF;
+        return (alpha << 24) | (red << 16) | (green << 8) | blue;
+    }
+
+    private static int sanitizePackedColor(int packedColorRgba) {
+        float alpha = ((packedColorRgba >> 24) & 0xFF) / 255.0f;
+        float red = ((packedColorRgba >> 16) & 0xFF) / 255.0f;
+        float green = ((packedColorRgba >> 8) & 0xFF) / 255.0f;
+        float blue = (packedColorRgba & 0xFF) / 255.0f;
+        float[] sanitizedColor = sanitizeDynamicEntityColor(red, green, blue, alpha);
+        return packColor(sanitizedColor[0], sanitizedColor[1], sanitizedColor[2], sanitizedColor[3]);
     }
 
     private static int packColor(float red, float green, float blue, float alpha) {

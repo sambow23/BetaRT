@@ -29,6 +29,7 @@ public final class ClientPatchTool {
     private static final String DISPLAY_CLASS = "org/lwjgl/opengl/Display";
     private static final String MOUSE_CLASS = "org/lwjgl/input/Mouse";
     private static final String MODEL_PART_CLASS = "ps";
+    private static final String TESSELLATOR_CLASS = "nw";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
@@ -73,6 +74,8 @@ public final class ClientPatchTool {
                     content = patchRa(content);
                 } else if (entryName.equals(MODEL_PART_CLASS + ".class")) {
                     content = patchPs(content);
+                } else if (entryName.equals(TESSELLATOR_CLASS + ".class")) {
+                    content = patchNw(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
                 }
@@ -164,6 +167,18 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(F)V")) {
                 patchFirstPersonRender(method);
+            } else if (method.name.equals("a") && method.desc.equals("(Lls;Liz;)V")) {
+                patchFirstPersonItemRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchNw(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("()V")) {
+                patchTessellatorDraw(method);
             }
         }
         return writeClass(classNode);
@@ -198,6 +213,18 @@ public final class ClientPatchTool {
                 method.instructions.insertBefore(node, staticHelperCall("onFirstPersonRenderEnd", "()V"));
             }
             node = next;
+        }
+    }
+
+    private static void patchFirstPersonItemRender(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), firstPersonItemRenderCall());
+    }
+
+    private static void patchTessellatorDraw(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glDrawArrays", "(III)V")) {
+                method.instructions.insertBefore(node, firstPersonTessellatorDrawCall());
+            }
         }
     }
 
@@ -436,6 +463,39 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onModelPartRender",
                 "([Ltz;F)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList firstPersonItemRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onFirstPersonItemRender",
+                "(Liz;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList firstPersonTessellatorDrawCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, TESSELLATOR_CLASS, "g", "[I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, TESSELLATOR_CLASS, "h", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, TESSELLATOR_CLASS, "r", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, TESSELLATOR_CLASS, "m", "Z"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, TESSELLATOR_CLASS, "l", "Z"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onFirstPersonTessellatorDraw",
+                "([IIIZZ)V",
                 false));
         return instructions;
     }
