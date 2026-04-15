@@ -116,19 +116,29 @@ struct DynamicEntityQuad {
   std::array<float, 8> texcoords {};
   std::uint32_t color {0xFFFFFFFFu};
   std::string texturePath {};
+  std::uint32_t boneIndex {0};
 };
 
 struct DynamicEntityBuildState {
   int entityId {-1};
   std::string currentTexturePath {};
   std::vector<DynamicEntityQuad> quads {};
+  std::vector<remixapi_Transform> boneTransforms {};
   bool active {false};
 };
 
 struct DynamicEntityMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
+  std::uint64_t geometryFingerprint {0};
   std::size_t quadCount {0};
+  std::uint32_t boneCount {0};
+};
+
+struct DynamicEntityFrameInstance {
+  remixapi_MeshHandle meshHandle {nullptr};
+  std::size_t quadCount {0};
+  std::vector<remixapi_Transform> boneTransforms {};
 };
 
 class RemixRenderer {
@@ -154,6 +164,7 @@ public:
   void beginDynamicEntityFrame();
   void beginDynamicEntity(int entityId);
   void setDynamicEntityTexture(const std::string& texturePath);
+  void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
   void captureDynamicEntityQuad(
       float x0,
       float y0,
@@ -175,7 +186,8 @@ public:
       float z3,
       float u3,
       float v3,
-      std::uint32_t colorRgba);
+        std::uint32_t colorRgba,
+        std::uint32_t boneIndex);
   void endDynamicEntity();
   void clearWorldScene();
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
@@ -241,7 +253,7 @@ private:
       float colorR,
       float colorG,
       float colorB);
-  bool rebuildDynamicEntityMesh(int entityId, const std::vector<DynamicEntityQuad>& quads);
+  DynamicEntityMeshData* findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
   static std::filesystem::path resolveCloudTexturePath();
@@ -251,6 +263,7 @@ private:
   void destroyChunkMeshHandle(ChunkMeshData& meshData);
   void destroyChunkTorchLights(ChunkMeshData& meshData);
   void destroyTorchLight(const WorldBlockPosition& position);
+  void clearDynamicEntityFrameInstances();
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
@@ -287,10 +300,10 @@ private:
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
   std::uint64_t nextCloudMeshHash_ {1};
-  std::uint64_t nextDynamicEntityMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
   DynamicEntityBuildState activeDynamicEntity_ {};
-  std::unordered_map<int, DynamicEntityMeshData> dynamicEntityMeshes_ {};
+  std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
+  std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
   std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};

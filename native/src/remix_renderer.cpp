@@ -62,6 +62,7 @@ constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
+constexpr std::uint64_t kDynamicEntityMeshHashSeed = 0x4D43525458454E00ull;
 constexpr std::uint64_t kTorchLightHashSeed = 0x4D435254584C4954ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
@@ -91,6 +92,8 @@ struct SurfaceBuildBuffers {
   remixapi_MaterialHandle materialHandle {nullptr};
   std::vector<remixapi_HardcodedVertex> vertices;
   std::vector<std::uint32_t> indices;
+  std::vector<float> blendWeights;
+  std::vector<std::uint32_t> blendIndices;
 };
 
 constexpr float kFaceVertexOffsets[6][4][3] = {
@@ -362,8 +365,8 @@ std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
   return 0x4D43525458434C00ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
-std::uint64_t makeDynamicEntityMeshHash(std::uint64_t sequence) {
-  return 0x4D43525458454E00ull | (sequence & 0x0000FFFFFFFFFFFFull);
+std::uint64_t makeDynamicEntityMeshHash(std::uint64_t geometryFingerprint) {
+  return kDynamicEntityMeshHashSeed ^ geometryFingerprint;
 }
 
 std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value) {
@@ -484,6 +487,47 @@ std::uint64_t computeChunkFingerprint(
       fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(boundValue));
       fingerprint *= 1099511628211ull;
     }
+  }
+  return fingerprint;
+}
+
+void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& value) {
+  for (const unsigned char character : value) {
+    fingerprint ^= static_cast<std::uint64_t>(character);
+    fingerprint *= 1099511628211ull;
+  }
+  fingerprint ^= 0xFFull;
+  fingerprint *= 1099511628211ull;
+}
+
+std::uint32_t computeDynamicEntityBoneCount(const std::vector<DynamicEntityQuad>& quads) {
+  std::uint32_t boneCount = 0;
+  for (const DynamicEntityQuad& quad : quads) {
+    boneCount = std::max(boneCount, quad.boneIndex + 1);
+  }
+  return boneCount;
+}
+
+std::uint64_t computeDynamicEntityFingerprint(
+    const std::vector<DynamicEntityQuad>& quads,
+    std::uint32_t boneCount) {
+  std::uint64_t fingerprint = 1469598103934665603ull;
+  fingerprint ^= static_cast<std::uint64_t>(boneCount);
+  fingerprint *= 1099511628211ull;
+  for (const DynamicEntityQuad& quad : quads) {
+    fingerprint ^= static_cast<std::uint64_t>(quad.boneIndex);
+    fingerprint *= 1099511628211ull;
+    for (const float position : quad.positions) {
+      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(position));
+      fingerprint *= 1099511628211ull;
+    }
+    for (const float texcoord : quad.texcoords) {
+      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(texcoord));
+      fingerprint *= 1099511628211ull;
+    }
+    fingerprint ^= static_cast<std::uint64_t>(quad.color);
+    fingerprint *= 1099511628211ull;
+    hashDynamicEntityString(fingerprint, quad.texturePath);
   }
   return fingerprint;
 }
@@ -2260,6 +2304,7 @@ void RemixRenderer::shutdown() {
   activeChunkBlocks_.clear();
   chunkMeshes_.clear();
   dynamicEntityMeshes_.clear();
+  dynamicEntityFrameInstances_.clear();
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
@@ -2273,7 +2318,6 @@ void RemixRenderer::shutdown() {
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   nextCloudMeshHash_ = 1;
-  nextDynamicEntityMeshHash_ = 1;
   cloudQuadCount_ = 0;
   lastError_.clear();
 }
@@ -2322,7 +2366,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
     return;
   }
 
-  destroyDynamicEntityMeshes();
+  clearDynamicEntityFrameInstances();
   activeDynamicEntity_ = {};
 }
 
@@ -2337,6 +2381,7 @@ void RemixRenderer::beginDynamicEntity(int entityId) {
   activeDynamicEntity_.entityId = entityId;
   activeDynamicEntity_.active = entityId >= 0;
   activeDynamicEntity_.quads.reserve(256);
+  activeDynamicEntity_.boneTransforms.reserve(32);
 }
 
 void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
@@ -2347,6 +2392,19 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
   }
 
   activeDynamicEntity_.currentTexturePath = texturePath;
+}
+
+void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || !activeDynamicEntity_.active || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
+    return;
+  }
+
+  if (boneIndex >= activeDynamicEntity_.boneTransforms.size()) {
+    activeDynamicEntity_.boneTransforms.resize(static_cast<std::size_t>(boneIndex) + 1);
+  }
+  activeDynamicEntity_.boneTransforms[boneIndex] = transform;
 }
 
 void RemixRenderer::captureDynamicEntityQuad(
@@ -2370,10 +2428,15 @@ void RemixRenderer::captureDynamicEntityQuad(
     float z3,
     float u3,
     float v3,
-    std::uint32_t colorRgba) {
+    std::uint32_t colorRgba,
+    std::uint32_t boneIndex) {
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTexturePath.empty()) {
+    return;
+  }
+
+  if (boneIndex >= activeDynamicEntity_.boneTransforms.size() || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
     return;
   }
 
@@ -2392,6 +2455,7 @@ void RemixRenderer::captureDynamicEntityQuad(
   };
   quad.color = colorRgba;
   quad.texturePath = activeDynamicEntity_.currentTexturePath;
+  quad.boneIndex = boneIndex;
   activeDynamicEntity_.quads.push_back(std::move(quad));
 }
 
@@ -2403,7 +2467,18 @@ void RemixRenderer::endDynamicEntity() {
   }
 
   if (!activeDynamicEntity_.quads.empty()) {
-    rebuildDynamicEntityMesh(activeDynamicEntity_.entityId, activeDynamicEntity_.quads);
+    const std::uint32_t boneCount = computeDynamicEntityBoneCount(activeDynamicEntity_.quads);
+    if (boneCount != 0 && boneCount <= activeDynamicEntity_.boneTransforms.size()) {
+      if (DynamicEntityMeshData* meshData = findOrCreateDynamicEntityMesh(activeDynamicEntity_); meshData != nullptr) {
+        DynamicEntityFrameInstance frameInstance;
+        frameInstance.meshHandle = meshData->meshHandle;
+        frameInstance.quadCount = meshData->quadCount;
+        frameInstance.boneTransforms.assign(
+            activeDynamicEntity_.boneTransforms.begin(),
+            activeDynamicEntity_.boneTransforms.begin() + boneCount);
+        dynamicEntityFrameInstances_.push_back(std::move(frameInstance));
+      }
+    }
   }
 
   activeDynamicEntity_ = {};
@@ -2424,6 +2499,7 @@ void RemixRenderer::clearWorldScene() {
 
   destroyCloudMesh();
   destroyDynamicEntityMeshes();
+  clearDynamicEntityFrameInstances();
   activeDynamicEntity_ = {};
   activeChunkBlocks_.clear();
   activeChunkBuild_ = {};
@@ -3169,9 +3245,21 @@ bool RemixRenderer::rebuildCloudMesh(
   return true;
 }
 
-bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<DynamicEntityQuad>& quads) {
-  if (quads.empty()) {
-    return true;
+DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState) {
+  if (buildState.quads.empty()) {
+    return nullptr;
+  }
+
+  const std::uint32_t boneCount = computeDynamicEntityBoneCount(buildState.quads);
+  if (boneCount == 0
+      || boneCount > buildState.boneTransforms.size()
+      || boneCount > REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
+    return nullptr;
+  }
+
+  const std::uint64_t geometryFingerprint = computeDynamicEntityFingerprint(buildState.quads, boneCount);
+  if (const auto existing = dynamicEntityMeshes_.find(geometryFingerprint); existing != dynamicEntityMeshes_.end()) {
+    return &existing->second;
   }
 
   std::vector<SurfaceBuildBuffers> surfacesToBuild;
@@ -3196,7 +3284,7 @@ bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<Dyn
   };
 
   std::size_t quadCount = 0;
-  for (const DynamicEntityQuad& quad : quads) {
+  for (const DynamicEntityQuad& quad : buildState.quads) {
     remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(quad.texturePath);
     if (materialHandle == nullptr) {
       continue;
@@ -3207,6 +3295,7 @@ bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<Dyn
         quad.positions[3], quad.positions[4], quad.positions[5],
         quad.positions[6], quad.positions[7], quad.positions[8]);
     SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+      const std::size_t vertexBase = surface.vertices.size();
     appendCloudQuad(
         quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
         quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
@@ -3216,6 +3305,9 @@ bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<Dyn
         quad.color,
         surface.vertices,
         surface.indices);
+      const std::size_t addedVertices = surface.vertices.size() - vertexBase;
+      surface.blendWeights.insert(surface.blendWeights.end(), addedVertices, 1.0f);
+      surface.blendIndices.insert(surface.blendIndices.end(), addedVertices, quad.boneIndex);
     ++quadCount;
   }
 
@@ -3231,18 +3323,23 @@ bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<Dyn
     surface.vertices_count = surfaceBuild.vertices.size();
     surface.indices_values = surfaceBuild.indices.data();
     surface.indices_count = surfaceBuild.indices.size();
-    surface.skinning_hasvalue = FALSE;
+    surface.skinning_hasvalue = TRUE;
+    surface.skinning_value.bonesPerVertex = 1;
+    surface.skinning_value.blendWeights_values = surfaceBuild.blendWeights.data();
+    surface.skinning_value.blendWeights_count = static_cast<std::uint32_t>(surfaceBuild.blendWeights.size());
+    surface.skinning_value.blendIndices_values = surfaceBuild.blendIndices.data();
+    surface.skinning_value.blendIndices_count = static_cast<std::uint32_t>(surfaceBuild.blendIndices.size());
     surface.material = surfaceBuild.materialHandle;
     surfaces.push_back(surface);
   }
 
   if (surfaces.empty()) {
-    return true;
+    return nullptr;
   }
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeDynamicEntityMeshHash(nextDynamicEntityMeshHash_++);
+  meshInfo.hash = makeDynamicEntityMeshHash(geometryFingerprint);
   meshInfo.surfaces_values = surfaces.data();
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
@@ -3250,15 +3347,22 @@ bool RemixRenderer::rebuildDynamicEntityMesh(int entityId, const std::vector<Dyn
   const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &meshHandle);
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
-    return false;
+    return nullptr;
   }
 
-  DynamicEntityMeshData& meshData = dynamicEntityMeshes_[entityId];
-  destroyDynamicEntityMesh(meshData);
+  DynamicEntityMeshData meshData;
   meshData.meshHandle = meshHandle;
   meshData.meshHash = meshInfo.hash;
+  meshData.geometryFingerprint = geometryFingerprint;
   meshData.quadCount = quadCount;
-  return true;
+  meshData.boneCount = boneCount;
+  const auto [it, inserted] = dynamicEntityMeshes_.emplace(geometryFingerprint, std::move(meshData));
+  if (!inserted) {
+    if (meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
+      remix_.DestroyMesh(meshHandle);
+    }
+  }
+  return &it->second;
 }
 
 void RemixRenderer::destroyCloudMesh() {
@@ -3296,8 +3400,14 @@ void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
   meshData.torchLights.clear();
 }
 
+void RemixRenderer::clearDynamicEntityFrameInstances() {
+  dynamicEntityFrameInstances_.clear();
+}
+
 void RemixRenderer::destroyDynamicEntityMeshes() {
-  for (auto& [entityId, meshData] : dynamicEntityMeshes_) {
+  clearDynamicEntityFrameInstances();
+  for (auto& [geometryFingerprint, meshData] : dynamicEntityMeshes_) {
+    (void)geometryFingerprint;
     destroyDynamicEntityMesh(meshData);
   }
   dynamicEntityMeshes_.clear();
@@ -3309,7 +3419,9 @@ void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
   }
   meshData.meshHandle = nullptr;
   meshData.meshHash = 0;
+  meshData.geometryFingerprint = 0;
   meshData.quadCount = 0;
+  meshData.boneCount = 0;
 }
 
 void RemixRenderer::resetLoadedRemix() {
@@ -3873,7 +3985,7 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
-  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityMeshes_.empty() && torchLights_.empty()) {
+  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityFrameInstances_.empty() && torchLights_.empty()) {
     if (presentedFrames_ < 4) {
       log("No captured scene meshes available yet");
     }
@@ -3931,8 +4043,8 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedBlocks += meshData.blockCount;
   }
 
-  for (const auto& [entityId, meshData] : dynamicEntityMeshes_) {
-    if (meshData.meshHandle == nullptr) {
+  for (const DynamicEntityFrameInstance& frameInstance : dynamicEntityFrameInstances_) {
+    if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
       continue;
     }
 
@@ -3946,11 +4058,17 @@ bool RemixRenderer::drawCapturedGeometry() {
     blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
     blendInfo.isVertexColorBakedLighting = FALSE;
 
+    remixapi_InstanceInfoBoneTransformsEXT boneTransformsInfo {};
+    boneTransformsInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
+    boneTransformsInfo.pNext = &blendInfo;
+    boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
+    boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
+
     remixapi_InstanceInfo instanceInfo {};
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-    instanceInfo.pNext = &blendInfo;
+    instanceInfo.pNext = &boneTransformsInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = meshData.meshHandle;
+    instanceInfo.mesh = frameInstance.meshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
@@ -3960,7 +4078,7 @@ bool RemixRenderer::drawCapturedGeometry() {
       return false;
     }
 
-    submittedDynamicEntityQuads += meshData.quadCount;
+    submittedDynamicEntityQuads += frameInstance.quadCount;
   }
 
   if (cloudMeshHandle_ != nullptr) {

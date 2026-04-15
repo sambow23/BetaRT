@@ -115,19 +115,51 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityText
   env->ReleaseStringUTFChars(texturePath, utfChars);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
+    JNIEnv*, jclass,
+    jint boneIndex,
+    jfloat m00, jfloat m01, jfloat m02, jfloat m03,
+    jfloat m10, jfloat m11, jfloat m12, jfloat m13,
+    jfloat m20, jfloat m21, jfloat m22, jfloat m23) {
+  if (boneIndex < 0) {
+    return;
+  }
+
+  remixapi_Transform transform {};
+  transform.matrix[0][0] = m00;
+  transform.matrix[0][1] = m01;
+  transform.matrix[0][2] = m02;
+  transform.matrix[0][3] = m03;
+  transform.matrix[1][0] = m10;
+  transform.matrix[1][1] = m11;
+  transform.matrix[1][2] = m12;
+  transform.matrix[1][3] = m13;
+  transform.matrix[2][0] = m20;
+  transform.matrix[2][1] = m21;
+  transform.matrix[2][2] = m22;
+  transform.matrix[2][3] = m23;
+  RemixRenderer::instance().setDynamicEntityBoneTransform(static_cast<std::uint32_t>(boneIndex), transform);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntityQuad(
     JNIEnv*, jclass,
     jfloat x0, jfloat y0, jfloat z0, jfloat u0, jfloat v0,
     jfloat x1, jfloat y1, jfloat z1, jfloat u1, jfloat v1,
     jfloat x2, jfloat y2, jfloat z2, jfloat u2, jfloat v2,
     jfloat x3, jfloat y3, jfloat z3, jfloat u3, jfloat v3,
-    jint colorRgba) {
+    jint colorRgba,
+    jint boneIndex) {
+  if (boneIndex < 0) {
+    return;
+  }
+
   RemixRenderer::instance().captureDynamicEntityQuad(
       x0, y0, z0, u0, v0,
       x1, y1, z1, u1, v1,
       x2, y2, z2, u2, v2,
       x3, y3, z3, u3, v3,
-      static_cast<std::uint32_t>(colorRgba));
+      static_cast<std::uint32_t>(colorRgba),
+      static_cast<std::uint32_t>(boneIndex));
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndDynamicEntity(JNIEnv*, jclass) {

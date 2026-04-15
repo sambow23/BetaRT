@@ -8,6 +8,7 @@ import org.lwjgl.opengl.GL11;
 public final class MinecraftRemixHooks {
     private static final int CHUNK_DIMENSION = 16;
     private static final int MAX_RECAPTURE_SECTIONS_PER_PRESENT = 8;
+    private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
@@ -22,6 +23,7 @@ public final class MinecraftRemixHooks {
     private static boolean loggedPresent;
     private static boolean loggedChunkBuild;
     private static boolean loggedDynamicEntityHookFailure;
+    private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedWorldListenerAttach;
     private static float cameraPositionX;
     private static float cameraPositionY;
@@ -38,6 +40,7 @@ public final class MinecraftRemixHooks {
     private static boolean dynamicEntityActive;
     private static int activeDynamicEntityId = -1;
     private static String activeDynamicEntityTexture = "";
+    private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
     private static fd attachedWorld;
@@ -221,6 +224,7 @@ public final class MinecraftRemixHooks {
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
         activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
         MinecraftRenderHooks.beginDynamicEntity(entity.aD);
     }
 
@@ -232,6 +236,7 @@ public final class MinecraftRemixHooks {
         dynamicEntityActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
     }
 
     public static void onFirstPersonRenderStart() {
@@ -241,6 +246,7 @@ public final class MinecraftRemixHooks {
 
         firstPersonActive = true;
         activeFirstPersonTexture = "/mob/char.png";
+        nextDynamicBoneIndex = 0;
         MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
     }
@@ -253,6 +259,7 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.endDynamicEntity();
         firstPersonActive = false;
         activeFirstPersonTexture = "";
+        nextDynamicBoneIndex = 0;
     }
 
     public static void onFirstPersonItemRender(iz itemStack) {
@@ -298,6 +305,11 @@ public final class MinecraftRemixHooks {
             float[] modelToWorld = multiplyColumnMajor(buildInverseViewMatrix(), modelView);
             float[] capturedColor = sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
             int colorRgba = packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
+            int boneIndex = allocateDynamicBoneIndex();
+            if (boneIndex < 0) {
+                return;
+            }
+            submitDynamicBoneTransform(boneIndex, modelToWorld);
 
             for (tz polygon : polygons) {
                 if (polygon == null || polygon.a == null || polygon.a.length != 4) {
@@ -311,13 +323,9 @@ public final class MinecraftRemixHooks {
                     if (vertex == null || vertex.a == null) {
                         continue;
                     }
-                    float localX = (float) vertex.a.a * scale;
-                    float localY = (float) vertex.a.b * scale;
-                    float localZ = (float) vertex.a.c * scale;
-                    float[] worldPosition = transformPoint(modelToWorld, localX, localY, localZ);
-                    positions[vertexIndex][0] = worldPosition[0];
-                    positions[vertexIndex][1] = worldPosition[1];
-                    positions[vertexIndex][2] = worldPosition[2];
+                    positions[vertexIndex][0] = (float) vertex.a.a * scale;
+                    positions[vertexIndex][1] = (float) vertex.a.b * scale;
+                    positions[vertexIndex][2] = (float) vertex.a.c * scale;
                     texcoords[vertexIndex][0] = vertex.b;
                     texcoords[vertexIndex][1] = vertex.c;
                 }
@@ -327,7 +335,8 @@ public final class MinecraftRemixHooks {
                         positions[1][0], positions[1][1], positions[1][2], texcoords[1][0], texcoords[1][1],
                         positions[2][0], positions[2][1], positions[2][2], texcoords[2][0], texcoords[2][1],
                         positions[3][0], positions[3][1], positions[3][2], texcoords[3][0], texcoords[3][1],
-                        colorRgba);
+                        colorRgba,
+                        boneIndex);
             }
         } catch (RuntimeException exception) {
             MinecraftRenderHooks.endDynamicEntity();
@@ -376,21 +385,35 @@ public final class MinecraftRemixHooks {
 
             float[] modelToWorld = multiplyColumnMajor(buildInverseViewMatrix(), modelView);
             int fallbackColorRgba = sanitizePackedColor(packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
+            int boneIndex = allocateDynamicBoneIndex();
+            if (boneIndex < 0) {
+                return;
+            }
+            submitDynamicBoneTransform(boneIndex, modelToWorld);
 
             for (int vertexIndex = 0; vertexIndex + 5 < vertexCount; vertexIndex += 6) {
                 int quadColor = hasColor ? sanitizePackedColor(unpackTessellatorColor(rawVertexData, vertexIndex * 8 + 5)) : fallbackColorRgba;
 
-                float[] p0 = transformTessellatorVertex(modelToWorld, rawVertexData, vertexIndex * 8);
-                float[] p1 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 1) * 8);
-                float[] p2 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 2) * 8);
-                float[] p3 = transformTessellatorVertex(modelToWorld, rawVertexData, (vertexIndex + 5) * 8);
+                float p0x = Float.intBitsToFloat(rawVertexData[vertexIndex * 8]);
+                float p0y = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 1]);
+                float p0z = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 2]);
+                float p1x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8]);
+                float p1y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 1]);
+                float p1z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 2]);
+                float p2x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8]);
+                float p2y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 1]);
+                float p2z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 2]);
+                float p3x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8]);
+                float p3y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 1]);
+                float p3z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 2]);
 
                 MinecraftRenderHooks.captureDynamicEntityQuad(
-                        p0[0], p0[1], p0[2], Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]), Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]),
-                        p1[0], p1[1], p1[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 4]),
-                        p2[0], p2[1], p2[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 4]),
-                        p3[0], p3[1], p3[2], Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 4]),
-                        quadColor);
+                        p0x, p0y, p0z, Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]), Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]),
+                        p1x, p1y, p1z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 4]),
+                        p2x, p2y, p2z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 4]),
+                        p3x, p3y, p3z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 4]),
+                        quadColor,
+                        boneIndex);
             }
         } catch (RuntimeException exception) {
             MinecraftRenderHooks.endDynamicEntity();
@@ -871,20 +894,26 @@ public final class MinecraftRemixHooks {
         return result;
     }
 
-    private static float[] transformPoint(float[] matrix, float x, float y, float z) {
-        return new float[] {
-                matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
-                matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
-                matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]
-        };
+    private static int allocateDynamicBoneIndex() {
+        if (nextDynamicBoneIndex >= MAX_DYNAMIC_BONES) {
+            if (!loggedDynamicEntityBoneOverflow) {
+                loggedDynamicEntityBoneOverflow = true;
+                System.err.println("[mcrtx] dynamic capture exceeded Remix bone limit; skipping excess dynamic geometry");
+            }
+            return -1;
+        }
+
+        int boneIndex = nextDynamicBoneIndex;
+        nextDynamicBoneIndex += 1;
+        return boneIndex;
     }
 
-    private static float[] transformTessellatorVertex(float[] matrix, int[] rawVertexData, int baseIndex) {
-        return transformPoint(
-                matrix,
-                Float.intBitsToFloat(rawVertexData[baseIndex]),
-                Float.intBitsToFloat(rawVertexData[baseIndex + 1]),
-                Float.intBitsToFloat(rawVertexData[baseIndex + 2]));
+    private static void submitDynamicBoneTransform(int boneIndex, float[] columnMajorMatrix) {
+        MinecraftRenderHooks.setDynamicEntityBoneTransform(
+                boneIndex,
+                columnMajorMatrix[0], columnMajorMatrix[4], columnMajorMatrix[8], columnMajorMatrix[12],
+                columnMajorMatrix[1], columnMajorMatrix[5], columnMajorMatrix[9], columnMajorMatrix[13],
+                columnMajorMatrix[2], columnMajorMatrix[6], columnMajorMatrix[10], columnMajorMatrix[14]);
     }
 
     private static int unpackTessellatorColor(int[] rawVertexData, int colorIndex) {

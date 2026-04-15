@@ -206,6 +206,30 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetDynamicEntityTexture(texturePath);
     }
 
+    public static synchronized void setDynamicEntityBoneTransform(
+            int boneIndex,
+            float m00,
+            float m01,
+            float m02,
+            float m03,
+            float m10,
+            float m11,
+            float m12,
+            float m13,
+            float m20,
+            float m21,
+            float m22,
+            float m23) {
+        if (!initialized || boneIndex < 0) {
+            return;
+        }
+        RemixBridgeNative.nSetDynamicEntityBoneTransform(
+                boneIndex,
+                m00, m01, m02, m03,
+                m10, m11, m12, m13,
+                m20, m21, m22, m23);
+    }
+
     public static synchronized void captureDynamicEntityQuad(
             float x0,
             float y0,
@@ -227,7 +251,8 @@ public final class MinecraftRenderHooks {
             float z3,
             float u3,
             float v3,
-            int colorRgba) {
+            int colorRgba,
+            int boneIndex) {
         if (!initialized) {
             return;
         }
@@ -236,7 +261,8 @@ public final class MinecraftRenderHooks {
                 x1, y1, z1, u1, v1,
                 x2, y2, z2, u2, v2,
                 x3, y3, z3, u3, v3,
-                colorRgba);
+                colorRgba,
+                boneIndex);
     }
 
     public static synchronized void endDynamicEntity() {
