@@ -244,6 +244,20 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nEndDynamicEntity();
     }
 
+    public static synchronized void clearWorldScene() {
+        if (!initialized) {
+            chunkBuildCaptureActive = false;
+            activeChunkRenderPass = 0;
+            capturedChunkBlocks = 0;
+            return;
+        }
+
+        RemixBridgeNative.nClearWorldScene();
+        chunkBuildCaptureActive = false;
+        activeChunkRenderPass = 0;
+        capturedChunkBlocks = 0;
+    }
+
     public static synchronized boolean present() {
         return initialized && RemixBridgeNative.nPresent();
     }

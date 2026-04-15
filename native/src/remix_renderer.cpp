@@ -2168,6 +2168,34 @@ void RemixRenderer::endDynamicEntity() {
   activeDynamicEntity_ = {};
 }
 
+void RemixRenderer::clearWorldScene() {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  for (auto& [chunkKey, meshData] : chunkMeshes_) {
+    (void)chunkKey;
+    destroyChunkMesh(meshData);
+  }
+  chunkMeshes_.clear();
+
+  destroyCloudMesh();
+  destroyDynamicEntityMeshes();
+  activeDynamicEntity_ = {};
+  activeChunkBlocks_.clear();
+  activeChunkBuild_ = {};
+  chunkBuildActive_ = false;
+  lastSubmittedChunkCount_ = 0;
+  lastSubmittedBlockCount_ = 0;
+  lastSubmittedCloudQuadCount_ = 0;
+  lastSubmittedDynamicEntityQuadCount_ = 0;
+  lastSubmittedTorchLightCount_ = 0;
+
+  log("Cleared cached world scene state");
+}
+
 bool RemixRenderer::beginChunkBuild(
     int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass) {
   std::scoped_lock lock(mutex_);

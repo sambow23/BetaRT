@@ -175,6 +175,7 @@ public:
       float v3,
       std::uint32_t colorRgba);
   void endDynamicEntity();
+  void clearWorldScene();
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
   void captureBlock(
       int blockX,

@@ -149,6 +149,7 @@ public final class MinecraftRemixHooks {
         }
 
         PENDING_RECAPTURE_SECTIONS.clear();
+        MinecraftRenderHooks.clearWorldScene();
 
         if (attachedWorld != null) {
             attachedWorld.b(WORLD_LISTENER);

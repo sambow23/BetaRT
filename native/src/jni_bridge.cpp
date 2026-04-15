@@ -134,6 +134,10 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndDynamicEntity(JNI
   RemixRenderer::instance().endDynamicEntity();
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearWorldScene(JNIEnv*, jclass) {
+  RemixRenderer::instance().clearWorldScene();
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     JNIEnv*, jclass,
     jint originX, jint originY, jint originZ,

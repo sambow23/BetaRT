@@ -152,6 +152,8 @@ public final class RemixBridgeNative {
 
             public static native void nEndDynamicEntity();
 
+            public static native void nClearWorldScene();
+
     public static native boolean nBeginChunkBuild(
             int originX,
             int originY,
