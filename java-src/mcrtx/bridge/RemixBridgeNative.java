@@ -124,6 +124,19 @@ public final class RemixBridgeNative {
             float nearPlane,
             float farPlane);
 
+        public static native void nUpdateCloudLayer(
+            boolean fancy,
+            float cameraX,
+            float cameraY,
+            float cameraZ,
+            float cloudHeight,
+            float cloudScroll,
+            float colorR,
+            float colorG,
+            float colorB);
+
+        public static native void nClearCloudLayer();
+
     public static native boolean nBeginChunkBuild(
             int originX,
             int originY,
@@ -146,7 +159,13 @@ public final class RemixBridgeNative {
             int texture3,
             int texture4,
             int texture5,
-            int blockColorRgb);
+            int blockColorRgb,
+            int liquidVisibilityMask,
+            float liquidHeight0,
+            float liquidHeight1,
+            float liquidHeight2,
+            float liquidHeight3,
+            float liquidFlowAngle);
 
     public static native void nEndChunkBuild(boolean emittedGeometry);
 

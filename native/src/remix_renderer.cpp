@@ -1,5 +1,8 @@
 #include "mcrtx/remix_renderer.hpp"
 
+#include <algorithm>
+#include <bit>
+#include <cmath>
 #include <cstdlib>
 #include <cstddef>
 #include <iostream>
@@ -15,11 +18,14 @@ constexpr wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
 constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 constexpr int kChunkDimension = 16;
 constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
-constexpr std::size_t kTerrainMaterialClassCount = 2;
+constexpr std::size_t kTerrainMaterialClassCount = 3;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
+constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
+constexpr std::uint8_t kWaterStillBlockId = 8;
+constexpr std::uint8_t kWaterFlowingBlockId = 9;
 constexpr std::uint8_t kGrassOverlayTerrainTile = 38;
 constexpr std::uint8_t kLeavesFancyTextureOak = 52;
 constexpr std::uint8_t kLeavesFastTextureOak = 53;
@@ -31,12 +37,24 @@ constexpr float kAtlasUvInsetPixels = 0.01f;
 constexpr float kFaceOverlayBias = 0.001f;
 constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
+constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
+constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
 constexpr std::uint32_t kRtTextureArgTexture = 1;
 constexpr std::uint32_t kRtTextureArgVertexColor0 = 2;
 constexpr std::uint32_t kRtTextureOpSelectArg1 = 1;
 constexpr std::uint32_t kRtTextureOpModulate = 3;
+constexpr float kCloudAlpha = 0.8f;
+constexpr float kFastCloudTileSize = 32.0f;
+constexpr float kFastCloudRadius = 256.0f;
+constexpr float kFastCloudUvScale = 1.0f / 2048.0f;
+constexpr float kFancyCloudScale = 12.0f;
+constexpr float kFancyCloudCellSize = 8.0f;
+constexpr int kFancyCloudRadiusCells = 3;
+constexpr float kFancyCloudThickness = 4.0f;
+constexpr float kFancyCloudUvScale = 1.0f / 256.0f;
+constexpr float kFancyCloudInset = 1.0f / 1024.0f;
 
 struct SurfaceBuildBuffers {
   remixapi_MaterialHandle materialHandle {nullptr};
@@ -190,6 +208,23 @@ bool shouldCaptureBlock(int blockId, int renderType) {
   return blockId > 0 && renderType == 0;
 }
 
+bool isWaterBlock(int blockId) {
+  return blockId == kWaterStillBlockId || blockId == kWaterFlowingBlockId;
+}
+
+bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
+  if (blockId <= 0) {
+    return false;
+  }
+  if (renderPass == 0) {
+    return renderType == 0;
+  }
+  if (renderPass == 1) {
+    return renderType == 4 && isWaterBlock(blockId);
+  }
+  return false;
+}
+
 bool usesCutoutMaterialForBlock(int blockId) {
   switch (blockId) {
     case 18:
@@ -199,6 +234,13 @@ bool usesCutoutMaterialForBlock(int blockId) {
     default:
       return false;
   }
+}
+
+std::uint8_t materialClassForBlock(int blockId) {
+  if (isWaterBlock(blockId)) {
+    return kWaterTerrainMaterialClass;
+  }
+  return usesCutoutMaterialForBlock(blockId) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
 }
 
 remixapi_Transform makeTranslationTransform(float x, float y, float z) {
@@ -217,6 +259,22 @@ std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
   return 0x4D43525458000000ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
+std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
+  return 0x4D43525458434C00ull | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
+std::uint8_t clampColorChannel(float value) {
+  const float clampedValue = std::clamp(value, 0.0f, 1.0f);
+  return static_cast<std::uint8_t>(std::lround(clampedValue * 255.0f));
+}
+
+std::uint32_t packVertexColorRgba(float red, float green, float blue, float alpha) {
+  return (static_cast<std::uint32_t>(clampColorChannel(alpha)) << 24)
+      | (static_cast<std::uint32_t>(clampColorChannel(red)) << 16)
+      | (static_cast<std::uint32_t>(clampColorChannel(green)) << 8)
+      | static_cast<std::uint32_t>(clampColorChannel(blue));
+}
+
 std::uint64_t computeChunkFingerprint(
     const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
     const std::array<ChunkBlockCell, kBlocksPerChunk>& cells) {
@@ -232,6 +290,14 @@ std::uint64_t computeChunkFingerprint(
     fingerprint ^= static_cast<std::uint64_t>(cells[index].materialClass);
     fingerprint *= 1099511628211ull;
     fingerprint ^= static_cast<std::uint64_t>(cells[index].blockId);
+    fingerprint *= 1099511628211ull;
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].liquidVisibilityMask);
+    fingerprint *= 1099511628211ull;
+    for (const float liquidHeight : cells[index].liquidHeights) {
+      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(liquidHeight));
+      fingerprint *= 1099511628211ull;
+    }
+    fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(cells[index].liquidFlowAngle));
     fingerprint *= 1099511628211ull;
     fingerprint ^= static_cast<std::uint64_t>(cells[index].blockColor);
     fingerprint *= 1099511628211ull;
@@ -250,6 +316,17 @@ std::uint32_t packVertexColor(std::uint32_t rgbColor) {
 int blockIndex(int x, int y, int z) {
   return x + kChunkDimension * (z + kChunkDimension * y);
 }
+
+void appendFaceGeometry(
+    int faceIndex,
+    float localX,
+    float localY,
+    float localZ,
+    std::uint8_t terrainTileIndex,
+    std::uint32_t vertexColor,
+    float normalOffset,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
 
 std::uint32_t faceTintColorForBlock(std::uint8_t blockId, int minecraftSide, std::uint32_t blockColor) {
   if (blockId == kGrassBlockId && minecraftSide == 1) {
@@ -280,6 +357,567 @@ bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockC
   }
 
   return true;
+}
+
+void appendWaterQuad(
+    float x0,
+    float y0,
+    float z0,
+    float u0,
+    float v0,
+    float x1,
+    float y1,
+    float z1,
+    float u1,
+    float v1,
+    float x2,
+    float y2,
+    float z2,
+    float u2,
+    float v2,
+    float x3,
+    float y3,
+    float z3,
+    float u3,
+    float v3,
+    float normalX,
+    float normalY,
+    float normalZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+  const std::array<std::array<float, 5>, 4> vertexData = {{
+      {{x0, y0, z0, u0, v0}},
+      {{x1, y1, z1, u1, v1}},
+      {{x2, y2, z2, u2, v2}},
+      {{x3, y3, z3, u3, v3}},
+  }};
+
+  for (const auto& data : vertexData) {
+    remixapi_HardcodedVertex vertex {};
+    vertex.position[0] = data[0];
+    vertex.position[1] = data[1];
+    vertex.position[2] = data[2];
+    vertex.normal[0] = normalX;
+    vertex.normal[1] = normalY;
+    vertex.normal[2] = normalZ;
+    vertex.texcoord[0] = data[3];
+    vertex.texcoord[1] = data[4];
+    vertex.color = kDefaultVertexColor;
+    vertices.push_back(vertex);
+  }
+
+  for (const std::uint32_t baseIndex : kFaceIndices) {
+    indices.push_back(baseVertex + baseIndex);
+  }
+}
+
+void appendCloudQuad(
+    float x0,
+    float y0,
+    float z0,
+    float u0,
+    float v0,
+    float x1,
+    float y1,
+    float z1,
+    float u1,
+    float v1,
+    float x2,
+    float y2,
+    float z2,
+    float u2,
+    float v2,
+    float x3,
+    float y3,
+    float z3,
+    float u3,
+    float v3,
+    float normalX,
+    float normalY,
+    float normalZ,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+  const std::array<std::array<float, 5>, 4> vertexData = {{
+      {{x0, y0, z0, u0, v0}},
+      {{x1, y1, z1, u1, v1}},
+      {{x2, y2, z2, u2, v2}},
+      {{x3, y3, z3, u3, v3}},
+  }};
+
+  for (const auto& data : vertexData) {
+    remixapi_HardcodedVertex vertex {};
+    vertex.position[0] = data[0];
+    vertex.position[1] = data[1];
+    vertex.position[2] = data[2];
+    vertex.normal[0] = normalX;
+    vertex.normal[1] = normalY;
+    vertex.normal[2] = normalZ;
+    vertex.texcoord[0] = data[3];
+    vertex.texcoord[1] = data[4];
+    vertex.color = vertexColor;
+    vertices.push_back(vertex);
+  }
+
+  for (const std::uint32_t baseIndex : kFaceIndices) {
+    indices.push_back(baseVertex + baseIndex);
+  }
+}
+
+void appendFastCloudGeometry(
+    float cameraX,
+    float cameraZ,
+    float cloudHeight,
+    float cloudScroll,
+    float colorR,
+    float colorG,
+    float colorB,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint32_t vertexColor = packVertexColorRgba(colorR, colorG, colorB, kCloudAlpha);
+  const float uOffset = (cameraX + cloudScroll) * kFastCloudUvScale;
+  const float vOffset = cameraZ * kFastCloudUvScale;
+
+  for (float x = -kFastCloudRadius; x < kFastCloudRadius; x += kFastCloudTileSize) {
+    for (float z = -kFastCloudRadius; z < kFastCloudRadius; z += kFastCloudTileSize) {
+      const float worldX0 = cameraX + x;
+      const float worldX1 = worldX0 + kFastCloudTileSize;
+      const float worldZ0 = cameraZ + z;
+      const float worldZ1 = worldZ0 + kFastCloudTileSize;
+      const float u0 = x * kFastCloudUvScale + uOffset;
+      const float u1 = (x + kFastCloudTileSize) * kFastCloudUvScale + uOffset;
+      const float v0 = z * kFastCloudUvScale + vOffset;
+      const float v1 = (z + kFastCloudTileSize) * kFastCloudUvScale + vOffset;
+
+      appendCloudQuad(
+          worldX0,
+          cloudHeight,
+          worldZ1,
+          u0,
+          v1,
+          worldX1,
+          cloudHeight,
+          worldZ1,
+          u1,
+          v1,
+          worldX1,
+          cloudHeight,
+          worldZ0,
+          u1,
+          v0,
+          worldX0,
+          cloudHeight,
+          worldZ0,
+          u0,
+          v0,
+          0.0f,
+          1.0f,
+          0.0f,
+          vertexColor,
+          vertices,
+          indices);
+    }
+  }
+}
+
+void appendFancyCloudGeometry(
+    float cameraX,
+    float cameraY,
+    float cameraZ,
+    float cloudHeight,
+    float cloudScroll,
+    float colorR,
+    float colorG,
+    float colorB,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const float bottomY = cloudHeight;
+  const float topY = cloudHeight + kFancyCloudThickness - kFancyCloudInset;
+  const float relativeCloudHeight = cloudHeight - cameraY;
+  const float xPhase = (cameraX + cloudScroll) / kFancyCloudScale;
+  const float zPhase = cameraZ / kFancyCloudScale + 0.33f;
+  const float floorX = std::floor(xPhase);
+  const float floorZ = std::floor(zPhase);
+  const float fracX = xPhase - floorX;
+  const float fracZ = zPhase - floorZ;
+  const float baseU = floorX * kFancyCloudUvScale;
+  const float baseV = floorZ * kFancyCloudUvScale;
+
+  const std::uint32_t bottomColor = packVertexColorRgba(colorR * 0.7f, colorG * 0.7f, colorB * 0.7f, kCloudAlpha);
+  const std::uint32_t topColor = packVertexColorRgba(colorR, colorG, colorB, kCloudAlpha);
+  const std::uint32_t xSideColor = packVertexColorRgba(colorR * 0.9f, colorG * 0.9f, colorB * 0.9f, kCloudAlpha);
+  const std::uint32_t zSideColor = packVertexColorRgba(colorR * 0.8f, colorG * 0.8f, colorB * 0.8f, kCloudAlpha);
+
+  for (int cellX = -kFancyCloudRadiusCells + 1; cellX <= kFancyCloudRadiusCells; ++cellX) {
+    for (int cellZ = -kFancyCloudRadiusCells + 1; cellZ <= kFancyCloudRadiusCells; ++cellZ) {
+      const float tileX = static_cast<float>(cellX) * kFancyCloudCellSize;
+      const float tileZ = static_cast<float>(cellZ) * kFancyCloudCellSize;
+      const float x0 = cameraX + (tileX - fracX) * kFancyCloudScale;
+      const float x1 = cameraX + (tileX + kFancyCloudCellSize - fracX) * kFancyCloudScale;
+      const float z0 = cameraZ + (tileZ - fracZ) * kFancyCloudScale;
+      const float z1 = cameraZ + (tileZ + kFancyCloudCellSize - fracZ) * kFancyCloudScale;
+      const float u0 = tileX * kFancyCloudUvScale + baseU;
+      const float u1 = (tileX + kFancyCloudCellSize) * kFancyCloudUvScale + baseU;
+      const float v0 = tileZ * kFancyCloudUvScale + baseV;
+      const float v1 = (tileZ + kFancyCloudCellSize) * kFancyCloudUvScale + baseV;
+
+      if (relativeCloudHeight > -kFancyCloudThickness - 1.0f) {
+        appendCloudQuad(
+            x0,
+            bottomY,
+            z1,
+            u0,
+            v1,
+            x1,
+            bottomY,
+            z1,
+            u1,
+            v1,
+            x1,
+            bottomY,
+            z0,
+            u1,
+            v0,
+            x0,
+            bottomY,
+            z0,
+            u0,
+            v0,
+            0.0f,
+            -1.0f,
+            0.0f,
+            bottomColor,
+            vertices,
+            indices);
+      }
+
+      if (relativeCloudHeight <= kFancyCloudThickness + 1.0f) {
+        appendCloudQuad(
+            x0,
+            topY,
+            z1,
+            u0,
+            v1,
+            x1,
+            topY,
+            z1,
+            u1,
+            v1,
+            x1,
+            topY,
+            z0,
+            u1,
+            v0,
+            x0,
+            topY,
+            z0,
+            u0,
+            v0,
+            0.0f,
+            1.0f,
+            0.0f,
+            topColor,
+            vertices,
+            indices);
+      }
+
+      if (cellX > -1) {
+        for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
+          const float stripBase = tileX + static_cast<float>(strip);
+          const float worldX = cameraX + (stripBase - fracX) * kFancyCloudScale;
+          const float stripU = (stripBase + 0.5f) * kFancyCloudUvScale + baseU;
+          appendCloudQuad(
+              worldX,
+              bottomY,
+              z1,
+              stripU,
+              v1,
+              worldX,
+              topY,
+              z1,
+              stripU,
+              v1,
+              worldX,
+              topY,
+              z0,
+              stripU,
+              v0,
+              worldX,
+              bottomY,
+              z0,
+              stripU,
+              v0,
+              -1.0f,
+              0.0f,
+              0.0f,
+              xSideColor,
+              vertices,
+              indices);
+        }
+      }
+
+      if (cellX <= 1) {
+        for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
+          const float stripBase = tileX + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
+          const float worldX = cameraX + (stripBase - fracX) * kFancyCloudScale;
+          const float stripU = (tileX + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale + baseU;
+          appendCloudQuad(
+              worldX,
+              bottomY,
+              z1,
+              stripU,
+              v1,
+              worldX,
+              topY,
+              z1,
+              stripU,
+              v1,
+              worldX,
+              topY,
+              z0,
+              stripU,
+              v0,
+              worldX,
+              bottomY,
+              z0,
+              stripU,
+              v0,
+              1.0f,
+              0.0f,
+              0.0f,
+              xSideColor,
+              vertices,
+              indices);
+        }
+      }
+
+      if (cellZ > -1) {
+        for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
+          const float stripBase = tileZ + static_cast<float>(strip);
+          const float worldZ = cameraZ + (stripBase - fracZ) * kFancyCloudScale;
+          const float stripV = (stripBase + 0.5f) * kFancyCloudUvScale + baseV;
+          appendCloudQuad(
+              x0,
+              topY,
+              worldZ,
+              u0,
+              stripV,
+              x1,
+              topY,
+              worldZ,
+              u1,
+              stripV,
+              x1,
+              bottomY,
+              worldZ,
+              u1,
+              stripV,
+              x0,
+              bottomY,
+              worldZ,
+              u0,
+              stripV,
+              0.0f,
+              0.0f,
+              -1.0f,
+              zSideColor,
+              vertices,
+              indices);
+        }
+      }
+
+      if (cellZ <= 1) {
+        for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
+          const float stripBase = tileZ + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
+          const float worldZ = cameraZ + (stripBase - fracZ) * kFancyCloudScale;
+          const float stripV = (tileZ + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale + baseV;
+          appendCloudQuad(
+              x0,
+              topY,
+              worldZ,
+              u0,
+              stripV,
+              x1,
+              topY,
+              worldZ,
+              u1,
+              stripV,
+              x1,
+              bottomY,
+              worldZ,
+              u1,
+              stripV,
+              x0,
+              bottomY,
+              worldZ,
+              u0,
+              stripV,
+              0.0f,
+              0.0f,
+              1.0f,
+              zSideColor,
+              vertices,
+              indices);
+        }
+      }
+    }
+  }
+}
+
+void appendWaterGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const float heightNorthWest = cell.liquidHeights[0];
+  const float heightNorthEast = cell.liquidHeights[1];
+  const float heightSouthEast = cell.liquidHeights[2];
+  const float heightSouthWest = cell.liquidHeights[3];
+
+  if ((cell.liquidVisibilityMask & (1 << 1)) != 0) {
+    std::uint8_t terrainTileIndex = cell.terrainTiles[1];
+    double uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 8) / kAtlasSizePixels;
+    double uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 8) / kAtlasSizePixels;
+    float flowAngle = cell.liquidFlowAngle;
+    if (flowAngle > -999.0f) {
+      terrainTileIndex = cell.terrainTiles[2];
+      uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 16) / kAtlasSizePixels;
+      uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 16) / kAtlasSizePixels;
+    } else {
+      flowAngle = 0.0f;
+    }
+
+    const float sinAngle = std::sin(flowAngle) * 8.0f / kAtlasSizePixels;
+    const float cosAngle = std::cos(flowAngle) * 8.0f / kAtlasSizePixels;
+    appendWaterQuad(
+        localX + 0.0f,
+        localY + heightNorthWest,
+        localZ + 0.0f,
+        static_cast<float>(uvCenterU - cosAngle - sinAngle),
+        static_cast<float>(uvCenterV - cosAngle + sinAngle),
+        localX + 0.0f,
+        localY + heightSouthWest,
+        localZ + 1.0f,
+        static_cast<float>(uvCenterU - cosAngle + sinAngle),
+        static_cast<float>(uvCenterV + cosAngle + sinAngle),
+        localX + 1.0f,
+        localY + heightSouthEast,
+        localZ + 1.0f,
+        static_cast<float>(uvCenterU + cosAngle + sinAngle),
+        static_cast<float>(uvCenterV + cosAngle - sinAngle),
+        localX + 1.0f,
+        localY + heightNorthEast,
+        localZ + 0.0f,
+        static_cast<float>(uvCenterU + cosAngle - sinAngle),
+        static_cast<float>(uvCenterV - cosAngle - sinAngle),
+        0.0f,
+        1.0f,
+        0.0f,
+        vertices,
+        indices);
+  }
+
+  if ((cell.liquidVisibilityMask & (1 << 0)) != 0) {
+    appendFaceGeometry(
+        4,
+        localX,
+        localY,
+        localZ,
+        cell.terrainTiles[0],
+        kDefaultVertexColor,
+        0.0f,
+        vertices,
+        indices);
+  }
+
+  for (int sideIndex = 0; sideIndex < 4; ++sideIndex) {
+    const int minecraftSide = sideIndex + 2;
+    if ((cell.liquidVisibilityMask & (1 << minecraftSide)) == 0) {
+      continue;
+    }
+
+    const std::uint8_t terrainTileIndex = cell.terrainTiles[minecraftSide];
+    const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+    const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+    const float tileBaseV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+    const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+
+    float edgeHeightA = 0.0f;
+    float edgeHeightB = 0.0f;
+    float x0 = 0.0f;
+    float x1 = 0.0f;
+    float z0 = 0.0f;
+    float z1 = 0.0f;
+    float normalX = 0.0f;
+    float normalZ = 0.0f;
+
+    if (sideIndex == 0) {
+      edgeHeightA = heightNorthWest;
+      edgeHeightB = heightNorthEast;
+      x0 = localX + 0.0f;
+      x1 = localX + 1.0f;
+      z0 = localZ + 0.0f;
+      z1 = localZ + 0.0f;
+      normalZ = -1.0f;
+    } else if (sideIndex == 1) {
+      edgeHeightA = heightSouthEast;
+      edgeHeightB = heightSouthWest;
+      x0 = localX + 1.0f;
+      x1 = localX + 0.0f;
+      z0 = localZ + 1.0f;
+      z1 = localZ + 1.0f;
+      normalZ = 1.0f;
+    } else if (sideIndex == 2) {
+      edgeHeightA = heightSouthWest;
+      edgeHeightB = heightNorthWest;
+      x0 = localX + 0.0f;
+      x1 = localX + 0.0f;
+      z0 = localZ + 1.0f;
+      z1 = localZ + 0.0f;
+      normalX = -1.0f;
+    } else {
+      edgeHeightA = heightNorthEast;
+      edgeHeightB = heightSouthEast;
+      x0 = localX + 1.0f;
+      x1 = localX + 1.0f;
+      z0 = localZ + 0.0f;
+      z1 = localZ + 1.0f;
+      normalX = 1.0f;
+    }
+
+    const float tileMinVA = tileBaseV + (1.0f - edgeHeightA) * kAtlasTileSizePixels / kAtlasSizePixels;
+    const float tileMinVB = tileBaseV + (1.0f - edgeHeightB) * kAtlasTileSizePixels / kAtlasSizePixels;
+    appendWaterQuad(
+        x0,
+        localY + edgeHeightA,
+        z0,
+        tileMinU,
+        tileMinVA,
+        x1,
+        localY + edgeHeightB,
+        z1,
+        tileMaxU,
+        tileMinVB,
+        x1,
+        localY + 0.0f,
+        z1,
+        tileMaxU,
+        tileMaxV,
+        x0,
+        localY + 0.0f,
+        z0,
+        tileMinU,
+        tileMaxV,
+        normalX,
+        0.0f,
+        normalZ,
+        vertices,
+        indices);
+  }
 }
 
 void appendFaceGeometry(
@@ -387,6 +1025,7 @@ void RemixRenderer::shutdown() {
     for (auto& [chunkKey, meshData] : chunkMeshes_) {
       destroyChunkMesh(meshData);
     }
+    destroyCloudMesh();
     destroyTerrainMaterials();
     remix_.Shutdown();
   }
@@ -402,7 +1041,11 @@ void RemixRenderer::shutdown() {
   presentedFrames_ = 0;
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
+  lastSubmittedCloudQuadCount_ = 0;
   terrainAtlasPath_.clear();
+  cloudTexturePath_.clear();
+  nextCloudMeshHash_ = 1;
+  cloudQuadCount_ = 0;
   lastError_.clear();
 }
 
@@ -419,6 +1062,30 @@ void RemixRenderer::updateCamera(const CameraState& camera) {
   camera_ = camera;
 }
 
+void RemixRenderer::updateCloudLayer(
+    bool fancy,
+    float cameraX,
+    float cameraY,
+    float cameraZ,
+    float cloudHeight,
+    float cloudScroll,
+    float colorR,
+    float colorG,
+    float colorB) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
+}
+
+void RemixRenderer::clearCloudLayer() {
+  std::scoped_lock lock(mutex_);
+  destroyCloudMesh();
+}
+
 bool RemixRenderer::beginChunkBuild(
     int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass) {
   std::scoped_lock lock(mutex_);
@@ -427,7 +1094,7 @@ bool RemixRenderer::beginChunkBuild(
     return false;
   }
 
-  if (renderPass != 0) {
+  if (renderPass != 0 && renderPass != 1) {
     return false;
   }
 
@@ -457,7 +1124,13 @@ void RemixRenderer::captureBlock(
   int texture3,
   int texture4,
   int texture5,
-  int blockColorRgb) {
+  int blockColorRgb,
+  int liquidVisibilityMask,
+  float liquidHeight0,
+  float liquidHeight1,
+  float liquidHeight2,
+  float liquidHeight3,
+  float liquidFlowAngle) {
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !chunkBuildActive_) {
@@ -470,7 +1143,7 @@ void RemixRenderer::captureBlock(
     ++activeChunkBuild_.blockIdCounts[static_cast<std::size_t>(blockId)];
   }
 
-  if (!shouldCaptureBlock(blockId, renderType) || activeChunkBlocks_.size() >= kMaxOpaqueBlocksPerChunk) {
+  if (!shouldCaptureBlock(blockId, renderType, activeChunkBuild_.renderPass) || activeChunkBlocks_.size() >= kMaxOpaqueBlocksPerChunk) {
     return;
   }
 
@@ -488,7 +1161,10 @@ void RemixRenderer::captureBlock(
       static_cast<std::uint8_t>(texture4 & 0xFF),
       static_cast<std::uint8_t>(texture5 & 0xFF),
   };
-  block.materialClass = usesCutoutMaterialForBlock(blockId) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
+  block.materialClass = materialClassForBlock(blockId);
+  block.liquidVisibilityMask = static_cast<std::uint8_t>(liquidVisibilityMask & 0x3F);
+  block.liquidHeights = {liquidHeight0, liquidHeight1, liquidHeight2, liquidHeight3};
+  block.liquidFlowAngle = liquidFlowAngle;
   block.blockColor = static_cast<std::uint32_t>(blockColorRgb) & 0x00FFFFFFu;
   activeChunkBlocks_.push_back(block);
 }
@@ -645,6 +1321,31 @@ std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"clouds.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"clouds.png");
+    attemptedPaths.push_back(moduleDirectory / L"clouds.dds");
+    attemptedPaths.push_back(moduleDirectory / L"clouds.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"clouds.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"clouds.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"clouds.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"clouds.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
@@ -737,6 +1438,7 @@ void RemixRenderer::updateOutputWindowSize() const {
 bool RemixRenderer::initializeTerrainMaterials() {
   destroyTerrainMaterials();
   terrainAtlasPath_ = resolveTerrainAtlasPath();
+  cloudTexturePath_ = resolveCloudTexturePath();
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
@@ -756,7 +1458,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
     remixapi_MaterialInfo materialInfo {};
     materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
     materialInfo.pNext = &opaqueInfo;
-    materialInfo.hash = cutout ? kCutoutTerrainMaterialHash : kOpaqueTerrainMaterialHash;
+  materialInfo.hash = materialClass == kWaterTerrainMaterialClass
+    ? kWaterTerrainMaterialHash
+    : (cutout ? kCutoutTerrainMaterialHash : kOpaqueTerrainMaterialHash);
     materialInfo.albedoTexture = terrainAtlasPath_.c_str();
     materialInfo.emissiveIntensity = 0.0f;
     materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
@@ -777,16 +1481,62 @@ bool RemixRenderer::initializeTerrainMaterials() {
 
   const bool opaqueCreated = createTerrainMaterial(kOpaqueTerrainMaterialClass, false);
   const bool cutoutCreated = createTerrainMaterial(kCutoutTerrainMaterialClass, true);
+  const bool waterCreated = createTerrainMaterial(kWaterTerrainMaterialClass, false);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
   }
+  if (!waterCreated) {
+    log("Water terrain material unavailable; water faces will be skipped");
+  }
+
+  if (cloudTexturePath_.empty()) {
+    log("Cloud texture asset not found; cloud layer will be skipped");
+    return opaqueCreated;
+  }
+
+  remixapi_MaterialInfoOpaqueEXT cloudOpaqueInfo {};
+  cloudOpaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+  cloudOpaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+  cloudOpaqueInfo.opacityConstant = 1.0f;
+  cloudOpaqueInfo.roughnessConstant = 1.0f;
+  cloudOpaqueInfo.metallicConstant = 0.0f;
+  cloudOpaqueInfo.useDrawCallAlphaState = FALSE;
+  cloudOpaqueInfo.alphaTestType = 4;
+  cloudOpaqueInfo.alphaReferenceValue = 2;
+
+  remixapi_MaterialInfo cloudMaterialInfo {};
+  cloudMaterialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+  cloudMaterialInfo.pNext = &cloudOpaqueInfo;
+  cloudMaterialInfo.hash = kCloudMaterialHash;
+  cloudMaterialInfo.albedoTexture = cloudTexturePath_.c_str();
+  cloudMaterialInfo.emissiveIntensity = 0.0f;
+  cloudMaterialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+  cloudMaterialInfo.filterMode = 0;
+  cloudMaterialInfo.wrapModeU = 1;
+  cloudMaterialInfo.wrapModeV = 1;
+
+  const remixapi_ErrorCode cloudResult = remix_.CreateMaterial(&cloudMaterialInfo, &cloudMaterialHandle_);
+  if (cloudResult != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMaterial failed: " + errorCodeToString(cloudResult));
+    log("Cloud material unavailable; cloud layer will be skipped");
+    cloudMaterialHandle_ = nullptr;
+  } else {
+    log("Initialized cloud material from " + cloudTexturePath_.string());
+  }
   return opaqueCreated;
 }
 
 void RemixRenderer::destroyTerrainMaterials() {
+  destroyCloudMesh();
+
+  if (remix_.DestroyMaterial != nullptr && cloudMaterialHandle_ != nullptr) {
+    remix_.DestroyMaterial(cloudMaterialHandle_);
+    cloudMaterialHandle_ = nullptr;
+  }
+
   if (remix_.DestroyMaterial == nullptr) {
     terrainMaterialHandles_ = {};
     return;
@@ -798,6 +1548,72 @@ void RemixRenderer::destroyTerrainMaterials() {
       materialHandle = nullptr;
     }
   }
+}
+
+bool RemixRenderer::rebuildCloudMesh(
+    bool fancy,
+    float cameraX,
+    float cameraY,
+    float cameraZ,
+    float cloudHeight,
+    float cloudScroll,
+    float colorR,
+    float colorG,
+    float colorB) {
+  if (cloudMaterialHandle_ == nullptr) {
+    destroyCloudMesh();
+    return true;
+  }
+
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  vertices.reserve(fancy ? 4096 : 2048);
+  indices.reserve(fancy ? 6144 : 3072);
+
+  if (fancy) {
+    appendFancyCloudGeometry(cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB, vertices, indices);
+  } else {
+    appendFastCloudGeometry(cameraX, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB, vertices, indices);
+  }
+
+  if (indices.empty()) {
+    destroyCloudMesh();
+    return true;
+  }
+
+  remixapi_MeshInfoSurfaceTriangles surface {};
+  surface.vertices_values = vertices.data();
+  surface.vertices_count = vertices.size();
+  surface.indices_values = indices.data();
+  surface.indices_count = indices.size();
+  surface.skinning_hasvalue = FALSE;
+  surface.material = cloudMaterialHandle_;
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeCloudMeshHash(nextCloudMeshHash_++);
+  meshInfo.surfaces_values = &surface;
+  meshInfo.surfaces_count = 1;
+
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  destroyCloudMesh();
+  cloudMeshHandle_ = newMeshHandle;
+  cloudQuadCount_ = indices.size() / 6;
+  return true;
+}
+
+void RemixRenderer::destroyCloudMesh() {
+  if (cloudMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(cloudMeshHandle_);
+  }
+  cloudMeshHandle_ = nullptr;
+  cloudQuadCount_ = 0;
 }
 
 void RemixRenderer::resetLoadedRemix() {
@@ -871,6 +1687,9 @@ bool RemixRenderer::rebuildChunkMesh(
         ? block.materialClass
         : kOpaqueTerrainMaterialClass;
     cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
+    cells[occupancyIndex].liquidVisibilityMask = block.liquidVisibilityMask;
+    cells[occupancyIndex].liquidHeights = block.liquidHeights;
+    cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
     cells[occupancyIndex].blockColor = block.blockColor;
   }
 
@@ -947,6 +1766,18 @@ bool RemixRenderer::rebuildChunkMeshFromData(
         const std::size_t materialClass = cell.materialClass < kTerrainMaterialClassCount
           ? cell.materialClass
           : kOpaqueTerrainMaterialClass;
+
+        if (materialClass == kWaterTerrainMaterialClass) {
+          SurfaceBuildBuffers& waterSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendWaterGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              waterSurface.vertices,
+              waterSurface.indices);
+          continue;
+        }
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
           const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
@@ -1112,9 +1943,9 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
-  if (chunkMeshes_.empty()) {
+  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr) {
     if (presentedFrames_ < 4) {
-      log("No captured chunk meshes available yet");
+      log("No captured scene meshes available yet");
     }
     ++presentedFrames_;
     return true;
@@ -1122,6 +1953,7 @@ bool RemixRenderer::drawCapturedGeometry() {
 
   std::size_t submittedChunks = 0;
   std::size_t submittedBlocks = 0;
+  std::size_t submittedCloudQuads = 0;
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.meshHandle == nullptr) {
       continue;
@@ -1136,6 +1968,15 @@ bool RemixRenderer::drawCapturedGeometry() {
     blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
     blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
     blendInfo.isVertexColorBakedLighting = FALSE;
+    if (chunkKey.renderPass == 1) {
+      blendInfo.alphaBlendEnabled = TRUE;
+      blendInfo.srcColorBlendFactor = 6;
+      blendInfo.dstColorBlendFactor = 7;
+      blendInfo.colorBlendOp = 0;
+      blendInfo.srcAlphaBlendFactor = 1;
+      blendInfo.dstAlphaBlendFactor = 0;
+      blendInfo.alphaBlendOp = 0;
+    }
 
     remixapi_InstanceInfo instanceInfo {};
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
@@ -1146,7 +1987,7 @@ bool RemixRenderer::drawCapturedGeometry() {
         static_cast<float>(chunkKey.originX),
         static_cast<float>(chunkKey.originY),
         static_cast<float>(chunkKey.originZ));
-    instanceInfo.doubleSided = FALSE;
+    instanceInfo.doubleSided = chunkKey.renderPass == 1 ? TRUE : FALSE;
 
     const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -1158,18 +1999,56 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedBlocks += meshData.blockCount;
   }
 
+  if (cloudMeshHandle_ != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureAlphaOperation = kRtTextureOpModulate;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+    blendInfo.alphaBlendEnabled = TRUE;
+    blendInfo.srcColorBlendFactor = 6;
+    blendInfo.dstColorBlendFactor = 7;
+    blendInfo.colorBlendOp = 0;
+    blendInfo.srcAlphaBlendFactor = 1;
+    blendInfo.dstAlphaBlendFactor = 0;
+    blendInfo.alphaBlendOp = 0;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = cloudMeshHandle_;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+
+    submittedCloudQuads = cloudQuadCount_;
+  }
+
   if (presentedFrames_ < 8
       || submittedChunks != lastSubmittedChunkCount_
-      || submittedBlocks != lastSubmittedBlockCount_) {
+      || submittedBlocks != lastSubmittedBlockCount_
+      || submittedCloudQuads != lastSubmittedCloudQuadCount_) {
     std::ostringstream stream;
     stream << "Submitted " << submittedChunks
            << " chunk meshes covering " << submittedBlocks
-           << " blocks";
+           << " blocks and " << submittedCloudQuads
+           << " cloud quads";
     log(stream.str());
   }
 
   lastSubmittedChunkCount_ = submittedChunks;
   lastSubmittedBlockCount_ = submittedBlocks;
+  lastSubmittedCloudQuadCount_ = submittedCloudQuads;
   ++presentedFrames_;
   return true;
 }

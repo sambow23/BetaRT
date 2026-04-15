@@ -64,6 +64,33 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCamera(
   RemixRenderer::instance().updateCamera(camera);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCloudLayer(
+    JNIEnv*, jclass,
+    jboolean fancy,
+    jfloat cameraX,
+    jfloat cameraY,
+    jfloat cameraZ,
+    jfloat cloudHeight,
+    jfloat cloudScroll,
+    jfloat colorR,
+    jfloat colorG,
+    jfloat colorB) {
+  RemixRenderer::instance().updateCloudLayer(
+      fancy == JNI_TRUE,
+      cameraX,
+      cameraY,
+      cameraZ,
+      cloudHeight,
+      cloudScroll,
+      colorR,
+      colorG,
+      colorB);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIEnv*, jclass) {
+  RemixRenderer::instance().clearCloudLayer();
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     JNIEnv*, jclass,
     jint originX, jint originY, jint originZ,
@@ -80,7 +107,13 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
     jint blockId, jint blockMetadata, jint renderType,
     jint texture0, jint texture1, jint texture2,
   jint texture3, jint texture4, jint texture5,
-  jint blockColorRgb) {
+  jint blockColorRgb,
+  jint liquidVisibilityMask,
+  jfloat liquidHeight0,
+  jfloat liquidHeight1,
+  jfloat liquidHeight2,
+  jfloat liquidHeight3,
+  jfloat liquidFlowAngle) {
   RemixRenderer::instance().captureBlock(
       blockX,
       blockY,
@@ -94,7 +127,13 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
       texture3,
       texture4,
       texture5,
-      blockColorRgb);
+      blockColorRgb,
+      liquidVisibilityMask,
+      liquidHeight0,
+      liquidHeight1,
+      liquidHeight2,
+      liquidHeight3,
+      liquidFlowAngle);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(

@@ -2,9 +2,12 @@ package mcrtx.bridge;
 
 public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
+    private static final int WATER_STILL_BLOCK_ID = 8;
+    private static final int WATER_FLOWING_BLOCK_ID = 9;
 
     private static volatile boolean initialized;
     private static boolean chunkBuildCaptureActive;
+    private static int activeChunkRenderPass;
     private static int capturedChunkBlocks;
     private static String lastError = "";
     private static String lastReportedMessage = "";
@@ -148,6 +151,38 @@ public final class MinecraftRenderHooks {
         updateCamera(cameraPose);
     }
 
+    public static synchronized void updateCloudLayer(
+            boolean fancy,
+            float cameraX,
+            float cameraY,
+            float cameraZ,
+            float cloudHeight,
+            float cloudScroll,
+            float colorR,
+            float colorG,
+            float colorB) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nUpdateCloudLayer(
+                fancy,
+                cameraX,
+                cameraY,
+                cameraZ,
+                cloudHeight,
+                cloudScroll,
+                colorR,
+                colorG,
+                colorB);
+    }
+
+    public static synchronized void clearCloudLayer() {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nClearCloudLayer();
+    }
+
     public static synchronized boolean present() {
         return initialized && RemixBridgeNative.nPresent();
     }
@@ -162,12 +197,14 @@ public final class MinecraftRenderHooks {
             int renderPass) {
         if (!initialized) {
             chunkBuildCaptureActive = false;
+            activeChunkRenderPass = 0;
             capturedChunkBlocks = 0;
             return false;
         }
 
         boolean active = RemixBridgeNative.nBeginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
         chunkBuildCaptureActive = active;
+        activeChunkRenderPass = active ? renderPass : 0;
         capturedChunkBlocks = 0;
         return active;
     }
@@ -185,11 +222,17 @@ public final class MinecraftRenderHooks {
             int texture3,
             int texture4,
             int texture5,
-            int blockColorRgb) {
+            int blockColorRgb,
+            int liquidVisibilityMask,
+            float liquidHeight0,
+            float liquidHeight1,
+            float liquidHeight2,
+            float liquidHeight3,
+            float liquidFlowAngle) {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
-        if (blockId <= 0 || renderType != 0 || capturedChunkBlocks >= MAX_CAPTURED_BLOCKS_PER_CHUNK) {
+        if (!shouldCaptureBlock(blockId, renderType) || capturedChunkBlocks >= MAX_CAPTURED_BLOCKS_PER_CHUNK) {
             return;
         }
         capturedChunkBlocks += 1;
@@ -206,7 +249,13 @@ public final class MinecraftRenderHooks {
                 texture3,
                 texture4,
                 texture5,
-                blockColorRgb);
+                blockColorRgb,
+                liquidVisibilityMask,
+                liquidHeight0,
+                liquidHeight1,
+                liquidHeight2,
+                liquidHeight3,
+                liquidFlowAngle);
     }
 
     public static void endChunkBuild(boolean emittedGeometry) {
@@ -215,7 +264,21 @@ public final class MinecraftRenderHooks {
         }
         RemixBridgeNative.nEndChunkBuild(emittedGeometry && capturedChunkBlocks > 0);
         chunkBuildCaptureActive = false;
+        activeChunkRenderPass = 0;
         capturedChunkBlocks = 0;
+    }
+
+    private static boolean shouldCaptureBlock(int blockId, int renderType) {
+        if (blockId <= 0) {
+            return false;
+        }
+        if (activeChunkRenderPass == 0) {
+            return renderType == 0;
+        }
+        if (activeChunkRenderPass == 1) {
+            return renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID);
+        }
+        return false;
     }
 
     public static synchronized boolean isInitialized() {

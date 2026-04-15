@@ -38,6 +38,9 @@ struct ChunkBlockCell {
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
   std::uint8_t blockId {0};
+  std::uint8_t liquidVisibilityMask {0x3F};
+  std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
+  float liquidFlowAngle {-1000.0f};
   std::uint32_t blockColor {0x00FFFFFFu};
 };
 
@@ -47,6 +50,9 @@ struct CapturedBlockInstance {
   int blockMetadata {0};
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
+  std::uint8_t liquidVisibilityMask {0x3F};
+  std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
+  float liquidFlowAngle {-1000.0f};
   std::uint32_t blockColor {0x00FFFFFFu};
 };
 
@@ -87,6 +93,17 @@ public:
 
   void resize(std::uint32_t width, std::uint32_t height);
   void updateCamera(const CameraState& camera);
+    void updateCloudLayer(
+      bool fancy,
+      float cameraX,
+      float cameraY,
+      float cameraZ,
+      float cloudHeight,
+      float cloudScroll,
+      float colorR,
+      float colorG,
+      float colorB);
+    void clearCloudLayer();
   bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
   void captureBlock(
       int blockX,
@@ -101,7 +118,13 @@ public:
       int texture3,
       int texture4,
       int texture5,
-      int blockColorRgb);
+      int blockColorRgb,
+      int liquidVisibilityMask,
+      float liquidHeight0,
+      float liquidHeight1,
+      float liquidHeight2,
+      float liquidHeight3,
+      float liquidFlowAngle);
   void endChunkBuild(bool emittedGeometry);
   bool present();
 
@@ -124,9 +147,21 @@ private:
   void destroyTerrainMaterials();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
+  bool rebuildCloudMesh(
+      bool fancy,
+      float cameraX,
+      float cameraY,
+      float cameraZ,
+      float cloudHeight,
+      float cloudScroll,
+      float colorR,
+      float colorG,
+      float colorB);
   bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
+  static std::filesystem::path resolveCloudTexturePath();
   static std::filesystem::path resolveTerrainAtlasPath();
+  void destroyCloudMesh();
   void destroyChunkMesh(ChunkMeshData& meshData);
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   bool drawCapturedGeometry();
@@ -152,8 +187,14 @@ private:
   std::uint64_t presentedFrames_ {0};
   std::size_t lastSubmittedChunkCount_ {0};
   std::size_t lastSubmittedBlockCount_ {0};
+  std::size_t lastSubmittedCloudQuadCount_ {0};
   std::filesystem::path terrainAtlasPath_ {};
-  std::array<remixapi_MaterialHandle, 2> terrainMaterialHandles_ {};
+  std::filesystem::path cloudTexturePath_ {};
+  std::array<remixapi_MaterialHandle, 3> terrainMaterialHandles_ {};
+  remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
+  remixapi_MeshHandle cloudMeshHandle_ {nullptr};
+  std::uint64_t nextCloudMeshHash_ {1};
+  std::size_t cloudQuadCount_ {0};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::string lastError_;
 };

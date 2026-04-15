@@ -30,6 +30,7 @@ public final class ClientPatchTool {
     private static final String MOUSE_CLASS = "org/lwjgl/input/Mouse";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
+    private static final String WORLD_RENDERER_CLASS = "n";
 
     private ClientPatchTool() {
     }
@@ -60,6 +61,8 @@ public final class ClientPatchTool {
                     content = patchPx(content);
                 } else if (entryName.equals(CHUNK_RENDERER_CLASS + ".class")) {
                     content = patchDk(content);
+                } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
+                    content = patchN(content);
                 }
 
                 JarEntry newEntry = new JarEntry(entryName);
@@ -101,6 +104,18 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("()V")) {
                 patchDkChunkBuild(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchN(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("b") && method.desc.equals("(F)V")) {
+                patchCloudRender(method, false);
+            } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
+                patchCloudRender(method, true);
             }
         }
         return writeClass(classNode);
@@ -193,6 +208,10 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchCloudRender(MethodNode method, boolean fancy) {
+        method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall(fancy));
+    }
+
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {
         if (!(node instanceof MethodInsnNode methodInsnNode)) {
             return false;
@@ -266,6 +285,25 @@ public final class ClientPatchTool {
     private static InsnList staticHelperCall(String name, String descriptor) {
         InsnList instructions = new InsnList();
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, name, descriptor, false));
+        return instructions;
+    }
+
+    private static InsnList cloudRenderCall(boolean fancy) {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "t", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "k", "Lfd;"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "x", "I"));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 1));
+        instructions.add(new InsnNode(fancy ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onCloudRender",
+            "(Lnet/minecraft/client/Minecraft;Lfd;IFZ)V",
+                false));
         return instructions;
     }
 
