@@ -38,6 +38,8 @@ struct ChunkBlockCell {
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
   std::uint8_t blockId {0};
+  std::uint8_t blockMetadata {0};
+  std::uint8_t renderType {0};
   std::uint8_t liquidVisibilityMask {0x3F};
   std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
   float liquidFlowAngle {-1000.0f};
@@ -48,6 +50,7 @@ struct CapturedBlockInstance {
   int position[3] {0, 0, 0};
   int blockId {0};
   int blockMetadata {0};
+  int renderType {0};
   std::array<std::uint8_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
   std::uint8_t liquidVisibilityMask {0x3F};
@@ -74,6 +77,27 @@ struct ChunkKeyHash {
   std::size_t operator()(const ChunkKey& key) const noexcept;
 };
 
+struct WorldBlockPosition {
+  int x {0};
+  int y {0};
+  int z {0};
+
+  bool operator==(const WorldBlockPosition& other) const noexcept {
+    return x == other.x && y == other.y && z == other.z;
+  }
+};
+
+struct WorldBlockPositionHash {
+  std::size_t operator()(const WorldBlockPosition& position) const noexcept;
+};
+
+struct TorchLightPlacement {
+  WorldBlockPosition blockPosition {};
+  float lightX {0.0f};
+  float lightY {0.0f};
+  float lightZ {0.0f};
+};
+
 struct ChunkMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
@@ -81,6 +105,7 @@ struct ChunkMeshData {
   std::size_t blockCount {0};
   std::array<std::uint8_t, 4096> occupancy {};
   std::array<ChunkBlockCell, 4096> cells {};
+  std::vector<TorchLightPlacement> torchLights {};
   bool hasOccupancy {false};
 };
 
@@ -194,6 +219,9 @@ private:
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   remixapi_MaterialHandle acquireDynamicEntityMaterial(const std::string& texturePath);
+  bool createTorchLight(const TorchLightPlacement& placement);
+  bool updateTorchLight(const TorchLightPlacement& placement);
+  bool reconcileChunkTorchLights(ChunkMeshData& meshData, const std::vector<TorchLightPlacement>& desiredTorchLights);
   bool rebuildCloudMesh(
       bool fancy,
       float cameraX,
@@ -211,6 +239,9 @@ private:
   static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
   static std::filesystem::path resolveTerrainAtlasPath();
   void destroyCloudMesh();
+  void destroyChunkMeshHandle(ChunkMeshData& meshData);
+  void destroyChunkTorchLights(ChunkMeshData& meshData);
+  void destroyTorchLight(const WorldBlockPosition& position);
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
@@ -240,6 +271,7 @@ private:
   std::size_t lastSubmittedBlockCount_ {0};
   std::size_t lastSubmittedCloudQuadCount_ {0};
   std::size_t lastSubmittedDynamicEntityQuadCount_ {0};
+  std::size_t lastSubmittedTorchLightCount_ {0};
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::array<remixapi_MaterialHandle, 3> terrainMaterialHandles_ {};
@@ -252,6 +284,7 @@ private:
   std::unordered_map<int, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
+  std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
   std::string lastError_;
 };
 

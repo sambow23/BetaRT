@@ -334,7 +334,7 @@ public final class MinecraftRenderHooks {
             return false;
         }
         if (activeChunkRenderPass == 0) {
-            return renderType == 0;
+            return renderType == 0 || renderType == 1 || renderType == 2 || renderType == 8 || renderType == 9 || renderType == 11;
         }
         if (activeChunkRenderPass == 1) {
             return renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID);

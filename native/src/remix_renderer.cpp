@@ -22,8 +22,22 @@ constexpr std::size_t kTerrainMaterialClassCount = 3;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
 constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
+constexpr std::uint8_t kCubeBlockRenderType = 0;
+constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
+constexpr std::uint8_t kTorchBlockRenderType = 2;
+constexpr std::uint8_t kLadderBlockRenderType = 8;
+constexpr std::uint8_t kRailBlockRenderType = 9;
+constexpr std::uint8_t kFenceBlockRenderType = 11;
+constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
+constexpr std::uint8_t kTallGrassBlockId = 31;
+constexpr std::uint8_t kTorchBlockId = 50;
+constexpr std::uint8_t kLadderBlockId = 65;
+constexpr std::uint8_t kGoldenRailBlockId = 27;
+constexpr std::uint8_t kDetectorRailBlockId = 28;
+constexpr std::uint8_t kRailBlockId = 66;
+constexpr std::uint8_t kFenceBlockId = 85;
 constexpr std::uint8_t kWaterStillBlockId = 8;
 constexpr std::uint8_t kWaterFlowingBlockId = 9;
 constexpr std::uint8_t kGrassOverlayTerrainTile = 38;
@@ -40,6 +54,7 @@ constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
+constexpr std::uint64_t kTorchLightHashSeed = 0x4D435254584C4954ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
 constexpr std::uint32_t kRtTextureArgTexture = 1;
@@ -56,6 +71,13 @@ constexpr int kFancyCloudRadiusCells = 3;
 constexpr float kFancyCloudThickness = 4.0f;
 constexpr float kFancyCloudUvScale = 1.0f / 256.0f;
 constexpr float kFancyCloudInset = 1.0f / 1024.0f;
+constexpr float kTorchLightOffsetX = 0.5f;
+constexpr float kTorchLightOffsetY = 0.70f;
+constexpr float kTorchLightOffsetZ = 0.5f;
+constexpr float kTorchLightRadius = 0.04f;
+constexpr float kWallTorchLightHorizontalOffset = 0.27f;
+constexpr float kWallTorchLightVerticalOffset = 0.22f;
+constexpr remixapi_Float3D kTorchLightRadiance = {180.0f, 110.5f, 40.5f};
 
 struct SurfaceBuildBuffers {
   remixapi_MaterialHandle materialHandle {nullptr};
@@ -205,12 +227,50 @@ ChunkKey makeChunkKey(const ChunkBuildState& chunkBuild) {
   };
 }
 
-bool shouldCaptureBlock(int blockId, int renderType) {
-  return blockId > 0 && renderType == 0;
-}
-
 bool isWaterBlock(int blockId) {
   return blockId == kWaterStillBlockId || blockId == kWaterFlowingBlockId;
+}
+
+bool isCrossedQuadRenderType(int renderType) {
+  return renderType == kCrossedQuadBlockRenderType;
+}
+
+bool isTorchRenderType(int renderType) {
+  return renderType == kTorchBlockRenderType;
+}
+
+bool isLadderRenderType(int renderType) {
+  return renderType == kLadderBlockRenderType;
+}
+
+bool isRailRenderType(int renderType) {
+  return renderType == kRailBlockRenderType;
+}
+
+bool isFenceRenderType(int renderType) {
+  return renderType == kFenceBlockRenderType;
+}
+
+bool isRailBlockId(int blockId) {
+  return blockId == kGoldenRailBlockId || blockId == kDetectorRailBlockId || blockId == kRailBlockId;
+}
+
+bool isSupportedPass0RenderType(int renderType) {
+  switch (renderType) {
+    case kCubeBlockRenderType:
+    case kCrossedQuadBlockRenderType:
+    case kTorchBlockRenderType:
+    case kLadderBlockRenderType:
+    case kRailBlockRenderType:
+    case kFenceBlockRenderType:
+      return true;
+    default:
+      return false;
+  }
+}
+
+bool shouldCaptureBlock(int blockId, int renderType) {
+  return blockId > 0 && isSupportedPass0RenderType(renderType);
 }
 
 bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
@@ -218,15 +278,22 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
     return false;
   }
   if (renderPass == 0) {
-    return renderType == 0;
+    return isSupportedPass0RenderType(renderType);
   }
   if (renderPass == 1) {
-    return renderType == 4 && isWaterBlock(blockId);
+    return renderType == kLiquidBlockRenderType && isWaterBlock(blockId);
   }
   return false;
 }
 
-bool usesCutoutMaterialForBlock(int blockId) {
+bool usesCutoutMaterialForBlock(int blockId, int renderType) {
+  if (isCrossedQuadRenderType(renderType)
+      || isTorchRenderType(renderType)
+      || isLadderRenderType(renderType)
+      || isRailRenderType(renderType)) {
+    return true;
+  }
+
   switch (blockId) {
     case 18:
     case 20:
@@ -237,11 +304,11 @@ bool usesCutoutMaterialForBlock(int blockId) {
   }
 }
 
-std::uint8_t materialClassForBlock(int blockId) {
+std::uint8_t materialClassForBlock(int blockId, int renderType) {
   if (isWaterBlock(blockId)) {
     return kWaterTerrainMaterialClass;
   }
-  return usesCutoutMaterialForBlock(blockId) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
+  return usesCutoutMaterialForBlock(blockId, renderType) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
 }
 
 remixapi_Transform makeTranslationTransform(float x, float y, float z) {
@@ -266,6 +333,74 @@ std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
 
 std::uint64_t makeDynamicEntityMeshHash(std::uint64_t sequence) {
   return 0x4D43525458454E00ull | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
+std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value) {
+  hash ^= static_cast<std::uint64_t>(value) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
+  return hash;
+}
+
+std::uint64_t makeTorchLightHash(const WorldBlockPosition& position) {
+  std::uint64_t hash = kTorchLightHashSeed;
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.x));
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.y));
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.z));
+  return hash;
+}
+
+bool containsWorldBlockPosition(const std::vector<WorldBlockPosition>& positions, const WorldBlockPosition& position) {
+  return std::find(positions.begin(), positions.end(), position) != positions.end();
+}
+
+const TorchLightPlacement* findTorchLightPlacement(
+    const std::vector<TorchLightPlacement>& placements,
+    const WorldBlockPosition& position) {
+  const auto it = std::find_if(
+      placements.begin(),
+      placements.end(),
+      [&position](const TorchLightPlacement& placement) {
+        return placement.blockPosition == position;
+      });
+  return it == placements.end() ? nullptr : &(*it);
+}
+
+TorchLightPlacement makeTorchLightPlacement(
+    const ChunkBlockCell& cell,
+    int worldX,
+    int worldY,
+    int worldZ) {
+  TorchLightPlacement placement;
+  placement.blockPosition = WorldBlockPosition {
+      .x = worldX,
+      .y = worldY,
+      .z = worldZ,
+  };
+  placement.lightX = static_cast<float>(worldX) + kTorchLightOffsetX;
+  placement.lightY = static_cast<float>(worldY) + kTorchLightOffsetY;
+  placement.lightZ = static_cast<float>(worldZ) + kTorchLightOffsetZ;
+
+  switch (cell.blockMetadata & 7) {
+    case 1:
+      placement.lightX -= kWallTorchLightHorizontalOffset;
+      placement.lightY += kWallTorchLightVerticalOffset;
+      break;
+    case 2:
+      placement.lightX += kWallTorchLightHorizontalOffset;
+      placement.lightY += kWallTorchLightVerticalOffset;
+      break;
+    case 3:
+      placement.lightZ -= kWallTorchLightHorizontalOffset;
+      placement.lightY += kWallTorchLightVerticalOffset;
+      break;
+    case 4:
+      placement.lightZ += kWallTorchLightHorizontalOffset;
+      placement.lightY += kWallTorchLightVerticalOffset;
+      break;
+    default:
+      break;
+  }
+
+  return placement;
 }
 
 std::uint8_t clampColorChannel(float value) {
@@ -295,6 +430,10 @@ std::uint64_t computeChunkFingerprint(
     fingerprint ^= static_cast<std::uint64_t>(cells[index].materialClass);
     fingerprint *= 1099511628211ull;
     fingerprint ^= static_cast<std::uint64_t>(cells[index].blockId);
+    fingerprint *= 1099511628211ull;
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockMetadata);
+    fingerprint *= 1099511628211ull;
+    fingerprint ^= static_cast<std::uint64_t>(cells[index].renderType);
     fingerprint *= 1099511628211ull;
     fingerprint ^= static_cast<std::uint64_t>(cells[index].liquidVisibilityMask);
     fingerprint *= 1099511628211ull;
@@ -361,6 +500,31 @@ void appendFaceGeometry(
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);
 
+  void appendBoundsFaceGeometry(
+    int faceIndex,
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    std::uint8_t terrainTileIndex,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+  void appendBoxGeometry(
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    const std::array<std::uint8_t, 6>& terrainTiles,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
 std::uint32_t faceTintColorForBlock(std::uint8_t blockId, int minecraftSide, std::uint32_t blockColor) {
   if (blockId == kGrassBlockId && minecraftSide == 1) {
     return blockColor;
@@ -383,6 +547,10 @@ bool usesFancyLeavesTexture(const ChunkBlockCell& cell) {
 }
 
 bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockCell& neighborCell) {
+  if (cell.renderType != kCubeBlockRenderType || neighborCell.renderType != kCubeBlockRenderType) {
+    return false;
+  }
+
   if (cell.blockId == kLeavesBlockId
       && neighborCell.blockId == kLeavesBlockId
       && usesFancyLeavesTexture(cell)) {
@@ -496,6 +664,778 @@ void appendCloudQuad(
 
   for (const std::uint32_t baseIndex : kFaceIndices) {
     indices.push_back(baseVertex + baseIndex);
+  }
+}
+
+void appendCrossedQuadSheet(
+    float x0,
+    float y0,
+    float z0,
+    float u0,
+    float v0,
+    float x1,
+    float y1,
+    float z1,
+    float u1,
+    float v1,
+    float x2,
+    float y2,
+    float z2,
+    float u2,
+    float v2,
+    float x3,
+    float y3,
+    float z3,
+    float u3,
+    float v3,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+  appendCloudQuad(
+      x0,
+      y0,
+      z0,
+      u0,
+      v0,
+      x1,
+      y1,
+      z1,
+      u1,
+      v1,
+      x2,
+      y2,
+      z2,
+      u2,
+      v2,
+      x3,
+      y3,
+      z3,
+      u3,
+      v3,
+      normal[0],
+      normal[1],
+      normal[2],
+      vertexColor,
+      vertices,
+      indices);
+  appendCloudQuad(
+      x3,
+      y3,
+      z3,
+      u3,
+      v3,
+      x2,
+      y2,
+      z2,
+      u2,
+      v2,
+      x1,
+      y1,
+      z1,
+      u1,
+      v1,
+      x0,
+      y0,
+      z0,
+      u0,
+      v0,
+      -normal[0],
+      -normal[1],
+      -normal[2],
+      vertexColor,
+      vertices,
+      indices);
+}
+
+void appendCrossedQuadGeometry(
+    const ChunkBlockCell& cell,
+  int worldX,
+  int worldY,
+  int worldZ,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+
+  float offsetX = 0.0f;
+  float offsetY = 0.0f;
+  float offsetZ = 0.0f;
+  if (cell.blockId == kTallGrassBlockId) {
+    std::uint64_t seed = static_cast<std::uint64_t>(worldX * 3129871)
+      ^ static_cast<std::uint64_t>(worldZ) * 116129781ull
+      ^ static_cast<std::uint64_t>(worldY);
+    seed = seed * seed * 42317861ull + seed * 11ull;
+    offsetX = ((static_cast<float>((seed >> 16) & 0x0F) / 15.0f) - 0.5f) * 0.5f;
+    offsetY = ((static_cast<float>((seed >> 20) & 0x0F) / 15.0f) - 1.0f) * 0.2f;
+    offsetZ = ((static_cast<float>((seed >> 24) & 0x0F) / 15.0f) - 0.5f) * 0.5f;
+  }
+
+  const float centerX = localX + 0.5f + offsetX;
+  const float baseY = localY + offsetY;
+  const float centerZ = localZ + 0.5f + offsetZ;
+  const float minX = centerX - 0.45f;
+  const float maxX = centerX + 0.45f;
+  const float minZ = centerZ - 0.45f;
+  const float maxZ = centerZ + 0.45f;
+  const std::uint32_t vertexColor = packVertexColor(cell.blockColor);
+
+  appendCrossedQuadSheet(
+      minX,
+      baseY + 1.0f,
+      minZ,
+      tileMinU,
+      tileMinV,
+      minX,
+      baseY + 0.0f,
+      minZ,
+      tileMinU,
+      tileMaxV,
+      maxX,
+      baseY + 0.0f,
+      maxZ,
+      tileMaxU,
+      tileMaxV,
+      maxX,
+      baseY + 1.0f,
+      maxZ,
+      tileMaxU,
+      tileMinV,
+      vertexColor,
+      vertices,
+      indices);
+  appendCrossedQuadSheet(
+      minX,
+      baseY + 1.0f,
+      maxZ,
+      tileMinU,
+      tileMinV,
+      minX,
+      baseY + 0.0f,
+      maxZ,
+      tileMinU,
+      tileMaxV,
+      maxX,
+      baseY + 0.0f,
+      minZ,
+      tileMaxU,
+      tileMaxV,
+      maxX,
+      baseY + 1.0f,
+      minZ,
+      tileMaxU,
+      tileMinV,
+      vertexColor,
+      vertices,
+      indices);
+}
+
+void appendBoundsFaceGeometry(
+    int faceIndex,
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    std::uint8_t terrainTileIndex,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint32_t baseVertex = static_cast<std::uint32_t>(vertices.size());
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float usableTileSize = kAtlasTileSizePixels - kAtlasUvInsetPixels;
+  const float scaleU = usableTileSize / kAtlasSizePixels;
+  const float scaleV = usableTileSize / kAtlasSizePixels;
+  const float blockOriginX = std::floor(minX);
+  const float blockOriginY = std::floor(minY);
+  const float blockOriginZ = std::floor(minZ);
+
+  for (int vertexIndex = 0; vertexIndex < 4; ++vertexIndex) {
+    remixapi_HardcodedVertex vertex {};
+    const float px = kFaceVertexOffsets[faceIndex][vertexIndex][0] == 0.0f ? minX : maxX;
+    const float py = kFaceVertexOffsets[faceIndex][vertexIndex][1] == 0.0f ? minY : maxY;
+    const float pz = kFaceVertexOffsets[faceIndex][vertexIndex][2] == 0.0f ? minZ : maxZ;
+    const float relX = std::clamp(px - blockOriginX, 0.0f, 1.0f);
+    const float relY = std::clamp(py - blockOriginY, 0.0f, 1.0f);
+    const float relZ = std::clamp(pz - blockOriginZ, 0.0f, 1.0f);
+    vertex.position[0] = px;
+    vertex.position[1] = py;
+    vertex.position[2] = pz;
+    vertex.normal[0] = kFaceNormals[faceIndex][0];
+    vertex.normal[1] = kFaceNormals[faceIndex][1];
+    vertex.normal[2] = kFaceNormals[faceIndex][2];
+
+    float u = tileMinU;
+    float v = tileMinV;
+    if (faceIndex == 0) {
+      u = tileMinU + (1.0f - relX) * scaleU;
+      v = tileMinV + (1.0f - relY) * scaleV;
+    } else if (faceIndex == 1) {
+      u = tileMinU + relX * scaleU;
+      v = tileMinV + (1.0f - relY) * scaleV;
+    } else if (faceIndex == 2) {
+      u = tileMinU + relZ * scaleU;
+      v = tileMinV + (1.0f - relY) * scaleV;
+    } else if (faceIndex == 3) {
+      u = tileMinU + (1.0f - relZ) * scaleU;
+      v = tileMinV + (1.0f - relY) * scaleV;
+    } else if (faceIndex == 4 || faceIndex == 5) {
+      u = tileMinU + relX * scaleU;
+      v = tileMinV + relZ * scaleV;
+    }
+
+    vertex.texcoord[0] = u;
+    vertex.texcoord[1] = v;
+    vertex.color = vertexColor;
+    vertices.push_back(vertex);
+  }
+
+  for (const std::uint32_t baseIndex : kFaceIndices) {
+    indices.push_back(baseVertex + baseIndex);
+  }
+}
+
+void appendBoxGeometry(
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    const std::array<std::uint8_t, 6>& terrainTiles,
+    std::uint32_t vertexColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+    const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
+    appendBoundsFaceGeometry(
+        faceIndex,
+        minX,
+        minY,
+        minZ,
+        maxX,
+        maxY,
+        maxZ,
+        terrainTiles[minecraftSide],
+        vertexColor,
+        vertices,
+        indices);
+  }
+}
+
+void appendTorchGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + 15.99f) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + 15.99f) / kAtlasSizePixels;
+  const float capMinU = tileMinU + 7.0f / 256.0f;
+  const float capMaxU = tileMinU + 9.0f / 256.0f;
+  const float capMinV = tileMinV + 6.0f / 256.0f;
+  const float capMaxV = tileMinV + 8.0f / 256.0f;
+
+  float anchorX = localX;
+  float anchorY = localY;
+  float anchorZ = localZ;
+  float leanX = 0.0f;
+  float leanZ = 0.0f;
+  const int metadata = cell.blockMetadata & 7;
+  if (metadata == 1) {
+    anchorX -= 0.1f;
+    anchorY += 0.2f;
+    leanX = -0.4f;
+  } else if (metadata == 2) {
+    anchorX += 0.1f;
+    anchorY += 0.2f;
+    leanX = 0.4f;
+  } else if (metadata == 3) {
+    anchorY += 0.2f;
+    anchorZ -= 0.1f;
+    leanZ = -0.4f;
+  } else if (metadata == 4) {
+    anchorY += 0.2f;
+    anchorZ += 0.1f;
+    leanZ = 0.4f;
+  }
+
+  const float centerX = anchorX + 0.5f;
+  const float centerZ = anchorZ + 0.5f;
+  const float topCenterX = centerX + leanX * 0.375f;
+  const float topCenterZ = centerZ + leanZ * 0.375f;
+  const float topY = anchorY + 0.625f;
+  const float bodyTopY = anchorY + 1.0f;
+  const float bodyBottomY = anchorY + 0.0f;
+  const float halfWidth = 0.0625f;
+
+  const auto appendAutoQuad = [&vertices, &indices](
+                                  float x0,
+                                  float y0,
+                                  float z0,
+                                  float u0,
+                                  float v0,
+                                  float x1,
+                                  float y1,
+                                  float z1,
+                                  float u1,
+                                  float v1,
+                                  float x2,
+                                  float y2,
+                                  float z2,
+                                  float u2,
+                                  float v2,
+                                  float x3,
+                                  float y3,
+                                  float z3,
+                                  float u3,
+                                  float v3) {
+    const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+    appendCloudQuad(
+        x0,
+        y0,
+        z0,
+        u0,
+        v0,
+        x1,
+        y1,
+        z1,
+        u1,
+        v1,
+        x2,
+        y2,
+        z2,
+        u2,
+        v2,
+        x3,
+        y3,
+        z3,
+        u3,
+        v3,
+        normal[0],
+        normal[1],
+        normal[2],
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  };
+
+  appendAutoQuad(
+      topCenterX - halfWidth,
+      topY,
+      topCenterZ - halfWidth,
+      capMinU,
+      capMinV,
+      topCenterX - halfWidth,
+      topY,
+      topCenterZ + halfWidth,
+      capMinU,
+      capMaxV,
+      topCenterX + halfWidth,
+      topY,
+      topCenterZ + halfWidth,
+      capMaxU,
+      capMaxV,
+      topCenterX + halfWidth,
+      topY,
+      topCenterZ - halfWidth,
+      capMaxU,
+      capMinV);
+
+  appendAutoQuad(
+      centerX - halfWidth,
+      bodyTopY,
+      centerZ - 0.5f,
+      tileMinU,
+      tileMinV,
+      centerX - halfWidth + leanX,
+      bodyBottomY,
+      centerZ - 0.5f + leanZ,
+      tileMinU,
+      tileMaxV,
+      centerX - halfWidth + leanX,
+      bodyBottomY,
+      centerZ + 0.5f + leanZ,
+      tileMaxU,
+      tileMaxV,
+      centerX - halfWidth,
+      bodyTopY,
+      centerZ + 0.5f,
+      tileMaxU,
+      tileMinV);
+
+  appendAutoQuad(
+      centerX + halfWidth,
+      bodyTopY,
+      centerZ + 0.5f,
+      tileMinU,
+      tileMinV,
+      centerX + halfWidth + leanX,
+      bodyBottomY,
+      centerZ + 0.5f + leanZ,
+      tileMinU,
+      tileMaxV,
+      centerX + halfWidth + leanX,
+      bodyBottomY,
+      centerZ - 0.5f + leanZ,
+      tileMaxU,
+      tileMaxV,
+      centerX + halfWidth,
+      bodyTopY,
+      centerZ - 0.5f,
+      tileMaxU,
+      tileMinV);
+
+  appendAutoQuad(
+      centerX - 0.5f,
+      bodyTopY,
+      centerZ + halfWidth,
+      tileMinU,
+      tileMinV,
+      centerX - 0.5f + leanX,
+      bodyBottomY,
+      centerZ + halfWidth + leanZ,
+      tileMinU,
+      tileMaxV,
+      centerX + 0.5f + leanX,
+      bodyBottomY,
+      centerZ + halfWidth + leanZ,
+      tileMaxU,
+      tileMaxV,
+      centerX + 0.5f,
+      bodyTopY,
+      centerZ + halfWidth,
+      tileMaxU,
+      tileMinV);
+
+  appendAutoQuad(
+      centerX + 0.5f,
+      bodyTopY,
+      centerZ - halfWidth,
+      tileMinU,
+      tileMinV,
+      centerX + 0.5f + leanX,
+      bodyBottomY,
+      centerZ - halfWidth + leanZ,
+      tileMinU,
+      tileMaxV,
+      centerX - 0.5f + leanX,
+      bodyBottomY,
+      centerZ - halfWidth + leanZ,
+      tileMaxU,
+      tileMaxV,
+      centerX - 0.5f,
+      bodyTopY,
+      centerZ - halfWidth,
+      tileMaxU,
+      tileMinV);
+}
+
+void appendLadderGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const int metadata = cell.blockMetadata & 7;
+  const float epsilon = 0.05f;
+
+  if (metadata == 5) {
+    appendCrossedQuadSheet(
+        localX + epsilon,
+        localY + 1.0f,
+        localZ + 1.0f,
+        tileMinU,
+        tileMinV,
+        localX + epsilon,
+        localY + 0.0f,
+        localZ + 1.0f,
+        tileMinU,
+        tileMaxV,
+        localX + epsilon,
+        localY + 0.0f,
+        localZ + 0.0f,
+        tileMaxU,
+        tileMaxV,
+        localX + epsilon,
+        localY + 1.0f,
+        localZ + 0.0f,
+        tileMaxU,
+        tileMinV,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  } else if (metadata == 4) {
+    appendCrossedQuadSheet(
+        localX + 1.0f - epsilon,
+        localY + 0.0f,
+        localZ + 1.0f,
+        tileMaxU,
+        tileMaxV,
+        localX + 1.0f - epsilon,
+        localY + 1.0f,
+        localZ + 1.0f,
+        tileMaxU,
+        tileMinV,
+        localX + 1.0f - epsilon,
+        localY + 1.0f,
+        localZ + 0.0f,
+        tileMinU,
+        tileMinV,
+        localX + 1.0f - epsilon,
+        localY + 0.0f,
+        localZ + 0.0f,
+        tileMinU,
+        tileMaxV,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  } else if (metadata == 3) {
+    appendCrossedQuadSheet(
+        localX + 1.0f,
+        localY + 0.0f,
+        localZ + epsilon,
+        tileMaxU,
+        tileMaxV,
+        localX + 1.0f,
+        localY + 1.0f,
+        localZ + epsilon,
+        tileMaxU,
+        tileMinV,
+        localX + 0.0f,
+        localY + 1.0f,
+        localZ + epsilon,
+        tileMinU,
+        tileMinV,
+        localX + 0.0f,
+        localY + 0.0f,
+        localZ + epsilon,
+        tileMinU,
+        tileMaxV,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  } else if (metadata == 2) {
+    appendCrossedQuadSheet(
+        localX + 1.0f,
+        localY + 1.0f,
+        localZ + 1.0f - epsilon,
+        tileMinU,
+        tileMinV,
+        localX + 1.0f,
+        localY + 0.0f,
+        localZ + 1.0f - epsilon,
+        tileMinU,
+        tileMaxV,
+        localX + 0.0f,
+        localY + 0.0f,
+        localZ + 1.0f - epsilon,
+        tileMaxU,
+        tileMaxV,
+        localX + 0.0f,
+        localY + 1.0f,
+        localZ + 1.0f - epsilon,
+        tileMaxU,
+        tileMinV,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  }
+}
+
+void appendRailGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::uint8_t terrainTileIndex = cell.terrainTiles[0];
+  const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  int metadata = cell.blockMetadata;
+  if (cell.blockId == kGoldenRailBlockId || cell.blockId == kDetectorRailBlockId) {
+    metadata &= 7;
+  }
+
+  float x0 = localX + 1.0f;
+  float x1 = localX + 1.0f;
+  float x2 = localX + 0.0f;
+  float x3 = localX + 0.0f;
+  float z0 = localZ + 0.0f;
+  float z1 = localZ + 1.0f;
+  float z2 = localZ + 1.0f;
+  float z3 = localZ + 0.0f;
+  float y0 = localY + 0.0625f;
+  float y1 = localY + 0.0625f;
+  float y2 = localY + 0.0625f;
+  float y3 = localY + 0.0625f;
+
+  if (metadata == 1 || metadata == 2 || metadata == 3 || metadata == 7) {
+    x0 = localX + 1.0f;
+    x1 = localX + 0.0f;
+    x2 = localX + 0.0f;
+    x3 = localX + 1.0f;
+    z0 = localZ + 1.0f;
+    z1 = localZ + 1.0f;
+    z2 = localZ + 0.0f;
+    z3 = localZ + 0.0f;
+  } else if (metadata == 8) {
+    x0 = localX + 0.0f;
+    x1 = localX + 0.0f;
+    x2 = localX + 1.0f;
+    x3 = localX + 1.0f;
+    z0 = localZ + 1.0f;
+    z1 = localZ + 0.0f;
+    z2 = localZ + 0.0f;
+    z3 = localZ + 1.0f;
+  } else if (metadata == 9) {
+    x0 = localX + 0.0f;
+    x1 = localX + 1.0f;
+    x2 = localX + 1.0f;
+    x3 = localX + 0.0f;
+    z0 = localZ + 0.0f;
+    z1 = localZ + 0.0f;
+    z2 = localZ + 1.0f;
+    z3 = localZ + 1.0f;
+  }
+
+  if (metadata == 2 || metadata == 4) {
+    y0 += 1.0f;
+    y3 += 1.0f;
+  } else if (metadata == 3 || metadata == 5) {
+    y1 += 1.0f;
+    y2 += 1.0f;
+  }
+
+  appendCrossedQuadSheet(
+      x0,
+      y0,
+      z0,
+      tileMaxU,
+      tileMinV,
+      x1,
+      y1,
+      z1,
+      tileMaxU,
+      tileMaxV,
+      x2,
+      y2,
+      z2,
+      tileMinU,
+      tileMaxV,
+      x3,
+      y3,
+      z3,
+      tileMinU,
+      tileMinV,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+}
+
+void appendFenceGeometry(
+    bool connectWest,
+    bool connectEast,
+    bool connectNorth,
+    bool connectSouth,
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  appendBoxGeometry(
+      localX + 0.375f,
+      localY + 0.0f,
+      localZ + 0.375f,
+      localX + 0.625f,
+      localY + 1.0f,
+      localZ + 0.625f,
+      cell.terrainTiles,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+
+  bool connectX = connectWest || connectEast;
+  bool connectZ = connectNorth || connectSouth;
+  if (!connectX && !connectZ) {
+    connectX = true;
+  }
+
+  const float xMin = connectWest ? 0.0f : 0.4375f;
+  const float xMax = connectEast ? 1.0f : 0.5625f;
+  const float zMin = connectNorth ? 0.0f : 0.4375f;
+  const float zMax = connectSouth ? 1.0f : 0.5625f;
+
+  if (connectX) {
+    appendBoxGeometry(
+        localX + xMin,
+        localY + 0.75f,
+        localZ + 0.4375f,
+        localX + xMax,
+        localY + 0.9375f,
+        localZ + 0.5625f,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+    appendBoxGeometry(
+        localX + xMin,
+        localY + 0.375f,
+        localZ + 0.4375f,
+        localX + xMax,
+        localY + 0.5625f,
+        localZ + 0.5625f,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  }
+
+  if (connectZ) {
+    appendBoxGeometry(
+        localX + 0.4375f,
+        localY + 0.75f,
+        localZ + zMin,
+        localX + 0.5625f,
+        localY + 0.9375f,
+        localZ + zMax,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+    appendBoxGeometry(
+        localX + 0.4375f,
+        localY + 0.375f,
+        localZ + zMin,
+        localX + 0.5625f,
+        localY + 0.5625f,
+        localZ + zMax,
+        cell.terrainTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
   }
 }
 
@@ -999,6 +1939,14 @@ std::size_t ChunkKeyHash::operator()(const ChunkKey& key) const noexcept {
   return hash;
 }
 
+std::size_t WorldBlockPositionHash::operator()(const WorldBlockPosition& position) const noexcept {
+  std::size_t hash = 0;
+  hash ^= static_cast<std::size_t>(position.x) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+  hash ^= static_cast<std::size_t>(position.y) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+  hash ^= static_cast<std::size_t>(position.z) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+  return hash;
+}
+
 RemixRenderer& RemixRenderer::instance() {
   static RemixRenderer renderer;
   return renderer;
@@ -1073,12 +2021,14 @@ void RemixRenderer::shutdown() {
   dynamicEntityMeshes_.clear();
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
+  torchLights_.clear();
   nextChunkMeshHash_ = 1;
   presentedFrames_ = 0;
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
+  lastSubmittedTorchLightCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   nextCloudMeshHash_ = 1;
@@ -1293,7 +2243,8 @@ void RemixRenderer::captureBlock(
       static_cast<std::uint8_t>(texture4 & 0xFF),
       static_cast<std::uint8_t>(texture5 & 0xFF),
   };
-  block.materialClass = materialClassForBlock(blockId);
+  block.renderType = renderType;
+  block.materialClass = materialClassForBlock(blockId, renderType);
   block.liquidVisibilityMask = static_cast<std::uint8_t>(liquidVisibilityMask & 0x3F);
   block.liquidHeights = {liquidHeight0, liquidHeight1, liquidHeight2, liquidHeight3};
   block.liquidFlowAngle = liquidFlowAngle;
@@ -1769,6 +2720,105 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   return materialHandle;
 }
 
+bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {
+      placement.lightX,
+      placement.lightY,
+      placement.lightZ,
+  };
+  sphereInfo.radius = kTorchLightRadius;
+  sphereInfo.shaping_hasvalue = FALSE;
+  sphereInfo.volumetricRadianceScale = 1.0f;
+
+  remixapi_LightInfo lightInfo {};
+  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfo.pNext = &sphereInfo;
+  lightInfo.hash = makeTorchLightHash(placement.blockPosition);
+  lightInfo.radiance = kTorchLightRadiance;
+  lightInfo.isDynamic = FALSE;
+  lightInfo.ignoreViewModel = FALSE;
+
+  remixapi_LightHandle lightHandle = nullptr;
+  const remixapi_ErrorCode result = remix_.CreateLight(&lightInfo, &lightHandle);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateLight failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  torchLights_[placement.blockPosition] = lightHandle;
+  return true;
+}
+
+bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
+  const auto lightIt = torchLights_.find(placement.blockPosition);
+  if (lightIt == torchLights_.end() || lightIt->second == nullptr) {
+    return createTorchLight(placement);
+  }
+
+  if (remix_.UpdateLightDefinition == nullptr) {
+    destroyTorchLight(placement.blockPosition);
+    return createTorchLight(placement);
+  }
+
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {placement.lightX, placement.lightY, placement.lightZ};
+  sphereInfo.radius = kTorchLightRadius;
+  sphereInfo.shaping_hasvalue = FALSE;
+  sphereInfo.volumetricRadianceScale = 1.0f;
+
+  remixapi_LightInfo lightInfo {};
+  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfo.pNext = &sphereInfo;
+  lightInfo.hash = makeTorchLightHash(placement.blockPosition);
+  lightInfo.radiance = kTorchLightRadiance;
+  lightInfo.isDynamic = FALSE;
+  lightInfo.ignoreViewModel = FALSE;
+
+  const remixapi_ErrorCode result = remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("UpdateLightDefinition failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  return true;
+}
+
+bool RemixRenderer::reconcileChunkTorchLights(
+    ChunkMeshData& meshData,
+    const std::vector<TorchLightPlacement>& desiredTorchLights) {
+  if (remix_.CreateLight == nullptr) {
+    destroyChunkTorchLights(meshData);
+    return true;
+  }
+
+  std::vector<WorldBlockPosition> createdLights;
+  createdLights.reserve(desiredTorchLights.size());
+  for (const TorchLightPlacement& placement : desiredTorchLights) {
+    const bool existed = torchLights_.find(placement.blockPosition) != torchLights_.end();
+    if (!updateTorchLight(placement)) {
+      for (const WorldBlockPosition& createdPosition : createdLights) {
+        destroyTorchLight(createdPosition);
+      }
+      return false;
+    }
+    if (!existed) {
+      createdLights.push_back(placement.blockPosition);
+    }
+  }
+
+  for (const TorchLightPlacement& placement : meshData.torchLights) {
+    if (findTorchLightPlacement(desiredTorchLights, placement.blockPosition) == nullptr) {
+      destroyTorchLight(placement.blockPosition);
+    }
+  }
+
+  meshData.torchLights = desiredTorchLights;
+  return true;
+}
+
 bool RemixRenderer::rebuildCloudMesh(
     bool fancy,
     float cameraX,
@@ -1927,6 +2977,33 @@ void RemixRenderer::destroyCloudMesh() {
   cloudQuadCount_ = 0;
 }
 
+void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
+  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(meshData.meshHandle);
+  }
+  meshData.meshHandle = nullptr;
+  meshData.meshHash = 0;
+}
+
+void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
+  const auto lightIt = torchLights_.find(position);
+  if (lightIt == torchLights_.end()) {
+    return;
+  }
+
+  if (lightIt->second != nullptr && remix_.DestroyLight != nullptr) {
+    remix_.DestroyLight(lightIt->second);
+  }
+  torchLights_.erase(lightIt);
+}
+
+void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
+  for (const TorchLightPlacement& placement : meshData.torchLights) {
+    destroyTorchLight(placement.blockPosition);
+  }
+  meshData.torchLights.clear();
+}
+
 void RemixRenderer::destroyDynamicEntityMeshes() {
   for (auto& [entityId, meshData] : dynamicEntityMeshes_) {
     destroyDynamicEntityMesh(meshData);
@@ -2014,6 +3091,8 @@ bool RemixRenderer::rebuildChunkMesh(
         ? block.materialClass
         : kOpaqueTerrainMaterialClass;
     cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
+      cells[occupancyIndex].blockMetadata = static_cast<std::uint8_t>(block.blockMetadata & 0xFF);
+    cells[occupancyIndex].renderType = static_cast<std::uint8_t>(block.renderType & 0xFF);
     cells[occupancyIndex].liquidVisibilityMask = block.liquidVisibilityMask;
     cells[occupancyIndex].liquidHeights = block.liquidHeights;
     cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
@@ -2063,6 +3142,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   std::vector<SurfaceBuildBuffers> surfacesToBuild;
   surfacesToBuild.reserve(8);
   std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
+  std::vector<TorchLightPlacement> desiredTorchLights;
 
   const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](remixapi_MaterialHandle materialHandle) -> SurfaceBuildBuffers& {
     const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(materialHandle);
@@ -2081,6 +3161,55 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return surfacesToBuild.back();
   };
 
+  const auto hasFenceNeighbor = [this, &chunkKey, &meshData](int worldX, int worldY, int worldZ) -> bool {
+    ChunkKey neighborKey = chunkKey;
+    int localX = worldX - chunkKey.originX;
+    int localY = worldY - chunkKey.originY;
+    int localZ = worldZ - chunkKey.originZ;
+
+    while (localX < 0) {
+      neighborKey.originX -= kChunkDimension;
+      localX += kChunkDimension;
+    }
+    while (localX >= kChunkDimension) {
+      neighborKey.originX += kChunkDimension;
+      localX -= kChunkDimension;
+    }
+    while (localY < 0) {
+      neighborKey.originY -= kChunkDimension;
+      localY += kChunkDimension;
+    }
+    while (localY >= kChunkDimension) {
+      neighborKey.originY += kChunkDimension;
+      localY -= kChunkDimension;
+    }
+    while (localZ < 0) {
+      neighborKey.originZ -= kChunkDimension;
+      localZ += kChunkDimension;
+    }
+    while (localZ >= kChunkDimension) {
+      neighborKey.originZ += kChunkDimension;
+      localZ -= kChunkDimension;
+    }
+
+    const ChunkMeshData* targetMesh = &meshData;
+    if (!(neighborKey == chunkKey)) {
+      const auto neighborIt = chunkMeshes_.find(neighborKey);
+      if (neighborIt == chunkMeshes_.end() || !neighborIt->second.hasOccupancy) {
+        return false;
+      }
+      targetMesh = &neighborIt->second;
+    }
+
+    const int neighborIndex = blockIndex(localX, localY, localZ);
+    if (targetMesh->occupancy[neighborIndex] == 0) {
+      return false;
+    }
+
+    const ChunkBlockCell& neighborCell = targetMesh->cells[neighborIndex];
+    return neighborCell.blockId == kFenceBlockId && neighborCell.renderType == kFenceBlockRenderType;
+  };
+
   for (int localY = 0; localY < kChunkDimension; ++localY) {
     for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
       for (int localX = 0; localX < kChunkDimension; ++localX) {
@@ -2094,7 +3223,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           ? cell.materialClass
           : kOpaqueTerrainMaterialClass;
 
-        if (materialClass == kWaterTerrainMaterialClass) {
+        if (cell.renderType == kLiquidBlockRenderType && materialClass == kWaterTerrainMaterialClass) {
           SurfaceBuildBuffers& waterSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendWaterGeometry(
               cell,
@@ -2103,6 +3232,81 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localZ),
               waterSurface.vertices,
               waterSurface.indices);
+          continue;
+        }
+
+        if (isCrossedQuadRenderType(cell.renderType)) {
+          SurfaceBuildBuffers& floraSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendCrossedQuadGeometry(
+              cell,
+              chunkKey.originX + localX,
+              chunkKey.originY + localY,
+              chunkKey.originZ + localZ,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              floraSurface.vertices,
+              floraSurface.indices);
+          continue;
+        }
+
+        if (isTorchRenderType(cell.renderType)) {
+          desiredTorchLights.push_back(makeTorchLightPlacement(
+            cell,
+            chunkKey.originX + localX,
+            chunkKey.originY + localY,
+            chunkKey.originZ + localZ));
+          SurfaceBuildBuffers& torchSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendTorchGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              torchSurface.vertices,
+              torchSurface.indices);
+          continue;
+        }
+
+        if (isLadderRenderType(cell.renderType)) {
+          SurfaceBuildBuffers& ladderSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendLadderGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              ladderSurface.vertices,
+              ladderSurface.indices);
+          continue;
+        }
+
+        if (isRailRenderType(cell.renderType) && isRailBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& railSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendRailGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              railSurface.vertices,
+              railSurface.indices);
+          continue;
+        }
+
+        if (isFenceRenderType(cell.renderType) && cell.blockId == kFenceBlockId) {
+          const int worldX = chunkKey.originX + localX;
+          const int worldY = chunkKey.originY + localY;
+          const int worldZ = chunkKey.originZ + localZ;
+          SurfaceBuildBuffers& fenceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendFenceGeometry(
+              hasFenceNeighbor(worldX - 1, worldY, worldZ),
+              hasFenceNeighbor(worldX + 1, worldY, worldZ),
+              hasFenceNeighbor(worldX, worldY, worldZ - 1),
+              hasFenceNeighbor(worldX, worldY, worldZ + 1),
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              fenceSurface.vertices,
+              fenceSurface.indices);
           continue;
         }
 
@@ -2233,18 +3437,22 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return false;
   }
 
-  destroyChunkMesh(meshData);
+  if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
+    if (newMeshHandle != nullptr && remix_.DestroyMesh != nullptr) {
+      remix_.DestroyMesh(newMeshHandle);
+    }
+    return false;
+  }
+
+  destroyChunkMeshHandle(meshData);
   meshData.meshHandle = newMeshHandle;
   meshData.meshHash = meshInfo.hash;
   return true;
 }
 
 void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
-  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(meshData.meshHandle);
-  }
-  meshData.meshHandle = nullptr;
-  meshData.meshHash = 0;
+  destroyChunkMeshHandle(meshData);
+  destroyChunkTorchLights(meshData);
 }
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
@@ -2270,7 +3478,7 @@ void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
 }
 
 bool RemixRenderer::drawCapturedGeometry() {
-  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityMeshes_.empty()) {
+  if (chunkMeshes_.empty() && cloudMeshHandle_ == nullptr && dynamicEntityMeshes_.empty() && torchLights_.empty()) {
     if (presentedFrames_ < 4) {
       log("No captured scene meshes available yet");
     }
@@ -2282,6 +3490,7 @@ bool RemixRenderer::drawCapturedGeometry() {
   std::size_t submittedBlocks = 0;
   std::size_t submittedCloudQuads = 0;
   std::size_t submittedDynamicEntityQuads = 0;
+  std::size_t submittedTorchLights = 0;
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.meshHandle == nullptr) {
       continue;
@@ -2394,17 +3603,45 @@ bool RemixRenderer::drawCapturedGeometry() {
     submittedCloudQuads = cloudQuadCount_;
   }
 
+  if (!torchLights_.empty()) {
+    if (remix_.AutoInstancePersistentLights != nullptr) {
+      const remixapi_ErrorCode result = remix_.AutoInstancePersistentLights();
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+        setError("AutoInstancePersistentLights failed: " + errorCodeToString(result));
+        return false;
+      }
+      submittedTorchLights = torchLights_.size();
+    } else if (remix_.DrawLightInstance != nullptr) {
+      for (const auto& [position, lightHandle] : torchLights_) {
+        (void)position;
+        if (lightHandle == nullptr) {
+          continue;
+        }
+
+        const remixapi_ErrorCode result = remix_.DrawLightInstance(lightHandle);
+        if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+          setError("DrawLightInstance failed: " + errorCodeToString(result));
+          return false;
+        }
+
+        ++submittedTorchLights;
+      }
+    }
+  }
+
   if (presentedFrames_ < 8
       || submittedChunks != lastSubmittedChunkCount_
       || submittedBlocks != lastSubmittedBlockCount_
       || submittedCloudQuads != lastSubmittedCloudQuadCount_
-      || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_) {
+      || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
+      || submittedTorchLights != lastSubmittedTorchLightCount_) {
     std::ostringstream stream;
     stream << "Submitted " << submittedChunks
            << " chunk meshes covering " << submittedBlocks
            << " blocks and " << submittedCloudQuads
            << " cloud quads and " << submittedDynamicEntityQuads
-           << " dynamic entity quads";
+           << " dynamic entity quads and " << submittedTorchLights
+           << " torch lights";
     log(stream.str());
   }
 
@@ -2412,6 +3649,7 @@ bool RemixRenderer::drawCapturedGeometry() {
   lastSubmittedBlockCount_ = submittedBlocks;
   lastSubmittedCloudQuadCount_ = submittedCloudQuads;
   lastSubmittedDynamicEntityQuadCount_ = submittedDynamicEntityQuads;
+  lastSubmittedTorchLightCount_ = submittedTorchLights;
   ++presentedFrames_;
   return true;
 }
