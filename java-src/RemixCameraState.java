@@ -1,6 +1,13 @@
+import java.nio.FloatBuffer;
+import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
+import org.lwjgl.BufferUtils;
+import org.lwjgl.opengl.GL11;
 
 public final class RemixCameraState {
+    private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final FloatBuffer VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
+
     static float cameraPositionX;
     static float cameraPositionY;
     static float cameraPositionZ;
@@ -14,7 +21,19 @@ public final class RemixCameraState {
     static float cameraRightY = 0.0f;
     static float cameraRightZ = 0.0f;
 
+    private static float fovYDegrees = 70.0f;
+    private static float aspect = 1.0f;
+    private static float nearPlane = 0.05f;
+    private static float farPlane = 1024.0f;
+
+    private static boolean frameViewCaptured;
+    private static final float[] frameInverseViewMatrix = new float[16];
+
     private RemixCameraState() {
+    }
+
+    static void onFramePresented() {
+        frameViewCaptured = false;
     }
 
     public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane) {
@@ -67,6 +86,10 @@ public final class RemixCameraState {
         }
 
         float aspect = height <= 0 ? 1.0f : (float) width / (float) height;
+        RemixCameraState.fovYDegrees = 70.0f;
+        RemixCameraState.aspect = aspect;
+        RemixCameraState.nearPlane = 0.05f;
+        RemixCameraState.farPlane = farPlane * 2.0f;
         MinecraftRenderHooks.updateCamera(
                 cameraPositionX,
                 cameraPositionY,
@@ -80,7 +103,65 @@ public final class RemixCameraState {
                 farPlane * 2.0f);
     }
 
+    /**
+     * Reads GL_MODELVIEW at the moment dynamic entities are about to be
+     * rendered, stores its inverse as the authoritative camera-to-world, and
+     * submits the decomposed basis to Remix so the game camera and dynamic
+     * entity transforms share a single source of truth -- otherwise view bob
+     * and damage tilt leak into entity world positions and cause rubber-band
+     * lag behind the camera.
+     *
+     * Beta's view matrix at this point contains only camera rotation; the
+     * world-space translation is applied per-draw (chunks via the tessellator
+     * offset, entities via glTranslated). So we take the rotation basis from
+     * GL (bob/tilt included) and compose it with the entity-derived camera
+     * position previously stashed by {@link #onCamera} to build a full
+     * camera-to-world matrix.
+     */
+    public static void captureFrameView() {
+        if (!MinecraftRenderHooks.isInitialized()) {
+            return;
+        }
+        VIEW_BUFFER.clear();
+        GL11.glGetFloat(GL_MODELVIEW_MATRIX, VIEW_BUFFER);
+        float[] view = new float[16];
+        VIEW_BUFFER.get(view);
+
+        float[] inverse = MatrixMath.invertAffineColumnMajor(view);
+        inverse[12] = cameraPositionX;
+        inverse[13] = cameraPositionY;
+        inverse[14] = cameraPositionZ;
+        inverse[15] = 1.0f;
+        System.arraycopy(inverse, 0, frameInverseViewMatrix, 0, 16);
+        frameViewCaptured = true;
+
+        cameraRightX = inverse[0];
+        cameraRightY = inverse[1];
+        cameraRightZ = inverse[2];
+        cameraUpX = inverse[4];
+        cameraUpY = inverse[5];
+        cameraUpZ = inverse[6];
+        cameraForwardX = -inverse[8];
+        cameraForwardY = -inverse[9];
+        cameraForwardZ = -inverse[10];
+
+        MinecraftRenderHooks.updateCamera(
+                cameraPositionX,
+                cameraPositionY,
+                cameraPositionZ,
+                cameraForwardX,
+                cameraForwardY,
+                cameraForwardZ,
+                fovYDegrees,
+                aspect,
+                nearPlane,
+                farPlane);
+    }
+
     static float[] buildInverseViewMatrix() {
+        if (frameViewCaptured) {
+            return frameInverseViewMatrix.clone();
+        }
         float[] matrix = new float[16];
         matrix[0] = cameraRightX;
         matrix[1] = cameraRightY;

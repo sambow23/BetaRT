@@ -126,6 +126,8 @@ public final class ClientPatchTool {
             if (method.name.equals("b") && method.desc.equals("(F)V")) {
                 patchDisplayIsActiveChecks(method);
                 patchPxFrame(method);
+            } else if (method.name.equals("a") && method.desc.equals("(FJ)V")) {
+                patchPxRender(method);
             }
         }
         return writeClass(classNode);
@@ -330,6 +332,20 @@ public final class ClientPatchTool {
                                 false));
             }
             node = next;
+        }
+    }
+
+    private static void patchPxRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && (methodInsnNode.getOpcode() == Opcodes.INVOKESPECIAL
+                            || methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL)
+                    && methodInsnNode.owner.equals("px")
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(FI)V")) {
+                method.instructions.insert(node, staticHelperCall("onFrameViewCaptured", "()V"));
+                break;
+            }
         }
     }
 

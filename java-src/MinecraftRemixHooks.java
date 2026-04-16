@@ -61,6 +61,10 @@ public final class MinecraftRemixHooks {
         RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane);
     }
 
+    public static void onFrameViewCaptured() {
+        RemixCameraState.captureFrameView();
+    }
+
     public static void onPresent() {
         RemixChunkCapture.flushPendingChunkRecaptures();
         if (!loggedPresent) {
@@ -69,6 +73,7 @@ public final class MinecraftRemixHooks {
         }
         MinecraftRenderHooks.present();
         RemixDynamicEntityCapture.onFramePresented();
+        RemixCameraState.onFramePresented();
     }
 
     public static void onUiRenderBegin(int width, int height) {
