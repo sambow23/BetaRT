@@ -404,7 +404,17 @@ $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
 
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
+    (Join-Path $repoRoot "java-src\RemixCameraState.java"),
+    (Join-Path $repoRoot "java-src\RemixChunkCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixCloudCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixDestroyOverlayCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixDynamicEntityCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixParticleCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixWorldListener.java"),
+    (Join-Path $repoRoot "java-src\DirtyChunkSection.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\CameraPose.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\ColorMath.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\MatrixMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\LwjglWindowHandleResolver.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftRenderHooks.java"),

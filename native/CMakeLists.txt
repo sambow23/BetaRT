@@ -5,6 +5,11 @@ find_package(JNI REQUIRED)
 add_library(mcrtx_jni SHARED
   src/jni_bridge.cpp
   src/remix_renderer.cpp
+  src/remix_chunk_mesh.cpp
+  src/remix_materials.cpp
+  src/remix_subsystem_meshes.cpp
+  src/remix_window.cpp
+  src/render_internals.cpp
 )
 
 target_include_directories(mcrtx_jni
