@@ -4,6 +4,9 @@ import java.nio.ByteBuffer;
 
 public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
+    public static final int REMIX_UI_STATE_NONE = RemixBridgeNative.REMIX_UI_STATE_NONE;
+    public static final int REMIX_UI_STATE_BASIC = RemixBridgeNative.REMIX_UI_STATE_BASIC;
+    public static final int REMIX_UI_STATE_ADVANCED = RemixBridgeNative.REMIX_UI_STATE_ADVANCED;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
@@ -68,6 +71,26 @@ public final class MinecraftRenderHooks {
             return;
         }
         RemixBridgeNative.nResize(width, height);
+    }
+
+    public static synchronized int getUiState() {
+        if (!initialized) {
+            return REMIX_UI_STATE_NONE;
+        }
+        return RemixBridgeNative.nGetUiState();
+    }
+
+    public static synchronized boolean setUiState(int state) {
+        if (!initialized) {
+            return false;
+        }
+        boolean result = RemixBridgeNative.nSetUiState(state);
+        if (!result) {
+            lastError = RemixBridgeNative.nGetLastError();
+        } else {
+            lastError = "";
+        }
+        return result;
     }
 
     public static synchronized void updateCamera(CameraPose cameraPose) {

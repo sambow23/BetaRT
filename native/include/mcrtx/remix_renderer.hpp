@@ -275,6 +275,8 @@ public:
         remixapi_Format format,
         float opacity);
       bool clearScreenOverlay();
+  remixapi_UIState getUiState() const;
+  bool setUiState(remixapi_UIState state);
   bool present();
 
   bool isInitialized() const;
@@ -291,7 +293,8 @@ private:
   bool createOutputWindow(HWND sourceHwnd);
   void destroyOutputWindow();
   void pumpOutputWindowMessages();
-  void updateOutputWindowSize() const;
+  void updateOutputWindowSize();
+  void syncOutputWindowInteractivity(remixapi_UIState uiState);
   bool initializeTerrainMaterials();
   void destroyTerrainMaterials();
   void resetLoadedRemix();
@@ -344,6 +347,7 @@ private:
   HMODULE remixDll_ {nullptr};
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
+  bool outputWindowInteractive_ {false};
   bool initialized_ {false};
   bool presentToSourceWindow_ {false};
   std::uint32_t width_ {1};

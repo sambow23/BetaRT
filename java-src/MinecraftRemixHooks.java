@@ -1,9 +1,13 @@
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
+import java.util.ArrayList;
 import java.nio.FloatBuffer;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
+import java.util.List;
 import org.lwjgl.BufferUtils;
+import org.lwjgl.input.Keyboard;
+import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
 public final class MinecraftRemixHooks {
@@ -13,6 +17,7 @@ public final class MinecraftRemixHooks {
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
@@ -26,6 +31,9 @@ public final class MinecraftRemixHooks {
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedWorldListenerAttach;
+    private static boolean remixUiOpen;
+    private static boolean remixUiHotkeyHeld;
+    private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
     private static float cameraPositionX;
     private static float cameraPositionY;
     private static float cameraPositionZ;
@@ -58,12 +66,14 @@ public final class MinecraftRemixHooks {
             loggedDisplayCreate = true;
             System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
         }
+        resetRemixUiTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
     }
 
     public static void onShutdown() {
         System.out.println("[mcrtx] onShutdown");
+        resetRemixUiTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.shutdown();
     }
@@ -73,6 +83,7 @@ public final class MinecraftRemixHooks {
             loggedDisplayReset = true;
             System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
         }
+        resetRemixUiTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
     }
@@ -161,12 +172,22 @@ public final class MinecraftRemixHooks {
         UiOverlayCapture.end();
     }
 
+    public static void onRemixUiTick(net.minecraft.client.Minecraft minecraft) {
+        syncRemixUiInput(minecraft, true);
+    }
+
+    public static boolean isWindowInteractionActive() {
+        return Display.isActive() || remixUiOpen;
+    }
+
     public static void onWorldChanged(fd world) {
         if (attachedWorld == world) {
             return;
         }
 
-        PENDING_RECAPTURE_SECTIONS.clear();
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            PENDING_RECAPTURE_SECTIONS.clear();
+        }
         MinecraftRenderHooks.clearWorldScene();
 
         if (attachedWorld != null) {
@@ -223,6 +244,48 @@ public final class MinecraftRemixHooks {
                 colorR,
                 colorG,
                 colorB);
+    }
+
+    private static void resetRemixUiTracking() {
+        remixUiOpen = false;
+        remixUiHotkeyHeld = false;
+        preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
+    }
+
+    private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {
+        int uiState = MinecraftRenderHooks.getUiState();
+        boolean altDown = Keyboard.isKeyDown(Keyboard.KEY_LMENU) || Keyboard.isKeyDown(Keyboard.KEY_RMENU);
+        boolean xDown = Keyboard.isKeyDown(Keyboard.KEY_X);
+        boolean hotkeyHeld = altDown && xDown;
+
+        if (allowHotkeyToggle && hotkeyHeld && !remixUiHotkeyHeld) {
+            int targetState = uiState == MinecraftRenderHooks.REMIX_UI_STATE_NONE
+                    ? preferredRemixUiState
+                    : MinecraftRenderHooks.REMIX_UI_STATE_NONE;
+            if (MinecraftRenderHooks.setUiState(targetState)) {
+                uiState = targetState;
+                System.out.println("[mcrtx] Remix UI hotkey toggled state=" + uiState);
+            } else {
+                System.out.println("[mcrtx] Remix UI hotkey failed: " + MinecraftRenderHooks.lastError());
+            }
+        }
+
+        remixUiHotkeyHeld = hotkeyHeld;
+        if (uiState != MinecraftRenderHooks.REMIX_UI_STATE_NONE) {
+            preferredRemixUiState = uiState;
+        }
+
+        boolean uiOpen = uiState != MinecraftRenderHooks.REMIX_UI_STATE_NONE;
+        if (minecraft != null) {
+            if (uiOpen) {
+                minecraft.h();
+            } else if (remixUiOpen && minecraft.r == null) {
+                minecraft.g();
+            }
+        }
+
+        remixUiOpen = uiOpen;
+        return uiOpen;
     }
 
     public static void onLivingEntityFrameBegin() {
@@ -807,31 +870,43 @@ public final class MinecraftRemixHooks {
         for (int originY = originMinY; originY <= originMaxY; originY += CHUNK_DIMENSION) {
             for (int originZ = originMinZ; originZ <= originMaxZ; originZ += CHUNK_DIMENSION) {
                 for (int originX = originMinX; originX <= originMaxX; originX += CHUNK_DIMENSION) {
-                    PENDING_RECAPTURE_SECTIONS.add(new DirtyChunkSection(originX, originY, originZ));
+                    synchronized (PENDING_RECAPTURE_SECTIONS) {
+                        PENDING_RECAPTURE_SECTIONS.add(new DirtyChunkSection(originX, originY, originZ));
+                    }
                 }
             }
         }
     }
 
     private static void flushPendingChunkRecaptures() {
-        if (attachedWorld == null || !MinecraftRenderHooks.isInitialized() || PENDING_RECAPTURE_SECTIONS.isEmpty()) {
+        if (attachedWorld == null || !MinecraftRenderHooks.isInitialized()) {
             return;
         }
 
-        int remainingSections = MAX_RECAPTURE_SECTIONS_PER_PRESENT;
-        Iterator<DirtyChunkSection> iterator = PENDING_RECAPTURE_SECTIONS.iterator();
-        while (iterator.hasNext() && remainingSections > 0) {
+        List<DirtyChunkSection> sectionsToRecapture = new ArrayList<DirtyChunkSection>(MAX_RECAPTURE_SECTIONS_PER_PRESENT);
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            if (PENDING_RECAPTURE_SECTIONS.isEmpty()) {
+                return;
+            }
+
+            Iterator<DirtyChunkSection> iterator = PENDING_RECAPTURE_SECTIONS.iterator();
+            while (iterator.hasNext() && sectionsToRecapture.size() < MAX_RECAPTURE_SECTIONS_PER_PRESENT) {
+                sectionsToRecapture.add(iterator.next());
+            }
+        }
+
+        for (DirtyChunkSection section : sectionsToRecapture) {
             if (MinecraftRenderHooks.isChunkBuildCaptureActive()) {
                 return;
             }
 
-            DirtyChunkSection section = iterator.next();
             if (!recaptureChunkSection(attachedWorld, section.originX, section.originY, section.originZ)) {
                 return;
             }
 
-            iterator.remove();
-            remainingSections -= 1;
+            synchronized (PENDING_RECAPTURE_SECTIONS) {
+                PENDING_RECAPTURE_SECTIONS.remove(section);
+            }
         }
     }
 

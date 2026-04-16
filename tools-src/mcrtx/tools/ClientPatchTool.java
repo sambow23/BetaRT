@@ -102,6 +102,10 @@ public final class ClientPatchTool {
                 patchMinecraftDisplayReset(method);
             } else if (method.name.equals("a") && method.desc.equals("(II)V")) {
                 patchMinecraftResize(method);
+            } else if (method.name.equals("g") && method.desc.equals("()V")) {
+                patchDisplayIsActiveChecks(method);
+            } else if (method.name.equals("run") && method.desc.equals("()V")) {
+                patchDisplayIsActiveChecks(method);
             }
         }
         return writeClass(classNode);
@@ -111,6 +115,7 @@ public final class ClientPatchTool {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("b") && method.desc.equals("(F)V")) {
+                patchDisplayIsActiveChecks(method);
                 patchPxFrame(method);
             }
         }
@@ -272,6 +277,23 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchDisplayIsActiveChecks(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (isStaticCall(node, DISPLAY_CLASS, "isActive", "()Z")) {
+                method.instructions.set(
+                        node,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                REMIX_HELPER_CLASS,
+                                "isWindowInteractionActive",
+                                "()Z",
+                                false));
+            }
+            node = next;
+        }
+    }
+
     private static void patchPxFrame(MethodNode method) {
         method.instructions.insert(cameraUpdateCall());
 
@@ -310,6 +332,7 @@ public final class ClientPatchTool {
         }
 
         if (lastReturn != null) {
+            method.instructions.insertBefore(lastReturn, remixUiTickCall());
             method.instructions.insertBefore(lastReturn, staticHelperCall("onUiRenderEnd", "()V"));
             method.instructions.insertBefore(lastReturn, staticHelperCall("onPresent", "()V"));
         }
@@ -479,6 +502,19 @@ public final class ClientPatchTool {
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "e", "I"));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onUiRenderBegin", "(II)V", false));
+        return instructions;
+    }
+
+    private static InsnList remixUiTickCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onRemixUiTick",
+                "(Lnet/minecraft/client/Minecraft;)V",
+                false));
         return instructions;
     }
 

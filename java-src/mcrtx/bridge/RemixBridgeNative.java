@@ -6,6 +6,9 @@ import java.net.URL;
 import java.nio.ByteBuffer;
 
 public final class RemixBridgeNative {
+    public static final int REMIX_UI_STATE_NONE = 0;
+    public static final int REMIX_UI_STATE_BASIC = 1;
+    public static final int REMIX_UI_STATE_ADVANCED = 2;
     public static final int SCREEN_OVERLAY_FORMAT_RGBA8 = 37;
     public static final int SCREEN_OVERLAY_FORMAT_BGRA8 = 44;
 
@@ -232,6 +235,10 @@ public final class RemixBridgeNative {
             float opacity);
 
     public static native boolean nClearScreenOverlay();
+
+    public static native int nGetUiState();
+
+    public static native boolean nSetUiState(int state);
 
     public static native boolean nPresent();
 

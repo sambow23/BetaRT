@@ -1,6 +1,7 @@
 #include "mcrtx/remix_renderer.hpp"
 
 #include <algorithm>
+#include <atomic>
 #include <bit>
 #include <cmath>
 #include <cstdlib>
@@ -12,6 +13,8 @@
 namespace mcrtx {
 
 namespace {
+
+std::atomic_bool g_outputWindowInteractive {false};
 
 constexpr wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
 constexpr wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
@@ -202,7 +205,10 @@ bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {
 LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
     case WM_NCHITTEST:
-      return HTTRANSPARENT;
+      if (!g_outputWindowInteractive.load(std::memory_order_relaxed)) {
+        return HTTRANSPARENT;
+      }
+      return DefWindowProcW(hwnd, message, wParam, lParam);
     case WM_CLOSE:
       ShowWindow(hwnd, SW_HIDE);
       return 0;
@@ -2814,6 +2820,47 @@ bool RemixRenderer::clearScreenOverlay() {
   return true;
 }
 
+remixapi_UIState RemixRenderer::getUiState() const {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || remix_.GetUIState == nullptr) {
+    return REMIXAPI_UI_STATE_NONE;
+  }
+
+  return remix_.GetUIState();
+}
+
+bool RemixRenderer::setUiState(remixapi_UIState state) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    setError("setUiState called before initialize");
+    return false;
+  }
+
+  if (remix_.SetUIState == nullptr) {
+    setError("SetUIState is unavailable in the loaded Remix runtime");
+    return false;
+  }
+
+  if (state != REMIXAPI_UI_STATE_NONE
+      && state != REMIXAPI_UI_STATE_BASIC
+      && state != REMIXAPI_UI_STATE_ADVANCED) {
+    setError("setUiState received an unsupported Remix UI state");
+    return false;
+  }
+
+  const remixapi_ErrorCode result = remix_.SetUIState(state);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("SetUIState failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  syncOutputWindowInteractivity(state);
+
+  return true;
+}
+
 void RemixRenderer::updateCamera(const CameraState& camera) {
   std::scoped_lock lock(mutex_);
   camera_ = camera;
@@ -3267,6 +3314,10 @@ bool RemixRenderer::present() {
     return false;
   }
 
+  if (remix_.GetUIState != nullptr) {
+    syncOutputWindowInteractivity(remix_.GetUIState());
+  }
+
   return true;
 }
 
@@ -3484,7 +3535,7 @@ std::filesystem::path RemixRenderer::resolveParticleTexturePath(std::uint32_t te
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
-    ShowWindow(outputHwnd_, SW_SHOWNOACTIVATE);
+    ShowWindow(outputHwnd_, outputWindowInteractive_ ? SW_SHOW : SW_SHOWNOACTIVATE);
     return true;
   }
 
@@ -3523,6 +3574,9 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
     return false;
   }
 
+  outputWindowInteractive_ = false;
+  g_outputWindowInteractive.store(false, std::memory_order_relaxed);
+
   SetWindowPos(
       outputHwnd_,
       HWND_TOPMOST,
@@ -3542,6 +3596,8 @@ void RemixRenderer::destroyOutputWindow() {
     return;
   }
 
+  outputWindowInteractive_ = false;
+  g_outputWindowInteractive.store(false, std::memory_order_relaxed);
   DestroyWindow(outputHwnd_);
   outputHwnd_ = nullptr;
 }
@@ -3558,7 +3614,7 @@ void RemixRenderer::pumpOutputWindowMessages() {
   }
 }
 
-void RemixRenderer::updateOutputWindowSize() const {
+void RemixRenderer::updateOutputWindowSize() {
   if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
     return;
   }
@@ -3578,7 +3634,55 @@ void RemixRenderer::updateOutputWindowSize() const {
       sourceClientRect.top,
       outerWidth,
       outerHeight,
-      SWP_NOACTIVATE | SWP_SHOWWINDOW);
+      (outputWindowInteractive_ ? SWP_SHOWWINDOW : (SWP_NOACTIVATE | SWP_SHOWWINDOW)));
+}
+
+void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
+  if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
+    return;
+  }
+
+  const bool interactive = uiState != REMIXAPI_UI_STATE_NONE;
+  if (interactive == outputWindowInteractive_) {
+    return;
+  }
+
+  outputWindowInteractive_ = interactive;
+  g_outputWindowInteractive.store(interactive, std::memory_order_relaxed);
+
+  LONG_PTR exStyle = GetWindowLongPtrW(outputHwnd_, GWL_EXSTYLE);
+  if (interactive) {
+    exStyle &= ~static_cast<LONG_PTR>(WS_EX_NOACTIVATE);
+  } else {
+    exStyle |= static_cast<LONG_PTR>(WS_EX_NOACTIVATE);
+  }
+  SetWindowLongPtrW(outputHwnd_, GWL_EXSTYLE, exStyle);
+
+  updateOutputWindowSize();
+  SetWindowPos(
+      outputHwnd_,
+      HWND_TOPMOST,
+      0,
+      0,
+      0,
+      0,
+      (interactive ? SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW | SWP_FRAMECHANGED
+                   : SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW | SWP_FRAMECHANGED));
+
+  if (interactive) {
+    ShowWindow(outputHwnd_, SW_SHOW);
+    SetForegroundWindow(outputHwnd_);
+    SetActiveWindow(outputHwnd_);
+    SetFocus(outputHwnd_);
+    log("Remix overlay window input enabled");
+    return;
+  }
+
+  ShowWindow(outputHwnd_, SW_SHOWNOACTIVATE);
+  SetForegroundWindow(sourceHwnd_);
+  SetActiveWindow(sourceHwnd_);
+  SetFocus(sourceHwnd_);
+  log("Remix overlay window input released");
 }
 
 bool RemixRenderer::initializeTerrainMaterials() {
