@@ -163,7 +163,8 @@ public final class RemixDynamicEntityCapture {
             int drawMode,
             boolean hasTexture,
             boolean hasColor) {
-        if (!firstPersonActive || activeFirstPersonTexture.isEmpty()) {
+        String activeTexture = activeCaptureTexture();
+        if (activeTexture.isEmpty()) {
             return;
         }
         if (rawVertexData == null || vertexCount < 6 || drawMode != 7 || !hasTexture) {

@@ -37,6 +37,7 @@ public final class ClientPatchTool {
     private static final String BASE_RENDERER_CLASS = "bw";
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
+    private static final String MINECART_RENDERER_CLASS = "tb";
 
     private ClientPatchTool() {
     }
@@ -81,6 +82,8 @@ public final class ClientPatchTool {
                     content = patchXw(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
+                } else if (entryName.equals(MINECART_RENDERER_CLASS + ".class")) {
+                    content = patchTb(content);
                 }
 
                 JarEntry newEntry = new JarEntry(entryName);
@@ -211,6 +214,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
                 method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall());
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchTb(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lyl;DDDFF)V")) {
+                patchMinecartRender(method);
             }
         }
         return writeClass(classNode);
@@ -413,6 +426,18 @@ public final class ClientPatchTool {
                 method.instructions.insertBefore(node, destroyOverlayRenderCall());
                 return;
             }
+        }
+    }
+
+    private static void patchMinecartRender(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), livingEntityRenderStartCall());
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onLivingEntityRenderEnd", "()V"));
+            }
+            node = next;
         }
     }
 

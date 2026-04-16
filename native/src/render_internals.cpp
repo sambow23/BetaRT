@@ -255,6 +255,10 @@ bool isFenceRenderType(int renderType) {
   return renderType == kFenceBlockRenderType;
 }
 
+bool isLeverOrButtonRenderType(int renderType) {
+  return renderType == kLeverOrButtonBlockRenderType;
+}
+
 bool isSingleSlabBlockId(int blockId) {
   return blockId == kSingleSlabBlockId;
 }
@@ -271,6 +275,14 @@ bool isRailBlockId(int blockId) {
   return blockId == kGoldenRailBlockId || blockId == kDetectorRailBlockId || blockId == kRailBlockId;
 }
 
+bool isLeverBlockId(int blockId) {
+  return blockId == kLeverBlockId;
+}
+
+bool isButtonBlockId(int blockId) {
+  return blockId == kStoneButtonBlockId;
+}
+
 bool isSupportedPass0RenderType(int renderType) {
   switch (renderType) {
     case kCubeBlockRenderType:
@@ -282,6 +294,7 @@ bool isSupportedPass0RenderType(int renderType) {
     case kRailBlockRenderType:
     case kStairBlockRenderType:
     case kFenceBlockRenderType:
+    case kLeverOrButtonBlockRenderType:
       return true;
     default:
       return false;
@@ -1528,6 +1541,223 @@ void appendBoxGeometry(
         kDefaultVertexColor,
         vertices,
         indices);
+  }
+
+  void appendLeverGeometry(
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    const std::array<std::int16_t, 6> leverTiles = {
+        kCobblestoneTerrainTile,
+        kCobblestoneTerrainTile,
+        kCobblestoneTerrainTile,
+        kCobblestoneTerrainTile,
+        kCobblestoneTerrainTile,
+        kCobblestoneTerrainTile,
+    };
+
+    const int metadata = cell.blockMetadata & 7;
+    if (metadata < 1 || metadata > 6) {
+      return;
+    }
+
+    float baseMinX = localX;
+    float baseMinY = localY;
+    float baseMinZ = localZ;
+    float baseMaxX = localX + 1.0f;
+    float baseMaxY = localY + 1.0f;
+    float baseMaxZ = localZ + 1.0f;
+
+    constexpr float kLeverPlateLongHalf = 0.25f;
+    constexpr float kLeverPlateShortHalf = 0.1875f;
+    constexpr float kLeverPlateThickness = 0.1875f;
+
+    if (metadata == 5) {
+      baseMinX = localX + 0.5f - kLeverPlateShortHalf;
+      baseMaxX = localX + 0.5f + kLeverPlateShortHalf;
+      baseMinY = localY;
+      baseMaxY = localY + kLeverPlateThickness;
+      baseMinZ = localZ + 0.5f - kLeverPlateLongHalf;
+      baseMaxZ = localZ + 0.5f + kLeverPlateLongHalf;
+    } else if (metadata == 6) {
+      baseMinX = localX + 0.5f - kLeverPlateLongHalf;
+      baseMaxX = localX + 0.5f + kLeverPlateLongHalf;
+      baseMinY = localY;
+      baseMaxY = localY + kLeverPlateThickness;
+      baseMinZ = localZ + 0.5f - kLeverPlateShortHalf;
+      baseMaxZ = localZ + 0.5f + kLeverPlateShortHalf;
+    } else if (metadata == 4) {
+      baseMinX = localX + 0.5f - kLeverPlateShortHalf;
+      baseMaxX = localX + 0.5f + kLeverPlateShortHalf;
+      baseMinY = localY + 0.5f - kLeverPlateLongHalf;
+      baseMaxY = localY + 0.5f + kLeverPlateLongHalf;
+      baseMinZ = localZ + 1.0f - kLeverPlateThickness;
+      baseMaxZ = localZ + 1.0f;
+    } else if (metadata == 3) {
+      baseMinX = localX + 0.5f - kLeverPlateShortHalf;
+      baseMaxX = localX + 0.5f + kLeverPlateShortHalf;
+      baseMinY = localY + 0.5f - kLeverPlateLongHalf;
+      baseMaxY = localY + 0.5f + kLeverPlateLongHalf;
+      baseMinZ = localZ;
+      baseMaxZ = localZ + kLeverPlateThickness;
+    } else if (metadata == 2) {
+      baseMinX = localX + 1.0f - kLeverPlateThickness;
+      baseMaxX = localX + 1.0f;
+      baseMinY = localY + 0.5f - kLeverPlateLongHalf;
+      baseMaxY = localY + 0.5f + kLeverPlateLongHalf;
+      baseMinZ = localZ + 0.5f - kLeverPlateShortHalf;
+      baseMaxZ = localZ + 0.5f + kLeverPlateShortHalf;
+    } else if (metadata == 1) {
+      baseMinX = localX;
+      baseMaxX = localX + kLeverPlateThickness;
+      baseMinY = localY + 0.5f - kLeverPlateLongHalf;
+      baseMaxY = localY + 0.5f + kLeverPlateLongHalf;
+      baseMinZ = localZ + 0.5f - kLeverPlateShortHalf;
+      baseMaxZ = localZ + 0.5f + kLeverPlateShortHalf;
+    }
+
+    appendBoxGeometry(
+        baseMinX,
+        baseMinY,
+        baseMinZ,
+        baseMaxX,
+        baseMaxY,
+        baseMaxZ,
+        leverTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+
+    const bool powered = (cell.blockMetadata & 8) != 0;
+    const int handleTerrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+
+    struct LeverVertex {
+      float x;
+      float y;
+      float z;
+    };
+
+    auto rotateX = [](LeverVertex& vertex, float angle) {
+      const float sinAngle = std::sin(angle);
+      const float cosAngle = std::cos(angle);
+      const float rotatedY = vertex.y * cosAngle + vertex.z * sinAngle;
+      const float rotatedZ = vertex.z * cosAngle - vertex.y * sinAngle;
+      vertex.y = rotatedY;
+      vertex.z = rotatedZ;
+    };
+
+    auto rotateY = [](LeverVertex& vertex, float angle) {
+      const float sinAngle = std::sin(angle);
+      const float cosAngle = std::cos(angle);
+      const float rotatedX = vertex.x * cosAngle + vertex.z * sinAngle;
+      const float rotatedZ = -vertex.x * sinAngle + vertex.z * cosAngle;
+      vertex.x = rotatedX;
+      vertex.z = rotatedZ;
+    };
+
+    std::array<LeverVertex, 8> leverVertices = {{
+        {-0.0625f, 0.0f, -0.0625f},
+        {0.0625f, 0.0f, -0.0625f},
+        {0.0625f, 0.0f, 0.0625f},
+        {-0.0625f, 0.0f, 0.0625f},
+        {-0.0625f, 0.625f, -0.0625f},
+        {0.0625f, 0.625f, -0.0625f},
+        {0.0625f, 0.625f, 0.0625f},
+        {-0.0625f, 0.625f, 0.0625f},
+    }};
+
+    for (LeverVertex& vertex : leverVertices) {
+      vertex.z += powered ? -0.0625f : 0.0625f;
+      rotateX(vertex, powered ? 0.69813174f : -0.69813174f);
+
+      if (metadata == 6) {
+        rotateY(vertex, 1.5707964f);
+      }
+
+      if (metadata < 5) {
+        vertex.y -= 0.375f;
+        rotateX(vertex, 1.5707964f);
+
+        if (metadata == 3) {
+          rotateY(vertex, 3.1415927f);
+        } else if (metadata == 2) {
+          rotateY(vertex, 1.5707964f);
+        } else if (metadata == 1) {
+          rotateY(vertex, -1.5707964f);
+        }
+
+        vertex.x += localX + 0.5f;
+        vertex.y += localY + 0.5f;
+        vertex.z += localZ + 0.5f;
+      } else {
+        vertex.x += localX + 0.5f;
+        vertex.y += localY + 0.125f;
+        vertex.z += localZ + 0.5f;
+      }
+    }
+
+    const std::array<std::array<int, 4>, 6> faceVertexIndices = {{
+        {{0, 1, 2, 3}},
+        {{7, 6, 5, 4}},
+        {{1, 0, 4, 5}},
+        {{2, 1, 5, 6}},
+        {{3, 2, 6, 7}},
+        {{0, 3, 7, 4}},
+    }};
+
+    auto appendLeverQuad = [&vertices, &indices](
+                               const LeverVertex& v0,
+                               const LeverVertex& v1,
+                               const LeverVertex& v2,
+                               const LeverVertex& v3,
+                               float uMin,
+                               float uMax,
+                               float vMin,
+                               float vMax) {
+      const auto normal = computeQuadNormal(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+      appendCloudQuad(
+          v0.x, v0.y, v0.z, uMin, vMax,
+          v1.x, v1.y, v1.z, uMax, vMax,
+          v2.x, v2.y, v2.z, uMax, vMin,
+          v3.x, v3.y, v3.z, uMin, vMin,
+          normal[0], normal[1], normal[2],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    };
+
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+      float uMin;
+      float uMax;
+      float vMin;
+      float vMax;
+
+      if (faceIndex <= 1) {
+        uMin = (static_cast<float>((handleTerrainTileIndex & 0x0F) * 16) + 7.0f) / kAtlasSizePixels;
+        uMax = (static_cast<float>((handleTerrainTileIndex & 0x0F) * 16) + 8.99f) / kAtlasSizePixels;
+        vMin = (static_cast<float>(handleTerrainTileIndex & 0xF0) + 6.0f) / kAtlasSizePixels;
+        vMax = (static_cast<float>(handleTerrainTileIndex & 0xF0) + 7.99f) / kAtlasSizePixels;
+      } else {
+        uMin = (static_cast<float>((handleTerrainTileIndex & 0x0F) * 16) + 7.0f) / kAtlasSizePixels;
+        uMax = (static_cast<float>((handleTerrainTileIndex & 0x0F) * 16) + 8.99f) / kAtlasSizePixels;
+        vMin = (static_cast<float>(handleTerrainTileIndex & 0xF0) + 6.0f) / kAtlasSizePixels;
+        vMax = (static_cast<float>(handleTerrainTileIndex & 0xF0) + 15.99f) / kAtlasSizePixels;
+      }
+
+      const auto& face = faceVertexIndices[faceIndex];
+      appendLeverQuad(
+          leverVertices[face[0]],
+          leverVertices[face[1]],
+          leverVertices[face[2]],
+          leverVertices[face[3]],
+          uMin,
+          uMax,
+          vMin,
+          vMax);
+    }
   }
 
 void appendTorchGeometry(

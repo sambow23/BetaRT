@@ -465,6 +465,32 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isLeverOrButtonRenderType(cell.renderType)) {
+          SurfaceBuildBuffers& controlSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          if (isLeverBlockId(cell.blockId)) {
+            appendLeverGeometry(
+                cell,
+                static_cast<float>(localX),
+                static_cast<float>(localY),
+                static_cast<float>(localZ),
+                controlSurface.vertices,
+                controlSurface.indices);
+          } else if (isButtonBlockId(cell.blockId)) {
+            appendBoxGeometry(
+                static_cast<float>(localX) + cell.bounds[0],
+                static_cast<float>(localY) + cell.bounds[1],
+                static_cast<float>(localZ) + cell.bounds[2],
+                static_cast<float>(localX) + cell.bounds[3],
+                static_cast<float>(localY) + cell.bounds[4],
+                static_cast<float>(localZ) + cell.bounds[5],
+                cell.terrainTiles,
+                kDefaultVertexColor,
+                controlSurface.vertices,
+                controlSurface.indices);
+          }
+          continue;
+        }
+
         if (isDoorRenderType(cell.renderType) && isDoorBlockId(cell.blockId)) {
           const int worldX = chunkKey.originX + localX;
           const int worldY = chunkKey.originY + localY;

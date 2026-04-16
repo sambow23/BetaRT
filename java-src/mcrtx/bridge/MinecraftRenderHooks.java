@@ -10,6 +10,7 @@ public final class MinecraftRenderHooks {
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
+    private static final int LEVER_OR_BUTTON_BLOCK_RENDER_TYPE = 12;
     private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
 
     private static volatile boolean initialized;
@@ -514,6 +515,7 @@ public final class MinecraftRenderHooks {
                     || renderType == 8
                     || renderType == 9
                     || renderType == STAIRS_BLOCK_RENDER_TYPE
+                    || renderType == LEVER_OR_BUTTON_BLOCK_RENDER_TYPE
                     || renderType == 11;
         }
         if (activeChunkRenderPass == 1) {

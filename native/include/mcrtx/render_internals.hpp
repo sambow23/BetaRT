@@ -41,6 +41,7 @@ constexpr std::uint8_t kLadderBlockRenderType = 8;
 constexpr std::uint8_t kRailBlockRenderType = 9;
 constexpr std::uint8_t kStairBlockRenderType = 10;
 constexpr std::uint8_t kFenceBlockRenderType = 11;
+constexpr std::uint8_t kLeverOrButtonBlockRenderType = 12;
 constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
@@ -51,7 +52,9 @@ constexpr std::uint8_t kTorchBlockId = 50;
 constexpr std::uint8_t kWoodStairsBlockId = 53;
 constexpr std::uint8_t kWoodDoorBlockId = 64;
 constexpr std::uint8_t kLadderBlockId = 65;
+constexpr std::uint8_t kLeverBlockId = 69;
 constexpr std::uint8_t kStoneStairsBlockId = 67;
+constexpr std::uint8_t kStoneButtonBlockId = 77;
 constexpr std::uint8_t kIronDoorBlockId = 71;
 constexpr std::uint8_t kGoldenRailBlockId = 27;
 constexpr std::uint8_t kDetectorRailBlockId = 28;
@@ -60,6 +63,7 @@ constexpr std::uint8_t kFenceBlockId = 85;
 constexpr std::uint8_t kWaterStillBlockId = 8;
 constexpr std::uint8_t kWaterFlowingBlockId = 9;
 constexpr std::uint8_t kGrassOverlayTerrainTile = 38;
+constexpr std::int16_t kCobblestoneTerrainTile = 16;
 constexpr std::uint8_t kLeavesFancyTextureOak = 52;
 constexpr std::uint8_t kLeavesFastTextureOak = 53;
 constexpr std::uint8_t kLeavesFancyTextureBirchSpruce = 132;
@@ -188,10 +192,13 @@ bool isLadderRenderType(int renderType);
 bool isRailRenderType(int renderType);
 bool isStairRenderType(int renderType);
 bool isFenceRenderType(int renderType);
+bool isLeverOrButtonRenderType(int renderType);
 bool isSingleSlabBlockId(int blockId);
 bool isStairBlockId(int blockId);
 bool isDoorBlockId(int blockId);
 bool isRailBlockId(int blockId);
+bool isLeverBlockId(int blockId);
+bool isButtonBlockId(int blockId);
 bool isSupportedPass0RenderType(int renderType);
 bool shouldCaptureBlock(int blockId, int renderType);
 bool shouldCaptureBlock(int blockId, int renderType, int renderPass);
@@ -363,6 +370,12 @@ void appendStairGeometry(
 void appendDoorGeometry(
     const ChunkBlockCell& cell,
     int resolvedMetadata,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendLeverGeometry(
+    const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);

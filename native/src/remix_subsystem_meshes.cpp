@@ -786,6 +786,32 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       continue;
     }
 
+    if (isLeverOrButtonRenderType(resolvedCell.renderType)) {
+      if (isLeverBlockId(resolvedCell.blockId)) {
+        appendLeverGeometry(
+            resolvedCell,
+            localX,
+            localY,
+            localZ,
+            vertices,
+            indices);
+      } else if (isButtonBlockId(resolvedCell.blockId)) {
+        appendBoxGeometry(
+            localX + resolvedCell.bounds[0],
+            localY + resolvedCell.bounds[1],
+            localZ + resolvedCell.bounds[2],
+            localX + resolvedCell.bounds[3],
+            localY + resolvedCell.bounds[4],
+            localZ + resolvedCell.bounds[5],
+            resolvedCell.terrainTiles,
+            kDefaultVertexColor,
+            vertices,
+            indices);
+      }
+      ++overlayCount;
+      continue;
+    }
+
     if (isDoorRenderType(resolvedCell.renderType) && isDoorBlockId(resolvedCell.blockId)) {
       const ChunkBlockCell* pairedDoorCell = (resolvedCell.blockMetadata & 8) != 0
           ? findWorldCell(overlay.blockX, overlay.blockY - 1, overlay.blockZ)
