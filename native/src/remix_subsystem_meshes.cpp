@@ -320,7 +320,12 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
   lightInfo.ignoreViewModel = FALSE;
 
   remixapi_LightHandle lightHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateLight(&lightInfo, &lightHandle);
+  remixapi_ErrorCode result;
+  if (remix_.CreateLightBatched != nullptr) {
+    result = remix_.CreateLightBatched(&lightInfo, &lightHandle);
+  } else {
+    result = remix_.CreateLight(&lightInfo, &lightHandle);
+  }
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateLight failed: " + errorCodeToString(result));
     return false;

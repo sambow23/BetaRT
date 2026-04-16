@@ -368,6 +368,7 @@ private:
   std::size_t lastSubmittedDestroyOverlayCount_ {0};
   std::size_t lastSubmittedParticleQuadCount_ {0};
   std::size_t lastSubmittedTorchLightCount_ {0};
+  bool loggedLightSubmissionPath_ {false};
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::filesystem::path fireTexturePath_ {};

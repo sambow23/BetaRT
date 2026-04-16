@@ -86,6 +86,21 @@ bool RemixRenderer::initialize(
     return false;
   }
 
+  // Minecraft submits world positions in blocks where 1 block = 1 meter.
+  // Remix defaults assume 1 world unit = 1 cm (sceneScale = 1). Without this
+  // override, every meters-aware subsystem (volumetrics froxel extent,
+  // transmittance measurement distance, light volumetric radius falloff)
+  // is off by 100x and produces no visible contribution.
+  if (remix_.SetConfigVariable != nullptr) {
+    const remixapi_ErrorCode sceneScaleResult = remix_.SetConfigVariable("rtx.sceneScale", "0.01");
+    log(std::string("SetConfigVariable rtx.sceneScale=0.01 -> ") + errorCodeToString(sceneScaleResult));
+    // Raise volumetric RIS sampling so torch lights get picked up in dense light scenes.
+    const remixapi_ErrorCode risResult = remix_.SetConfigVariable("rtx.volumetrics.initialRISSampleCount", "128");
+    log(std::string("SetConfigVariable rtx.volumetrics.initialRISSampleCount=128 -> ") + errorCodeToString(risResult));
+  } else {
+    log("SetConfigVariable not available; cannot apply scene scale / volumetric tuning");
+  }
+
   if (!startup(presentationHwnd)) {
     resetLoadedRemix();
     destroyOutputWindow();
@@ -607,6 +622,22 @@ bool RemixRenderer::drawCapturedGeometry() {
   }
 
   if (!torchLights_.empty()) {
+    if (!loggedLightSubmissionPath_) {
+      loggedLightSubmissionPath_ = true;
+      std::ostringstream pathStream;
+      pathStream << "Light submission path: ";
+      if (remix_.AutoInstancePersistentLights != nullptr) {
+        pathStream << "AutoInstancePersistentLights (persistent RTXDI reservoirs)";
+      } else if (remix_.DrawLightInstance != nullptr) {
+        pathStream << "DrawLightInstance per-frame fallback (no persistent reservoirs -- expect boiling)";
+      } else {
+        pathStream << "NONE -- lights will not be rendered";
+      }
+      pathStream << "; CreateLightBatched="
+                 << (remix_.CreateLightBatched != nullptr ? "yes" : "no")
+                 << "; torch lights registered=" << torchLights_.size();
+      log(pathStream.str());
+    }
     if (remix_.AutoInstancePersistentLights != nullptr) {
       const remixapi_ErrorCode result = remix_.AutoInstancePersistentLights();
       if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -641,18 +672,23 @@ bool RemixRenderer::drawCapturedGeometry() {
       || submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
       || submittedParticleQuads != lastSubmittedParticleQuadCount_
       || submittedTorchLights != lastSubmittedTorchLightCount_) {
-    std::ostringstream stream;
-    stream << "Submitted " << submittedChunks
-           << " chunk meshes covering " << submittedBlocks
-           << " blocks and " << submittedCloudQuads
-          << " cloud quads and " << submittedFireQuads
-          << " fire quads and " << submittedDynamicEntityQuads
-           << " dynamic entity quads and " << submittedDestroyOverlays
-           << " destroy overlays and "
-           << submittedParticleQuads << " particle quads and "
-           << submittedTorchLights
-           << " torch lights";
-    log(stream.str());
+    // Per-frame submission counts are too noisy for the standard log; only
+    // emit them during the first few frames so we can confirm the scene is
+    // flowing. After that, deltas get swallowed to keep the log readable.
+    if (presentedFrames_ < 8) {
+      std::ostringstream stream;
+      stream << "Submitted " << submittedChunks
+             << " chunk meshes covering " << submittedBlocks
+             << " blocks and " << submittedCloudQuads
+            << " cloud quads and " << submittedFireQuads
+            << " fire quads and " << submittedDynamicEntityQuads
+             << " dynamic entity quads and " << submittedDestroyOverlays
+             << " destroy overlays and "
+             << submittedParticleQuads << " particle quads and "
+             << submittedTorchLights
+             << " torch lights";
+      log(stream.str());
+    }
   }
 
   lastSubmittedChunkCount_ = submittedChunks;
