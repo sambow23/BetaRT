@@ -62,6 +62,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-patched-client.ps1
 
 The output bundle is written to `out/patched-client`.
 
+## Runtime window mode
+
+The native bridge defaults to the current single-window presentation mode,
+where the Remix output is shown in a client-area overlay on top of the LWJGL
+game window.
+
+For development, set `MCRTX_WINDOW_MODE=dual` to create a separate Remix output
+window instead. Supported values are `single` or `overlay` for the default
+mode, and `dual`, `detached`, or `separate` for the development mode.
+
+The old `MCRTX_USE_SOURCE_WINDOW=1` escape hatch is now treated as a deprecated
+alias for `MCRTX_WINDOW_MODE=dual` so older local launch scripts do not try the
+broken same-HWND presentation path.
+
 ## Quick deployment for testing
 
 For the local PrismLauncher `b1.7.3` instance, deploy the latest patched jar and

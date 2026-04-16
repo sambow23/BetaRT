@@ -348,8 +348,8 @@ private:
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool outputWindowInteractive_ {false};
+  bool overlayOutputWindow_ {true};
   bool initialized_ {false};
-  bool presentToSourceWindow_ {false};
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
   CameraState camera_ {};

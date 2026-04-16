@@ -3,11 +3,13 @@
 #include <algorithm>
 #include <atomic>
 #include <bit>
+#include <cctype>
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 #include <vector>
 
 namespace mcrtx {
@@ -169,8 +171,7 @@ HMODULE getCurrentModuleHandle() {
   return moduleHandle;
 }
 
-bool shouldPresentToSourceWindow() {
-  const char* envValue = std::getenv("MCRTX_USE_SOURCE_WINDOW");
+bool isTruthyEnvValue(const char* envValue) {
   if (envValue == nullptr || envValue[0] == '\0') {
     return false;
   }
@@ -181,6 +182,66 @@ bool shouldPresentToSourceWindow() {
       || firstCharacter == 'T'
       || firstCharacter == 'y'
       || firstCharacter == 'Y';
+}
+
+std::string readEnvironmentVariable(const char* name) {
+  char* envValue = nullptr;
+  std::size_t envValueLength = 0;
+  if (_dupenv_s(&envValue, &envValueLength, name) != 0 || envValue == nullptr || envValueLength == 0) {
+    return {};
+  }
+
+  std::string value(envValue);
+  std::free(envValue);
+  return value;
+}
+
+bool equalsIgnoreCase(std::string_view left, std::string_view right) {
+  if (left.size() != right.size()) {
+    return false;
+  }
+
+  for (std::size_t index = 0; index < left.size(); ++index) {
+    const unsigned char leftChar = static_cast<unsigned char>(left[index]);
+    const unsigned char rightChar = static_cast<unsigned char>(right[index]);
+    if (std::tolower(leftChar) != std::tolower(rightChar)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar = nullptr) {
+  if (usedLegacyEnvVar != nullptr) {
+    *usedLegacyEnvVar = false;
+  }
+
+  const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
+  if (!configuredWindowMode.empty()) {
+    const std::string_view mode(configuredWindowMode);
+    if (equalsIgnoreCase(mode, "dual")
+        || equalsIgnoreCase(mode, "detached")
+        || equalsIgnoreCase(mode, "separate")) {
+      return false;
+    }
+
+    if (equalsIgnoreCase(mode, "single")
+        || equalsIgnoreCase(mode, "overlay")
+        || equalsIgnoreCase(mode, "attached")) {
+      return true;
+    }
+  }
+
+  const std::string legacySourceWindowFlag = readEnvironmentVariable("MCRTX_USE_SOURCE_WINDOW");
+  if (isTruthyEnvValue(legacySourceWindowFlag.c_str())) {
+    if (usedLegacyEnvVar != nullptr) {
+      *usedLegacyEnvVar = true;
+    }
+    return false;
+  }
+
+  return true;
 }
 
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {
@@ -2647,14 +2708,16 @@ bool RemixRenderer::initialize(
   height_ = height == 0 ? 1 : height;
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
 
-  presentToSourceWindow_ = shouldPresentToSourceWindow();
-  HWND presentationHwnd = sourceHwnd_;
-  if (!presentToSourceWindow_) {
-    if (!createOutputWindow(sourceHwnd_)) {
-      return false;
-    }
-    presentationHwnd = outputHwnd_;
+  bool usedLegacySourceWindowEnvVar = false;
+  overlayOutputWindow_ = shouldUseOverlayOutputWindow(&usedLegacySourceWindowEnvVar);
+  if (usedLegacySourceWindowEnvVar) {
+    log("MCRTX_USE_SOURCE_WINDOW is deprecated; using detached dual-window mode instead");
   }
+
+  if (!createOutputWindow(sourceHwnd_)) {
+    return false;
+  }
+  HWND presentationHwnd = outputHwnd_;
 
   if (remixDllPath.empty()) {
     remixDllPath = resolveRemixDllPath();
@@ -2669,23 +2732,21 @@ bool RemixRenderer::initialize(
     setError("Loaded Remix runtime does not support DrawScreenOverlay; update dxvk-remix-gmod/d3d9.dll to a build with screen overlay support");
     resetLoadedRemix();
     destroyOutputWindow();
-    presentToSourceWindow_ = false;
     return false;
   }
 
   if (!startup(presentationHwnd)) {
     resetLoadedRemix();
     destroyOutputWindow();
-    presentToSourceWindow_ = false;
     return false;
   }
 
   initializeTerrainMaterials();
 
   initialized_ = true;
-  log(presentToSourceWindow_
-      ? "Remix renderer initialized on source LWJGL window"
-      : "Remix renderer initialized in separate output window");
+  log(overlayOutputWindow_
+      ? "Remix renderer initialized in single-window overlay mode"
+      : "Remix renderer initialized in dual-window mode");
   return true;
 }
 
@@ -2704,7 +2765,7 @@ void RemixRenderer::shutdown() {
   resetLoadedRemix();
   destroyOutputWindow();
   initialized_ = false;
-  presentToSourceWindow_ = false;
+  overlayOutputWindow_ = true;
   sourceHwnd_ = nullptr;
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
@@ -3334,8 +3395,9 @@ std::string RemixRenderer::lastError() const {
 std::filesystem::path RemixRenderer::resolveRemixDllPath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
-  if (const char* envValue = std::getenv("MCRTX_REMIX_DLL"); envValue != nullptr && envValue[0] != '\0') {
-    std::filesystem::path envPath = std::filesystem::u8path(envValue);
+  const std::string explicitRemixDllPath = readEnvironmentVariable("MCRTX_REMIX_DLL");
+  if (!explicitRemixDllPath.empty()) {
+    std::filesystem::path envPath(explicitRemixDllPath);
     attemptedPaths.push_back(envPath);
     if (std::filesystem::exists(envPath)) {
       log("Using Remix runtime from MCRTX_REMIX_DLL: " + envPath.string());
@@ -3546,25 +3608,49 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
 
   RECT sourceClientRect {};
   const bool hasSourceClientRect = getSourceClientRectInScreenSpace(sourceHwnd, sourceClientRect);
-  const int outerWidth = hasSourceClientRect
+  DWORD exStyle = WS_EX_NOACTIVATE;
+  DWORD style = WS_POPUP;
+  HWND parentHwnd = sourceHwnd;
+  int windowX = hasSourceClientRect ? sourceClientRect.left : CW_USEDEFAULT;
+  int windowY = hasSourceClientRect ? sourceClientRect.top : CW_USEDEFAULT;
+  int outerWidth = hasSourceClientRect
       ? sourceClientRect.right - sourceClientRect.left
       : static_cast<int>(width_);
-  const int outerHeight = hasSourceClientRect
+  int outerHeight = hasSourceClientRect
       ? sourceClientRect.bottom - sourceClientRect.top
       : static_cast<int>(height_);
-  const int windowX = hasSourceClientRect ? sourceClientRect.left : CW_USEDEFAULT;
-  const int windowY = hasSourceClientRect ? sourceClientRect.top : CW_USEDEFAULT;
+
+  if (overlayOutputWindow_) {
+    exStyle |= WS_EX_TOOLWINDOW;
+  } else {
+    exStyle |= WS_EX_APPWINDOW;
+    style = WS_OVERLAPPEDWINDOW;
+    parentHwnd = nullptr;
+
+    RECT windowRect {0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
+    AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
+    outerWidth = windowRect.right - windowRect.left;
+    outerHeight = windowRect.bottom - windowRect.top;
+
+    if (hasSourceClientRect) {
+      windowX = sourceClientRect.right + 32;
+      windowY = sourceClientRect.top;
+    } else {
+      windowX = CW_USEDEFAULT;
+      windowY = CW_USEDEFAULT;
+    }
+  }
 
   outputHwnd_ = CreateWindowExW(
-      WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
+      exStyle,
       kRemixWindowClassName,
       kRemixWindowTitle,
-      WS_POPUP,
+      style,
       windowX,
       windowY,
       outerWidth,
       outerHeight,
-      sourceHwnd,
+      parentHwnd,
       nullptr,
       getCurrentModuleHandle(),
       nullptr);
@@ -3577,17 +3663,21 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   outputWindowInteractive_ = false;
   g_outputWindowInteractive.store(false, std::memory_order_relaxed);
 
-  SetWindowPos(
-      outputHwnd_,
-      HWND_TOPMOST,
-      windowX,
-      windowY,
-      outerWidth,
-      outerHeight,
-      SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  if (overlayOutputWindow_) {
+    SetWindowPos(
+        outputHwnd_,
+        HWND_TOPMOST,
+        windowX,
+        windowY,
+        outerWidth,
+        outerHeight,
+        SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  }
   ShowWindow(outputHwnd_, SW_SHOWNOACTIVATE);
   UpdateWindow(outputHwnd_);
-  log("Created Remix client-area overlay window");
+  log(overlayOutputWindow_
+      ? "Created Remix client-area overlay window"
+      : "Created Remix detached development window");
   return true;
 }
 
@@ -3616,6 +3706,28 @@ void RemixRenderer::pumpOutputWindowMessages() {
 
 void RemixRenderer::updateOutputWindowSize() {
   if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
+    return;
+  }
+
+  if (!overlayOutputWindow_) {
+    RECT outputRect {};
+    if (!GetWindowRect(outputHwnd_, &outputRect)) {
+      return;
+    }
+
+    const DWORD style = static_cast<DWORD>(GetWindowLongPtrW(outputHwnd_, GWL_STYLE));
+    const DWORD exStyle = static_cast<DWORD>(GetWindowLongPtrW(outputHwnd_, GWL_EXSTYLE));
+    RECT desiredWindowRect {0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
+    AdjustWindowRectEx(&desiredWindowRect, style, FALSE, exStyle);
+
+    SetWindowPos(
+        outputHwnd_,
+        HWND_NOTOPMOST,
+        outputRect.left,
+        outputRect.top,
+        desiredWindowRect.right - desiredWindowRect.left,
+        desiredWindowRect.bottom - desiredWindowRect.top,
+        (outputWindowInteractive_ ? SWP_SHOWWINDOW : (SWP_NOACTIVATE | SWP_SHOWWINDOW)));
     return;
   }
 
@@ -3661,7 +3773,7 @@ void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
   updateOutputWindowSize();
   SetWindowPos(
       outputHwnd_,
-      HWND_TOPMOST,
+      (overlayOutputWindow_ ? HWND_TOPMOST : HWND_NOTOPMOST),
       0,
       0,
       0,
