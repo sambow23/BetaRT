@@ -9,13 +9,17 @@ public final class RemixDynamicEntityCapture {
     private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int TILE_ENTITY_ID_NAMESPACE = 0x40000000;
+    private static final float FONT_GLYPH_SIZE = 7.99f;
+    private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final String FONT_TEXTURE_PATH = "/font/default.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
 
     private static boolean dynamicCaptureFrameActive;
+    private static boolean signRenderActive;
     private static boolean dynamicEntityActive;
     private static int activeDynamicEntityId = -1;
     private static String activeDynamicEntityTexture = "";
@@ -60,6 +64,7 @@ public final class RemixDynamicEntityCapture {
         }
 
         ensureDynamicCaptureFrame();
+        signRenderActive = true;
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(sign.e, sign.f, sign.g, 0x5349474E);
         activeDynamicEntityTexture = SIGN_TEXTURE_PATH;
@@ -69,7 +74,81 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onSignRenderEnd() {
+        signRenderActive = false;
         onLivingEntityRenderEnd();
+    }
+
+    public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
+        if (!signRenderActive || !dynamicEntityActive || text == null || text.isEmpty() || characterWidths == null || characterWidths.length == 0) {
+            return;
+        }
+        if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
+            return;
+        }
+
+        try {
+            if (!FONT_TEXTURE_PATH.equals(activeDynamicEntityTexture)) {
+                activeDynamicEntityTexture = FONT_TEXTURE_PATH;
+                MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+            }
+
+            MODEL_VIEW_BUFFER.clear();
+            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+            float[] modelView = new float[16];
+            MODEL_VIEW_BUFFER.get(modelView);
+
+            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            int packedColor = shadow ? applyFontShadow(colorRgba) : colorRgba;
+            int sanitizedColor = ColorMath.sanitizePackedColor(packedColor);
+            int boneIndex = allocateDynamicBoneIndex();
+            if (boneIndex < 0) {
+                return;
+            }
+            submitDynamicBoneTransform(boneIndex, modelToWorld);
+
+            float cursorX = x;
+            for (int index = 0; index < text.length(); index++) {
+                while (text.length() > index + 1 && text.charAt(index) == '\u00a7') {
+                    index += 2;
+                    if (index >= text.length()) {
+                        return;
+                    }
+                }
+
+                int glyphIndex = fp.a.indexOf(text.charAt(index));
+                if (glyphIndex < 0) {
+                    continue;
+                }
+
+                int glyphId = glyphIndex + 32;
+                if (glyphId < 0 || glyphId >= characterWidths.length) {
+                    continue;
+                }
+
+                float glyphMinX = cursorX;
+                float glyphMaxX = cursorX + FONT_GLYPH_SIZE;
+                float glyphMinY = y;
+                float glyphMaxY = y + FONT_GLYPH_SIZE;
+                float atlasX = (glyphId % 16) * 8.0f;
+                float atlasY = (glyphId / 16) * 8.0f;
+                float u0 = atlasX / FONT_ATLAS_SIZE;
+                float v0 = atlasY / FONT_ATLAS_SIZE;
+                float u1 = (atlasX + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
+                float v1 = (atlasY + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        glyphMinX, glyphMaxY, 0.0f, u0, v1,
+                        glyphMaxX, glyphMaxY, 0.0f, u1, v1,
+                        glyphMaxX, glyphMinY, 0.0f, u1, v0,
+                        glyphMinX, glyphMinY, 0.0f, u0, v0,
+                        sanitizedColor,
+                        boneIndex);
+
+                cursorX += characterWidths[glyphId];
+            }
+        } catch (RuntimeException exception) {
+            handleHookFailure(exception);
+        }
     }
 
     public static void onFirstPersonRenderStart() {
@@ -98,6 +177,7 @@ public final class RemixDynamicEntityCapture {
 
     public static void onFramePresented() {
         dynamicCaptureFrameActive = false;
+        signRenderActive = false;
     }
 
     public static void onFirstPersonItemRender(iz itemStack) {
@@ -259,8 +339,14 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityTexture = "";
+        signRenderActive = false;
         firstPersonActive = false;
         activeFirstPersonTexture = "";
+    }
+
+    private static int applyFontShadow(int colorRgba) {
+        int alpha = colorRgba & 0xFF000000;
+        return ((colorRgba & 0x00FCFCFC) >> 2) | alpha;
     }
 
     private static void ensureDynamicCaptureFrame() {

@@ -123,6 +123,10 @@ public final class MinecraftRemixHooks {
         RemixDynamicEntityCapture.onSignRenderEnd();
     }
 
+    public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
+        RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
+    }
+
     public static void onFirstPersonRenderStart() {
         RemixDynamicEntityCapture.onFirstPersonRenderStart();
     }

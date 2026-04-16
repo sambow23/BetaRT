@@ -476,6 +476,7 @@ Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.pn
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "clouds.png") -DestinationDdsPath (Join-Path $assetsDir "clouds.dds")
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('item/') -DestinationRoot $assetsDir -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('font/') -DestinationRoot $assetsDir -ConvertToDds
 
 if (-not (Test-Path $nativeDll)) {
     throw "Native DLL not found at $nativeDll. Build it first with: cmake --build build --config $Configuration --target mcrtx_jni"
@@ -499,3 +500,4 @@ Write-Host "Extracted cloud texture: $(Join-Path $assetsDir 'clouds.png')"
 Write-Host "Converted cloud texture DDS: $(Join-Path $assetsDir 'clouds.dds')"
 Write-Host "Extracted entity texture directories under: $(Join-Path $assetsDir 'entities')"
 Write-Host "Extracted item texture directories under: $(Join-Path $assetsDir 'item')"
+Write-Host "Extracted font texture directories under: $(Join-Path $assetsDir 'font')"

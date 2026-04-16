@@ -39,6 +39,7 @@ public final class ClientPatchTool {
     private static final String WORLD_RENDERER_CLASS = "n";
     private static final String MINECART_RENDERER_CLASS = "tb";
     private static final String SIGN_RENDERER_CLASS = "po";
+    private static final String FONT_RENDERER_CLASS = "sj";
 
     private ClientPatchTool() {
     }
@@ -87,6 +88,8 @@ public final class ClientPatchTool {
                     content = patchTb(content);
                 } else if (entryName.equals(SIGN_RENDERER_CLASS + ".class")) {
                     content = patchPo(content);
+                } else if (entryName.equals(FONT_RENDERER_CLASS + ".class")) {
+                    content = patchSj(content);
                 }
 
                 JarEntry newEntry = new JarEntry(entryName);
@@ -237,6 +240,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lyk;DDDF)V")) {
                 patchSignRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchSj(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;IIIZ)V")) {
+                patchFontRender(method);
             }
         }
         return writeClass(classNode);
@@ -455,6 +468,7 @@ public final class ClientPatchTool {
     }
 
     private static void patchSignRender(MethodNode method) {
+        boolean insertedStart = false;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
@@ -462,10 +476,26 @@ public final class ClientPatchTool {
                     && methodInsnNode.name.equals("a")
                     && methodInsnNode.desc.equals("()V")) {
                 method.instructions.insertBefore(node, signRenderStartCall());
-                method.instructions.insert(node, staticHelperCall("onSignRenderEnd", "()V"));
-                return;
+                insertedStart = true;
+                break;
             }
         }
+
+        if (!insertedStart) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onSignRenderEnd", "()V"));
+            }
+            node = next;
+        }
+    }
+
+    private static void patchFontRender(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), signTextRenderCall());
     }
 
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {
@@ -587,6 +617,24 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onSignRenderStart", "(Lyk;)V", false));
+        return instructions;
+    }
+
+    private static InsnList signTextRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 5));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FONT_RENDERER_CLASS, "b", "[I"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onSignTextRender",
+                "(Ljava/lang/String;IIIZ[I)V",
+                false));
         return instructions;
     }
 
