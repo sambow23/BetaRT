@@ -321,6 +321,8 @@ private:
   bool rebuildDestroyOverlayMesh();
   static std::filesystem::path resolveCloudTexturePath();
   static std::filesystem::path resolveFireTexturePath();
+  static std::filesystem::path resolveWaterTexturePath();
+  static std::filesystem::path resolveLavaTexturePath();
   static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
   static std::filesystem::path resolveParticleTexturePath(std::uint32_t textureKind);
   static std::filesystem::path resolveTerrainAtlasPath();
@@ -372,7 +374,9 @@ private:
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::filesystem::path fireTexturePath_ {};
-  std::array<remixapi_MaterialHandle, 3> terrainMaterialHandles_ {};
+  std::filesystem::path waterTexturePath_ {};
+  std::filesystem::path lavaTexturePath_ {};
+  std::array<remixapi_MaterialHandle, 4> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};

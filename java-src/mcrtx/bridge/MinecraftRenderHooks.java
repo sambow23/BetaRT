@@ -10,6 +10,8 @@ public final class MinecraftRenderHooks {
     private static final int ICE_BLOCK_ID = 79;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
+    private static final int LAVA_STILL_BLOCK_ID = 10;
+    private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
     private static final int LEVER_OR_BUTTON_BLOCK_RENDER_TYPE = 12;
     private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
@@ -508,7 +510,7 @@ public final class MinecraftRenderHooks {
             return false;
         }
         if (activeChunkRenderPass == 0) {
-            return renderType == 0
+            return (renderType == 0
                     || renderType == 1
                     || renderType == 2
                     || renderType == 3
@@ -517,7 +519,8 @@ public final class MinecraftRenderHooks {
                     || renderType == 9
                     || renderType == STAIRS_BLOCK_RENDER_TYPE
                     || renderType == LEVER_OR_BUTTON_BLOCK_RENDER_TYPE
-                    || renderType == 11;
+                    || renderType == 11)
+                    || (renderType == 4 && (blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID));
         }
         if (activeChunkRenderPass == 1) {
             return (renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID))

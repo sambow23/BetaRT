@@ -381,15 +381,16 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           ? cell.materialClass
           : kOpaqueTerrainMaterialClass;
 
-        if (cell.renderType == kLiquidBlockRenderType && materialClass == kWaterTerrainMaterialClass) {
-          SurfaceBuildBuffers& waterSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+        if (cell.renderType == kLiquidBlockRenderType
+            && (materialClass == kWaterTerrainMaterialClass || materialClass == kLavaTerrainMaterialClass)) {
+          SurfaceBuildBuffers& liquidSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendWaterGeometry(
               cell,
               static_cast<float>(localX),
               static_cast<float>(localY),
               static_cast<float>(localZ),
-              waterSurface.vertices,
-              waterSurface.indices);
+              liquidSurface.vertices,
+              liquidSurface.indices);
           continue;
         }
 

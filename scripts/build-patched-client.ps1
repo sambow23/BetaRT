@@ -299,6 +299,353 @@ function Replace-TerrainFireTiles {
     }
 }
 
+function Replace-TerrainLiquidTiles {
+    param(
+        [string]$TerrainPngPath,
+        [string]$WaterPngPath,
+        [string]$LavaPngPath
+    )
+
+    $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
+    $terrainBitmap = $null
+    $waterAtlasBitmap = $null
+    $lavaAtlasBitmap = $null
+    $graphics = $null
+    $waterGraphics = $null
+    $lavaGraphics = $null
+
+    try {
+        $terrainBitmap = New-Object System.Drawing.Bitmap($terrainSource)
+        $frameCount = 32
+        $frameWidth = 32
+        $tileSize = 16
+        $atlasWidth = $frameCount * $frameWidth
+        $waterAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $lavaAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($terrainBitmap)
+        $waterGraphics = [System.Drawing.Graphics]::FromImage($waterAtlasBitmap)
+        $lavaGraphics = [System.Drawing.Graphics]::FromImage($lavaAtlasBitmap)
+
+        function Set-NearestNeighborGraphics {
+            param($TargetGraphics)
+
+            $TargetGraphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+            $TargetGraphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+            $TargetGraphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+        }
+
+        function New-WaterSimulation {
+            param(
+                [bool]$Flowing,
+                [int]$Seed
+            )
+
+            return @{
+                Current = (New-Object 'float[]' 256)
+                Next = (New-Object 'float[]' 256)
+                Accumulated = (New-Object 'float[]' 256)
+                Impulse = (New-Object 'float[]' 256)
+                Flowing = $Flowing
+                Offset = 0
+                Random = [System.Random]::new($Seed)
+            }
+        }
+
+        function Step-WaterSimulation {
+            param([hashtable]$Simulation)
+
+            $current = $Simulation.Current
+            $next = $Simulation.Next
+            $accumulated = $Simulation.Accumulated
+            $impulse = $Simulation.Impulse
+            $random = $Simulation.Random
+
+            if ($Simulation.Flowing) {
+                $Simulation.Offset++
+            }
+
+            for ($x = 0; $x -lt 16; $x++) {
+                for ($y = 0; $y -lt 16; $y++) {
+                    $sum = 0.0
+                    if ($Simulation.Flowing) {
+                        for ($sampleY = $y - 2; $sampleY -le $y; $sampleY++) {
+                            $wrappedX = $x -band 0xF
+                            $wrappedY = $sampleY -band 0xF
+                            $sum += $current[$wrappedX + ($wrappedY * 16)]
+                        }
+                        $next[$x + ($y * 16)] = $sum / 3.2 + $accumulated[$x + ($y * 16)] * 0.8
+                    } else {
+                        for ($sampleX = $x - 1; $sampleX -le $x + 1; $sampleX++) {
+                            $wrappedX = $sampleX -band 0xF
+                            $wrappedY = $y -band 0xF
+                            $sum += $current[$wrappedX + ($wrappedY * 16)]
+                        }
+                        $next[$x + ($y * 16)] = $sum / 3.3 + $accumulated[$x + ($y * 16)] * 0.8
+                    }
+                }
+            }
+
+            for ($x = 0; $x -lt 16; $x++) {
+                for ($y = 0; $y -lt 16; $y++) {
+                    $index = $x + ($y * 16)
+                    $accumulated[$index] += $impulse[$index] * 0.05
+                    if ($accumulated[$index] -lt 0.0) {
+                        $accumulated[$index] = 0.0
+                    }
+
+                    $impulseDecay = 0.1
+                    $randomImpulseChance = 0.05
+                    if ($Simulation.Flowing) {
+                        $impulseDecay = 0.3
+                        $randomImpulseChance = 0.2
+                    }
+
+                    $impulse[$index] -= $impulseDecay
+                    if ($random.NextDouble() -lt $randomImpulseChance) {
+                        $impulse[$index] = 0.5
+                    }
+                }
+            }
+
+            $Simulation.Next = $current
+            $Simulation.Current = $next
+        }
+
+        function New-WaterTileBitmap {
+            param([hashtable]$Simulation)
+
+            $bitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $rowOffset = if ($Simulation.Flowing) { $Simulation.Offset * 16 } else { 0 }
+
+            for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
+                $sampleIndex = ($pixelIndex - $rowOffset) -band 0xFF
+                $intensity = $Simulation.Current[$sampleIndex]
+                if ($intensity -gt 1.0) {
+                    $intensity = 1.0
+                }
+                if ($intensity -lt 0.0) {
+                    $intensity = 0.0
+                }
+
+                $squared = $intensity * $intensity
+                $red = [int](32.0 + $squared * 32.0)
+                $green = [int](50.0 + $squared * 64.0)
+                $blue = 255
+                $alpha = [int](146.0 + $squared * 50.0)
+
+                $pixelX = $pixelIndex % 16
+                $pixelY = [int][Math]::Floor($pixelIndex / 16)
+                $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb($alpha, $red, $green, $blue))
+            }
+
+            return $bitmap
+        }
+
+        function New-LavaSimulation {
+            param(
+                [bool]$Flowing,
+                [int]$Seed
+            )
+
+            return @{
+                Current = (New-Object 'float[]' 256)
+                Next = (New-Object 'float[]' 256)
+                Accumulated = (New-Object 'float[]' 256)
+                Impulse = (New-Object 'float[]' 256)
+                Flowing = $Flowing
+                Offset = 0
+                Random = [System.Random]::new($Seed)
+            }
+        }
+
+        function Step-LavaSimulation {
+            param([hashtable]$Simulation)
+
+            $current = $Simulation.Current
+            $next = $Simulation.Next
+            $accumulated = $Simulation.Accumulated
+            $impulse = $Simulation.Impulse
+            $random = $Simulation.Random
+            $twoPi = [Math]::PI * 2.0
+
+            if ($Simulation.Flowing) {
+                $Simulation.Offset++
+            }
+
+            for ($x = 0; $x -lt 16; $x++) {
+                for ($y = 0; $y -lt 16; $y++) {
+                    $sum = 0.0
+                    $xOffset = [int]([Math]::Sin($y * $twoPi / 16.0) * 1.2)
+                    $yOffset = [int]([Math]::Sin($x * $twoPi / 16.0) * 1.2)
+
+                    for ($sampleX = $x - 1; $sampleX -le $x + 1; $sampleX++) {
+                        for ($sampleY = $y - 1; $sampleY -le $y + 1; $sampleY++) {
+                            $wrappedX = ($sampleX + $xOffset) -band 0xF
+                            $wrappedY = ($sampleY + $yOffset) -band 0xF
+                            $sum += $current[$wrappedX + ($wrappedY * 16)]
+                        }
+                    }
+
+                    $index = $x + ($y * 16)
+                    $averageAccumulation = (
+                        $accumulated[(($x + 0) -band 0xF) + ((($y + 0) -band 0xF) * 16)] +
+                        $accumulated[(($x + 1) -band 0xF) + ((($y + 0) -band 0xF) * 16)] +
+                        $accumulated[(($x + 1) -band 0xF) + ((($y + 1) -band 0xF) * 16)] +
+                        $accumulated[(($x + 0) -band 0xF) + ((($y + 1) -band 0xF) * 16)]
+                    ) / 4.0
+                    $next[$index] = $sum / 10.0 + $averageAccumulation * 0.8
+                    $accumulated[$index] += $impulse[$index] * 0.01
+                    if ($accumulated[$index] -lt 0.0) {
+                        $accumulated[$index] = 0.0
+                    }
+
+                    $impulse[$index] -= 0.06
+                    if ($random.NextDouble() -lt 0.005) {
+                        $impulse[$index] = 1.5
+                    }
+                }
+            }
+
+            $Simulation.Next = $current
+            $Simulation.Current = $next
+        }
+
+        function New-LavaTileBitmap {
+            param([hashtable]$Simulation)
+
+            $bitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $rowOffset = if ($Simulation.Flowing) { [int]($Simulation.Offset / 3) * 16 } else { 0 }
+
+            for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
+                $sampleIndex = ($pixelIndex - $rowOffset) -band 0xFF
+                $intensity = $Simulation.Current[$sampleIndex] * 2.0
+                if ($intensity -gt 1.0) {
+                    $intensity = 1.0
+                }
+                if ($intensity -lt 0.0) {
+                    $intensity = 0.0
+                }
+
+                $red = [int]($intensity * 100.0 + 155.0)
+                $green = [int]($intensity * $intensity * 255.0)
+                $blue = [int]([Math]::Pow($intensity, 4.0) * 128.0)
+
+                $pixelX = $pixelIndex % 16
+                $pixelY = [int][Math]::Floor($pixelIndex / 16)
+                $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb(255, $red, $green, $blue))
+            }
+
+            return $bitmap
+        }
+
+        Set-NearestNeighborGraphics -TargetGraphics $graphics
+        Set-NearestNeighborGraphics -TargetGraphics $waterGraphics
+        Set-NearestNeighborGraphics -TargetGraphics $lavaGraphics
+
+        $waterStillSimulation = New-WaterSimulation -Flowing $false -Seed 1337
+        $waterFlowSimulation = New-WaterSimulation -Flowing $true -Seed 1338
+        $lavaStillSimulation = New-LavaSimulation -Flowing $false -Seed 1339
+        $lavaFlowSimulation = New-LavaSimulation -Flowing $true -Seed 1340
+
+        for ($warmupStep = 0; $warmupStep -lt 32; $warmupStep++) {
+            Step-WaterSimulation -Simulation $waterStillSimulation
+            Step-WaterSimulation -Simulation $waterFlowSimulation
+            Step-LavaSimulation -Simulation $lavaStillSimulation
+            Step-LavaSimulation -Simulation $lavaFlowSimulation
+        }
+
+        $waterTerrainTileIndices = @(205, 206)
+        $lavaTerrainTileIndices = @(237, 238)
+
+        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+            $waterStillBitmap = New-WaterTileBitmap -Simulation $waterStillSimulation
+            $waterFlowBitmap = New-WaterTileBitmap -Simulation $waterFlowSimulation
+            $lavaStillBitmap = New-LavaTileBitmap -Simulation $lavaStillSimulation
+            $lavaFlowBitmap = New-LavaTileBitmap -Simulation $lavaFlowSimulation
+            try {
+                $frameDestinationX = $frameIndex * $frameWidth
+                $waterGraphics.DrawImage($waterStillBitmap, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $waterGraphics.DrawImage($waterFlowBitmap, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+                $lavaGraphics.DrawImage($lavaStillBitmap, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $lavaGraphics.DrawImage($lavaFlowBitmap, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+
+                if ($frameIndex -eq 0) {
+                    $frameZeroBitmaps = @($waterStillBitmap, $waterFlowBitmap, $lavaStillBitmap, $lavaFlowBitmap)
+                    $frameZeroTileIndices = @($waterTerrainTileIndices[0], $waterTerrainTileIndices[1], $lavaTerrainTileIndices[0], $lavaTerrainTileIndices[1])
+                    for ($tileArrayIndex = 0; $tileArrayIndex -lt $frameZeroBitmaps.Count; $tileArrayIndex++) {
+                        $tileIndex = $frameZeroTileIndices[$tileArrayIndex]
+                        $destinationTileX = ($tileIndex % 16) * $tileSize
+                        $destinationTileY = [int][Math]::Floor($tileIndex / 16) * $tileSize
+                        $graphics.DrawImage($frameZeroBitmaps[$tileArrayIndex], (New-Object System.Drawing.Rectangle -ArgumentList $destinationTileX, $destinationTileY, $tileSize, $tileSize))
+                    }
+                }
+            } finally {
+                $waterStillBitmap.Dispose()
+                $waterFlowBitmap.Dispose()
+                $lavaStillBitmap.Dispose()
+                $lavaFlowBitmap.Dispose()
+            }
+
+            Step-WaterSimulation -Simulation $waterStillSimulation
+            Step-WaterSimulation -Simulation $waterFlowSimulation
+            Step-LavaSimulation -Simulation $lavaStillSimulation
+            Step-LavaSimulation -Simulation $lavaFlowSimulation
+        }
+
+        $waterGraphics.Dispose()
+        $waterGraphics = $null
+        $lavaGraphics.Dispose()
+        $lavaGraphics = $null
+        $graphics.Dispose()
+        $graphics = $null
+
+        $temporaryTerrainPath = "$TerrainPngPath.tmp"
+        $temporaryWaterPath = "$WaterPngPath.tmp"
+        $temporaryLavaPath = "$LavaPngPath.tmp"
+        $terrainBitmap.Save($temporaryTerrainPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $waterAtlasBitmap.Save($temporaryWaterPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $lavaAtlasBitmap.Save($temporaryLavaPath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $waterAtlasBitmap.Dispose()
+        $waterAtlasBitmap = $null
+        $lavaAtlasBitmap.Dispose()
+        $lavaAtlasBitmap = $null
+        $terrainBitmap.Dispose()
+        $terrainBitmap = $null
+        $terrainSource.Dispose()
+        $terrainSource = $null
+
+        Copy-Item -Force $temporaryTerrainPath $TerrainPngPath
+        Remove-Item -Force $temporaryTerrainPath
+        Copy-Item -Force $temporaryWaterPath $WaterPngPath
+        Remove-Item -Force $temporaryWaterPath
+        Copy-Item -Force $temporaryLavaPath $LavaPngPath
+        Remove-Item -Force $temporaryLavaPath
+    } finally {
+        if ($null -ne $lavaGraphics) {
+            $lavaGraphics.Dispose()
+        }
+        if ($null -ne $waterGraphics) {
+            $waterGraphics.Dispose()
+        }
+        if ($null -ne $graphics) {
+            $graphics.Dispose()
+        }
+        if ($null -ne $lavaAtlasBitmap) {
+            $lavaAtlasBitmap.Dispose()
+        }
+        if ($null -ne $waterAtlasBitmap) {
+            $waterAtlasBitmap.Dispose()
+        }
+        if ($null -ne $terrainBitmap) {
+            $terrainBitmap.Dispose()
+        }
+        if ($null -ne $terrainSource) {
+            $terrainSource.Dispose()
+        }
+    }
+}
+
 function Export-ZipEntryFile {
     param(
         [string]$ArchivePath,
@@ -467,8 +814,11 @@ if ($LASTEXITCODE -ne 0) {
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
+Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationDdsPath (Join-Path $assetsDir "water.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
@@ -492,6 +842,10 @@ Write-Host "Replaced terrain fire placeholder tiles with generated Beta fire tex
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"
 Write-Host "Generated fire animation atlas: $(Join-Path $assetsDir 'fire.png')"
 Write-Host "Converted fire animation atlas DDS: $(Join-Path $assetsDir 'fire.dds')"
+Write-Host "Generated water animation atlas: $(Join-Path $assetsDir 'water.png')"
+Write-Host "Converted water animation atlas DDS: $(Join-Path $assetsDir 'water.dds')"
+Write-Host "Generated lava animation atlas: $(Join-Path $assetsDir 'lava.png')"
+Write-Host "Converted lava animation atlas DDS: $(Join-Path $assetsDir 'lava.dds')"
 Write-Host "Extracted particles atlas: $(Join-Path $assetsDir 'particles.png')"
 Write-Host "Converted particles atlas DDS: $(Join-Path $assetsDir 'particles.dds')"
 Write-Host "Extracted GUI item atlas: $(Join-Path $assetsDir 'gui\items.png')"

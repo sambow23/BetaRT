@@ -9,6 +9,8 @@ public final class RemixChunkCapture {
     private static final int MAX_RECAPTURE_SECTIONS_PER_PRESENT = 8;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
+    private static final int LAVA_STILL_BLOCK_ID = 10;
+    private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final RemixWorldListener WORLD_LISTENER = new RemixWorldListener();
     private static final LinkedHashSet<DirtyChunkSection> PENDING_RECAPTURE_SECTIONS = new LinkedHashSet<DirtyChunkSection>();
     private static boolean loggedChunkBuild;
@@ -83,7 +85,7 @@ public final class RemixChunkCapture {
         float liquidHeight3 = 1.0f;
         float liquidFlowAngle = -1000.0f;
 
-        if (isWaterBlock(blockId) && renderType == 4) {
+        if (isLiquidBlock(blockId) && renderType == 4) {
             liquidVisibilityMask = computeLiquidVisibilityMask(blockDefinition, blockAccess, blockX, blockY, blockZ);
             liquidHeight0 = computeLiquidCornerHeight(blockAccess, blockX, blockY, blockZ, blockDefinition.bA);
             liquidHeight1 = computeLiquidCornerHeight(blockAccess, blockX + 1, blockY, blockZ, blockDefinition.bA);
@@ -147,7 +149,7 @@ public final class RemixChunkCapture {
         float liquidHeight3 = 1.0f;
         float liquidFlowAngle = -1000.0f;
 
-        if (isWaterBlock(blockId) && renderType == 4) {
+        if (isLiquidBlock(blockId) && renderType == 4) {
             liquidVisibilityMask = computeLiquidVisibilityMask(blockDefinition, world, blockX, blockY, blockZ);
             liquidHeight0 = computeLiquidCornerHeight(world, blockX, blockY, blockZ, blockDefinition.bA);
             liquidHeight1 = computeLiquidCornerHeight(world, blockX + 1, blockY, blockZ, blockDefinition.bA);
@@ -186,6 +188,14 @@ public final class RemixChunkCapture {
 
     private static boolean isWaterBlock(int blockId) {
         return blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID;
+    }
+
+    private static boolean isLavaBlock(int blockId) {
+        return blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID;
+    }
+
+    private static boolean isLiquidBlock(int blockId) {
+        return isWaterBlock(blockId) || isLavaBlock(blockId);
     }
 
     private static int computeLiquidVisibilityMask(uu blockDefinition, xp blockAccess, int blockX, int blockY, int blockZ) {

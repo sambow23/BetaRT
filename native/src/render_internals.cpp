@@ -223,6 +223,14 @@ bool isWaterBlock(int blockId) {
   return blockId == kWaterStillBlockId || blockId == kWaterFlowingBlockId;
 }
 
+bool isLavaBlock(int blockId) {
+  return blockId == kLavaStillBlockId || blockId == kLavaFlowingBlockId;
+}
+
+bool isLiquidBlock(int blockId) {
+  return isWaterBlock(blockId) || isLavaBlock(blockId);
+}
+
 bool isCrossedQuadRenderType(int renderType) {
   return renderType == kCrossedQuadBlockRenderType;
 }
@@ -310,7 +318,8 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
     return false;
   }
   if (renderPass == 0) {
-    return isSupportedPass0RenderType(renderType);
+    return isSupportedPass0RenderType(renderType)
+        || (renderType == kLiquidBlockRenderType && isLavaBlock(blockId));
   }
   if (renderPass == 1) {
     return (renderType == kLiquidBlockRenderType && isWaterBlock(blockId))
@@ -342,6 +351,9 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
 std::uint8_t materialClassForBlock(int blockId, int renderType) {
   if (isWaterBlock(blockId)) {
     return kWaterTerrainMaterialClass;
+  }
+  if (isLavaBlock(blockId)) {
+    return kLavaTerrainMaterialClass;
   }
   return usesCutoutMaterialForBlock(blockId, renderType) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
 }
@@ -2576,6 +2588,77 @@ void appendWaterGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
+  const auto remapLiquidUv = [&cell](int terrainTileIndex, float atlasU, float atlasV) {
+    const float tileOriginU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+    const float tileOriginV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+    const float tileSpan = kAtlasTileSizePixels / kAtlasSizePixels;
+    const float localTileU = (atlasU - tileOriginU) / tileSpan;
+    const float localTileV = (atlasV - tileOriginV) / tileSpan;
+    const bool useFlowTile = (cell.materialClass == kWaterTerrainMaterialClass && terrainTileIndex == kWaterFlowingTerrainTile)
+        || (cell.materialClass == kLavaTerrainMaterialClass && terrainTileIndex == kLavaFlowingTerrainTile);
+    return std::array<float, 2> {
+        localTileU * 0.5f + (useFlowTile ? 0.5f : 0.0f),
+        localTileV,
+    };
+  };
+
+  const auto appendLiquidQuad = [&remapLiquidUv, &vertices, &indices](
+                                   int terrainTileIndex,
+                                   float x0,
+                                   float y0,
+                                   float z0,
+                                   float u0,
+                                   float v0,
+                                   float x1,
+                                   float y1,
+                                   float z1,
+                                   float u1,
+                                   float v1,
+                                   float x2,
+                                   float y2,
+                                   float z2,
+                                   float u2,
+                                   float v2,
+                                   float x3,
+                                   float y3,
+                                   float z3,
+                                   float u3,
+                                   float v3,
+                                   float normalX,
+                                   float normalY,
+                                   float normalZ) {
+    const auto uv0 = remapLiquidUv(terrainTileIndex, u0, v0);
+    const auto uv1 = remapLiquidUv(terrainTileIndex, u1, v1);
+    const auto uv2 = remapLiquidUv(terrainTileIndex, u2, v2);
+    const auto uv3 = remapLiquidUv(terrainTileIndex, u3, v3);
+    appendWaterQuad(
+        x0,
+        y0,
+        z0,
+        uv0[0],
+        uv0[1],
+        x1,
+        y1,
+        z1,
+        uv1[0],
+        uv1[1],
+        x2,
+        y2,
+        z2,
+        uv2[0],
+        uv2[1],
+        x3,
+        y3,
+        z3,
+        uv3[0],
+        uv3[1],
+        normalX,
+        normalY,
+        normalZ,
+        vertices,
+        indices);
+  };
+
   const float heightNorthWest = cell.liquidHeights[0];
   const float heightNorthEast = cell.liquidHeights[1];
   const float heightSouthEast = cell.liquidHeights[2];
@@ -2596,7 +2679,8 @@ void appendWaterGeometry(
 
     const float sinAngle = std::sin(flowAngle) * 8.0f / kAtlasSizePixels;
     const float cosAngle = std::cos(flowAngle) * 8.0f / kAtlasSizePixels;
-    appendWaterQuad(
+    appendLiquidQuad(
+      terrainTileIndex,
         localX + 0.0f,
         localY + heightNorthWest,
         localZ + 0.0f,
@@ -2619,22 +2703,40 @@ void appendWaterGeometry(
         static_cast<float>(uvCenterV - cosAngle - sinAngle),
         0.0f,
         1.0f,
-        0.0f,
-        vertices,
-        indices);
+        0.0f);
   }
 
   if ((cell.liquidVisibilityMask & (1 << 0)) != 0) {
-    appendFaceGeometry(
-        4,
+      const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+      const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+      const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+      const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+      const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+      appendLiquidQuad(
+        terrainTileIndex,
         localX,
         localY,
         localZ,
-        cell.terrainTiles[0],
-        kDefaultVertexColor,
+        tileMinU,
+        tileMinV,
+        localX,
+        localY,
+        localZ + 1.0f,
+        tileMinU,
+        tileMaxV,
+        localX + 1.0f,
+        localY,
+        localZ + 1.0f,
+        tileMaxU,
+        tileMaxV,
+        localX + 1.0f,
+        localY,
+        localZ,
+        tileMaxU,
+        tileMinV,
         0.0f,
-        vertices,
-        indices);
+        -1.0f,
+        0.0f);
   }
 
   for (int sideIndex = 0; sideIndex < 4; ++sideIndex) {
@@ -2694,7 +2796,8 @@ void appendWaterGeometry(
 
     const float tileMinVA = tileBaseV + (1.0f - edgeHeightA) * kAtlasTileSizePixels / kAtlasSizePixels;
     const float tileMinVB = tileBaseV + (1.0f - edgeHeightB) * kAtlasTileSizePixels / kAtlasSizePixels;
-    appendWaterQuad(
+  appendLiquidQuad(
+    terrainTileIndex,
         x0,
         localY + edgeHeightA,
         z0,
@@ -2717,9 +2820,7 @@ void appendWaterGeometry(
         tileMaxV,
         normalX,
         0.0f,
-        normalZ,
-        vertices,
-        indices);
+        normalZ);
   }
 }
 

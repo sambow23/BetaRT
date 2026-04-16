@@ -133,6 +133,56 @@ std::filesystem::path RemixRenderer::resolveFireTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveWaterTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"water.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"water.png");
+    attemptedPaths.push_back(moduleDirectory / L"water.dds");
+    attemptedPaths.push_back(moduleDirectory / L"water.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"water.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"water.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"water.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"water.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
+std::filesystem::path RemixRenderer::resolveLavaTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"lava.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"lava.png");
+    attemptedPaths.push_back(moduleDirectory / L"lava.dds");
+    attemptedPaths.push_back(moduleDirectory / L"lava.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"lava.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"lava.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"lava.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"lava.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::string& texturePath) {
   if (texturePath.empty()) {
     return {};
@@ -226,12 +276,21 @@ bool RemixRenderer::initializeTerrainMaterials() {
   terrainAtlasPath_ = resolveTerrainAtlasPath();
   cloudTexturePath_ = resolveCloudTexturePath();
   fireTexturePath_ = resolveFireTexturePath();
+  waterTexturePath_ = resolveWaterTexturePath();
+  lavaTexturePath_ = resolveLavaTexturePath();
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
   }
 
-  const auto createTerrainMaterial = [this](std::size_t materialClass, bool cutout) {
+  const auto createTerrainMaterial = [this](
+                                       std::size_t materialClass,
+                                       bool cutout,
+                                       const std::filesystem::path& texturePath,
+                                       std::uint64_t materialHash,
+                                       std::uint8_t spriteSheetColumns,
+                                       std::uint8_t spriteSheetRows,
+                                       std::uint8_t spriteSheetFps) {
     remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
     opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
     opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
@@ -245,12 +304,13 @@ bool RemixRenderer::initializeTerrainMaterials() {
     remixapi_MaterialInfo materialInfo {};
     materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
     materialInfo.pNext = &opaqueInfo;
-  materialInfo.hash = materialClass == kWaterTerrainMaterialClass
-    ? kWaterTerrainMaterialHash
-    : (cutout ? kCutoutTerrainMaterialHash : kOpaqueTerrainMaterialHash);
-    materialInfo.albedoTexture = terrainAtlasPath_.c_str();
+  materialInfo.hash = materialHash;
+  materialInfo.albedoTexture = texturePath.c_str();
     materialInfo.emissiveIntensity = 0.0f;
     materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+  materialInfo.spriteSheetCol = spriteSheetColumns;
+  materialInfo.spriteSheetRow = spriteSheetRows;
+  materialInfo.spriteSheetFps = spriteSheetFps;
     materialInfo.filterMode = 0;
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
@@ -266,17 +326,55 @@ bool RemixRenderer::initializeTerrainMaterials() {
     return true;
   };
 
-  const bool opaqueCreated = createTerrainMaterial(kOpaqueTerrainMaterialClass, false);
-  const bool cutoutCreated = createTerrainMaterial(kCutoutTerrainMaterialClass, true);
-  const bool waterCreated = createTerrainMaterial(kWaterTerrainMaterialClass, false);
+  const bool opaqueCreated = createTerrainMaterial(
+      kOpaqueTerrainMaterialClass,
+      false,
+      terrainAtlasPath_,
+      kOpaqueTerrainMaterialHash,
+      0,
+      0,
+      0);
+  const bool cutoutCreated = createTerrainMaterial(
+      kCutoutTerrainMaterialClass,
+      true,
+      terrainAtlasPath_,
+      kCutoutTerrainMaterialHash,
+      0,
+      0,
+      0);
+  const bool waterCreated = !waterTexturePath_.empty() && createTerrainMaterial(
+      kWaterTerrainMaterialClass,
+      false,
+      waterTexturePath_,
+      kWaterTerrainMaterialHash,
+      kLiquidAnimationFrameCount,
+      1,
+      kLiquidAnimationFramesPerSecond);
+  const bool lavaCreated = !lavaTexturePath_.empty() && createTerrainMaterial(
+      kLavaTerrainMaterialClass,
+      false,
+      lavaTexturePath_,
+      kLavaTerrainMaterialHash,
+      kLiquidAnimationFrameCount,
+      1,
+      kLiquidAnimationFramesPerSecond);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
   }
+  if (waterTexturePath_.empty()) {
+    log("Water texture asset not found; water faces will be skipped");
+  }
   if (!waterCreated) {
     log("Water terrain material unavailable; water faces will be skipped");
+  }
+  if (lavaTexturePath_.empty()) {
+    log("Lava texture asset not found; lava faces will be skipped");
+  }
+  if (!lavaCreated) {
+    log("Lava terrain material unavailable; lava faces will be skipped");
   }
 
   if (fireTexturePath_.empty()) {
@@ -395,6 +493,8 @@ void RemixRenderer::destroyTerrainMaterials() {
   }
 
   fireTexturePath_.clear();
+  waterTexturePath_.clear();
+  lavaTexturePath_.clear();
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {
