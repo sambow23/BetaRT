@@ -58,6 +58,7 @@ constexpr std::uint8_t kStoneButtonBlockId = 77;
 constexpr std::uint8_t kIronDoorBlockId = 71;
 constexpr std::uint8_t kGoldenRailBlockId = 27;
 constexpr std::uint8_t kDetectorRailBlockId = 28;
+constexpr std::uint8_t kIceBlockId = 79;
 constexpr std::uint8_t kRailBlockId = 66;
 constexpr std::uint8_t kFenceBlockId = 85;
 constexpr std::uint8_t kWaterStillBlockId = 8;

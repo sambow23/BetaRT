@@ -8,11 +8,14 @@ import org.lwjgl.opengl.GL11;
 public final class RemixDynamicEntityCapture {
     private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
+    private static final int TILE_ENTITY_ID_NAMESPACE = 0x40000000;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
 
+    private static boolean dynamicCaptureFrameActive;
     private static boolean dynamicEntityActive;
     private static int activeDynamicEntityId = -1;
     private static String activeDynamicEntityTexture = "";
@@ -26,9 +29,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityFrameBegin() {
-        MinecraftRenderHooks.beginDynamicEntityFrame();
-        MinecraftRenderHooks.beginDestroyOverlayFrame();
-        MinecraftRenderHooks.beginParticleFrame();
+        ensureDynamicCaptureFrame();
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
@@ -53,11 +54,30 @@ public final class RemixDynamicEntityCapture {
         nextDynamicBoneIndex = 0;
     }
 
+    public static void onSignRenderStart(yk sign) {
+        if (!MinecraftRenderHooks.isInitialized() || sign == null) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+        dynamicEntityActive = true;
+        activeDynamicEntityId = stableTileEntityId(sign.e, sign.f, sign.g, 0x5349474E);
+        activeDynamicEntityTexture = SIGN_TEXTURE_PATH;
+        nextDynamicBoneIndex = 0;
+        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId);
+        MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+    }
+
+    public static void onSignRenderEnd() {
+        onLivingEntityRenderEnd();
+    }
+
     public static void onFirstPersonRenderStart() {
         if (!MinecraftRenderHooks.isInitialized()) {
             return;
         }
 
+        ensureDynamicCaptureFrame();
         firstPersonActive = true;
         activeFirstPersonTexture = "/mob/char.png";
         nextDynamicBoneIndex = 0;
@@ -74,6 +94,10 @@ public final class RemixDynamicEntityCapture {
         firstPersonActive = false;
         activeFirstPersonTexture = "";
         nextDynamicBoneIndex = 0;
+    }
+
+    public static void onFramePresented() {
+        dynamicCaptureFrameActive = false;
     }
 
     public static void onFirstPersonItemRender(iz itemStack) {
@@ -239,6 +263,17 @@ public final class RemixDynamicEntityCapture {
         activeFirstPersonTexture = "";
     }
 
+    private static void ensureDynamicCaptureFrame() {
+        if (dynamicCaptureFrameActive || !MinecraftRenderHooks.isInitialized()) {
+            return;
+        }
+
+        MinecraftRenderHooks.beginDynamicEntityFrame();
+        MinecraftRenderHooks.beginDestroyOverlayFrame();
+        MinecraftRenderHooks.beginParticleFrame();
+        dynamicCaptureFrameActive = true;
+    }
+
     private static String normalizeDynamicTexturePath(String primaryTexture, String fallbackTexture) {
         String normalizedPrimary = stripTexturePrefix(primaryTexture);
         if (!normalizedPrimary.isEmpty() && normalizedPrimary.charAt(0) == '/') {
@@ -276,6 +311,14 @@ public final class RemixDynamicEntityCapture {
             return activeFirstPersonTexture;
         }
         return "";
+    }
+
+    private static int stableTileEntityId(int x, int y, int z, int salt) {
+        int hash = salt;
+        hash = 31 * hash + x;
+        hash = 31 * hash + y;
+        hash = 31 * hash + z;
+        return TILE_ENTITY_ID_NAMESPACE | (hash & 0x3FFFFFFF);
     }
 
     private static int allocateDynamicBoneIndex() {

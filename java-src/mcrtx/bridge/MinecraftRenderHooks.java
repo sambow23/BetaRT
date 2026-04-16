@@ -7,6 +7,7 @@ public final class MinecraftRenderHooks {
     public static final int REMIX_UI_STATE_NONE = RemixBridgeNative.REMIX_UI_STATE_NONE;
     public static final int REMIX_UI_STATE_BASIC = RemixBridgeNative.REMIX_UI_STATE_BASIC;
     public static final int REMIX_UI_STATE_ADVANCED = RemixBridgeNative.REMIX_UI_STATE_ADVANCED;
+    private static final int ICE_BLOCK_ID = 79;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
@@ -519,7 +520,8 @@ public final class MinecraftRenderHooks {
                     || renderType == 11;
         }
         if (activeChunkRenderPass == 1) {
-            return renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID);
+            return (renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID))
+                    || (renderType == 0 && blockId == ICE_BLOCK_ID);
         }
         return false;
     }

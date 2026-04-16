@@ -68,6 +68,7 @@ public final class MinecraftRemixHooks {
             System.out.println("[mcrtx] onPresent");
         }
         MinecraftRenderHooks.present();
+        RemixDynamicEntityCapture.onFramePresented();
     }
 
     public static void onUiRenderBegin(int width, int height) {
@@ -112,6 +113,14 @@ public final class MinecraftRemixHooks {
 
     public static void onLivingEntityRenderEnd() {
         RemixDynamicEntityCapture.onLivingEntityRenderEnd();
+    }
+
+    public static void onSignRenderStart(yk sign) {
+        RemixDynamicEntityCapture.onSignRenderStart(sign);
+    }
+
+    public static void onSignRenderEnd() {
+        RemixDynamicEntityCapture.onSignRenderEnd();
     }
 
     public static void onFirstPersonRenderStart() {

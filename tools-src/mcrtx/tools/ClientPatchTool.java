@@ -38,6 +38,7 @@ public final class ClientPatchTool {
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
     private static final String MINECART_RENDERER_CLASS = "tb";
+    private static final String SIGN_RENDERER_CLASS = "po";
 
     private ClientPatchTool() {
     }
@@ -84,6 +85,8 @@ public final class ClientPatchTool {
                     content = patchN(content);
                 } else if (entryName.equals(MINECART_RENDERER_CLASS + ".class")) {
                     content = patchTb(content);
+                } else if (entryName.equals(SIGN_RENDERER_CLASS + ".class")) {
+                    content = patchPo(content);
                 }
 
                 JarEntry newEntry = new JarEntry(entryName);
@@ -224,6 +227,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lyl;DDDFF)V")) {
                 patchMinecartRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchPo(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lyk;DDDF)V")) {
+                patchSignRender(method);
             }
         }
         return writeClass(classNode);
@@ -441,6 +454,20 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchSignRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals("rf")
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("()V")) {
+                method.instructions.insertBefore(node, signRenderStartCall());
+                method.instructions.insert(node, staticHelperCall("onSignRenderEnd", "()V"));
+                return;
+            }
+        }
+    }
+
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {
         if (!(node instanceof MethodInsnNode methodInsnNode)) {
             return false;
@@ -553,6 +580,13 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onLivingEntityRenderStart", "(Lsn;)V", false));
+        return instructions;
+    }
+
+    private static InsnList signRenderStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onSignRenderStart", "(Lyk;)V", false));
         return instructions;
     }
 

@@ -313,7 +313,8 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
     return isSupportedPass0RenderType(renderType);
   }
   if (renderPass == 1) {
-    return renderType == kLiquidBlockRenderType && isWaterBlock(blockId);
+    return (renderType == kLiquidBlockRenderType && isWaterBlock(blockId))
+        || (renderType == kCubeBlockRenderType && blockId == kIceBlockId);
   }
   return false;
 }
