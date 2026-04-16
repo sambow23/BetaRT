@@ -1,4 +1,5 @@
 import mcrtx.bridge.MinecraftRenderHooks;
+import mcrtx.bridge.UiOverlayCapture;
 import java.nio.FloatBuffer;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
@@ -57,11 +58,13 @@ public final class MinecraftRemixHooks {
             loggedDisplayCreate = true;
             System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
         }
+        UiOverlayCapture.reset();
         MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
     }
 
     public static void onShutdown() {
         System.out.println("[mcrtx] onShutdown");
+        UiOverlayCapture.reset();
         MinecraftRenderHooks.shutdown();
     }
 
@@ -70,6 +73,7 @@ public final class MinecraftRemixHooks {
             loggedDisplayReset = true;
             System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
         }
+        UiOverlayCapture.reset();
         MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
     }
 
@@ -147,6 +151,14 @@ public final class MinecraftRemixHooks {
             System.out.println("[mcrtx] onPresent");
         }
         MinecraftRenderHooks.present();
+    }
+
+    public static void onUiRenderBegin(int width, int height) {
+        UiOverlayCapture.begin(width, height);
+    }
+
+    public static void onUiRenderEnd() {
+        UiOverlayCapture.end();
     }
 
     public static void onWorldChanged(fd world) {

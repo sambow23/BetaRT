@@ -275,6 +275,33 @@ public final class ClientPatchTool {
     private static void patchPxFrame(MethodNode method) {
         method.instructions.insert(cameraUpdateCall());
 
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(FZII)V")) {
+                method.instructions.insertBefore(node, uiRenderBeginCall());
+                break;
+            }
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals("px")
+                    && methodInsnNode.name.equals("b")
+                    && methodInsnNode.desc.equals("()V")) {
+                method.instructions.insertBefore(node, uiRenderBeginCall());
+                break;
+            }
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glClear", "(I)V")) {
+                method.instructions.insertBefore(node, uiRenderBeginCall());
+            }
+        }
+
         AbstractInsnNode lastReturn = null;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node.getOpcode() == Opcodes.RETURN) {
@@ -283,6 +310,7 @@ public final class ClientPatchTool {
         }
 
         if (lastReturn != null) {
+            method.instructions.insertBefore(lastReturn, staticHelperCall("onUiRenderEnd", "()V"));
             method.instructions.insertBefore(lastReturn, staticHelperCall("onPresent", "()V"));
         }
     }
@@ -439,6 +467,18 @@ public final class ClientPatchTool {
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "k", "F"));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onCamera", "(Lls;FIIF)V", false));
+        return instructions;
+    }
+
+    private static InsnList uiRenderBeginCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "d", "I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "e", "I"));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onUiRenderBegin", "(II)V", false));
         return instructions;
     }
 

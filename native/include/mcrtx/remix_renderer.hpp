@@ -268,6 +268,13 @@ public:
       float liquidHeight3,
       float liquidFlowAngle);
   void endChunkBuild(bool emittedGeometry);
+      bool drawScreenOverlay(
+        const void* pixelData,
+        std::uint32_t width,
+        std::uint32_t height,
+        remixapi_Format format,
+        float opacity);
+      bool clearScreenOverlay();
   bool present();
 
   bool isInitialized() const;
@@ -338,6 +345,7 @@ private:
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool initialized_ {false};
+  bool presentToSourceWindow_ {false};
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
   CameraState camera_ {};

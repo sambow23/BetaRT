@@ -166,8 +166,43 @@ HMODULE getCurrentModuleHandle() {
   return moduleHandle;
 }
 
+bool shouldPresentToSourceWindow() {
+  const char* envValue = std::getenv("MCRTX_USE_SOURCE_WINDOW");
+  if (envValue == nullptr || envValue[0] == '\0') {
+    return false;
+  }
+
+  const char firstCharacter = envValue[0];
+  return firstCharacter == '1'
+      || firstCharacter == 't'
+      || firstCharacter == 'T'
+      || firstCharacter == 'y'
+      || firstCharacter == 'Y';
+}
+
+bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {
+  RECT clientRect {};
+  if (!GetClientRect(sourceHwnd, &clientRect)) {
+    return false;
+  }
+
+  POINT topLeft {clientRect.left, clientRect.top};
+  POINT bottomRight {clientRect.right, clientRect.bottom};
+  if (!ClientToScreen(sourceHwnd, &topLeft) || !ClientToScreen(sourceHwnd, &bottomRight)) {
+    return false;
+  }
+
+  rect.left = topLeft.x;
+  rect.top = topLeft.y;
+  rect.right = bottomRight.x;
+  rect.bottom = bottomRight.y;
+  return true;
+}
+
 LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
+    case WM_NCHITTEST:
+      return HTTRANSPARENT;
     case WM_CLOSE:
       ShowWindow(hwnd, SW_HIDE);
       return 0;
@@ -2606,8 +2641,13 @@ bool RemixRenderer::initialize(
   height_ = height == 0 ? 1 : height;
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
 
-  if (!createOutputWindow(sourceHwnd_)) {
-    return false;
+  presentToSourceWindow_ = shouldPresentToSourceWindow();
+  HWND presentationHwnd = sourceHwnd_;
+  if (!presentToSourceWindow_) {
+    if (!createOutputWindow(sourceHwnd_)) {
+      return false;
+    }
+    presentationHwnd = outputHwnd_;
   }
 
   if (remixDllPath.empty()) {
@@ -2619,16 +2659,27 @@ bool RemixRenderer::initialize(
     return false;
   }
 
-  if (!startup(outputHwnd_)) {
+  if (remix_.DrawScreenOverlay == nullptr) {
+    setError("Loaded Remix runtime does not support DrawScreenOverlay; update dxvk-remix-gmod/d3d9.dll to a build with screen overlay support");
     resetLoadedRemix();
     destroyOutputWindow();
+    presentToSourceWindow_ = false;
+    return false;
+  }
+
+  if (!startup(presentationHwnd)) {
+    resetLoadedRemix();
+    destroyOutputWindow();
+    presentToSourceWindow_ = false;
     return false;
   }
 
   initializeTerrainMaterials();
 
   initialized_ = true;
-  log("Remix renderer initialized in separate output window");
+  log(presentToSourceWindow_
+      ? "Remix renderer initialized on source LWJGL window"
+      : "Remix renderer initialized in separate output window");
   return true;
 }
 
@@ -2647,6 +2698,7 @@ void RemixRenderer::shutdown() {
   resetLoadedRemix();
   destroyOutputWindow();
   initialized_ = false;
+  presentToSourceWindow_ = false;
   sourceHwnd_ = nullptr;
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
@@ -2691,6 +2743,75 @@ void RemixRenderer::resize(std::uint32_t width, std::uint32_t height) {
   height_ = height == 0 ? 1 : height;
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
   updateOutputWindowSize();
+}
+
+bool RemixRenderer::drawScreenOverlay(
+    const void* pixelData,
+    std::uint32_t width,
+    std::uint32_t height,
+    remixapi_Format format,
+    float opacity) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    setError("drawScreenOverlay called before initialize");
+    return false;
+  }
+
+  if (remix_.DrawScreenOverlay == nullptr) {
+    setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
+    return false;
+  }
+
+  if (pixelData == nullptr || width == 0 || height == 0) {
+    setError("DrawScreenOverlay requires non-null pixel data and non-zero dimensions");
+    return false;
+  }
+
+  if (format != REMIXAPI_FORMAT_R8G8B8A8_UNORM
+      && format != REMIXAPI_FORMAT_B8G8R8A8_UNORM) {
+    setError("DrawScreenOverlay only supports RGBA8 and BGRA8 overlay buffers");
+    return false;
+  }
+
+  const remixapi_ErrorCode result = remix_.DrawScreenOverlay(
+      pixelData,
+      width,
+      height,
+      format,
+      std::clamp(opacity, 0.0f, 1.0f));
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("DrawScreenOverlay failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  return true;
+}
+
+bool RemixRenderer::clearScreenOverlay() {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return true;
+  }
+
+  if (remix_.DrawScreenOverlay == nullptr) {
+    setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
+    return false;
+  }
+
+  const remixapi_ErrorCode result = remix_.DrawScreenOverlay(
+      nullptr,
+      0,
+      0,
+      REMIXAPI_FORMAT_R8G8B8A8_UNORM,
+      0.0f);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("DrawScreenOverlay clear failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  return true;
 }
 
 void RemixRenderer::updateCamera(const CameraState& camera) {
@@ -3129,6 +3250,7 @@ bool RemixRenderer::present() {
     return false;
   }
 
+  updateOutputWindowSize();
   pumpOutputWindowMessages();
 
   if (!submitCamera()) {
@@ -3371,27 +3493,27 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
     return false;
   }
 
-  RECT sourceRect {};
-  const bool hasSourceRect = GetWindowRect(sourceHwnd, &sourceRect) == TRUE;
-
-  RECT windowRect {0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
-  AdjustWindowRectEx(&windowRect, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
-
-  const int outerWidth = windowRect.right - windowRect.left;
-  const int outerHeight = windowRect.bottom - windowRect.top;
-  const int windowX = hasSourceRect ? sourceRect.right + 24 : CW_USEDEFAULT;
-  const int windowY = hasSourceRect ? sourceRect.top : CW_USEDEFAULT;
+  RECT sourceClientRect {};
+  const bool hasSourceClientRect = getSourceClientRectInScreenSpace(sourceHwnd, sourceClientRect);
+  const int outerWidth = hasSourceClientRect
+      ? sourceClientRect.right - sourceClientRect.left
+      : static_cast<int>(width_);
+  const int outerHeight = hasSourceClientRect
+      ? sourceClientRect.bottom - sourceClientRect.top
+      : static_cast<int>(height_);
+  const int windowX = hasSourceClientRect ? sourceClientRect.left : CW_USEDEFAULT;
+  const int windowY = hasSourceClientRect ? sourceClientRect.top : CW_USEDEFAULT;
 
   outputHwnd_ = CreateWindowExW(
-      WS_EX_APPWINDOW,
+      WS_EX_TOOLWINDOW | WS_EX_NOACTIVATE,
       kRemixWindowClassName,
       kRemixWindowTitle,
-      WS_OVERLAPPEDWINDOW,
+      WS_POPUP,
       windowX,
       windowY,
       outerWidth,
       outerHeight,
-      nullptr,
+      sourceHwnd,
       nullptr,
       getCurrentModuleHandle(),
       nullptr);
@@ -3401,9 +3523,17 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
     return false;
   }
 
+  SetWindowPos(
+      outputHwnd_,
+      HWND_TOPMOST,
+      windowX,
+      windowY,
+      outerWidth,
+      outerHeight,
+      SWP_NOACTIVATE | SWP_SHOWWINDOW);
   ShowWindow(outputHwnd_, SW_SHOWNOACTIVATE);
   UpdateWindow(outputHwnd_);
-  log("Created Remix output window");
+  log("Created Remix client-area overlay window");
   return true;
 }
 
@@ -3429,23 +3559,26 @@ void RemixRenderer::pumpOutputWindowMessages() {
 }
 
 void RemixRenderer::updateOutputWindowSize() const {
-  if (outputHwnd_ == nullptr) {
+  if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
     return;
   }
 
-  RECT windowRect {0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
-  AdjustWindowRectEx(&windowRect, WS_OVERLAPPEDWINDOW, FALSE, WS_EX_APPWINDOW);
-  const int outerWidth = windowRect.right - windowRect.left;
-  const int outerHeight = windowRect.bottom - windowRect.top;
+  RECT sourceClientRect {};
+  if (!getSourceClientRectInScreenSpace(sourceHwnd_, sourceClientRect)) {
+    return;
+  }
+
+  const int outerWidth = sourceClientRect.right - sourceClientRect.left;
+  const int outerHeight = sourceClientRect.bottom - sourceClientRect.top;
 
   SetWindowPos(
       outputHwnd_,
-      nullptr,
-      0,
-      0,
+      HWND_TOPMOST,
+      sourceClientRect.left,
+      sourceClientRect.top,
       outerWidth,
       outerHeight,
-      SWP_NOMOVE | SWP_NOZORDER | SWP_NOACTIVATE);
+      SWP_NOACTIVATE | SWP_SHOWWINDOW);
 }
 
 bool RemixRenderer::initializeTerrainMaterials() {

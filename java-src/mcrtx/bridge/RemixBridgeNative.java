@@ -3,8 +3,12 @@ package mcrtx.bridge;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.nio.ByteBuffer;
 
 public final class RemixBridgeNative {
+    public static final int SCREEN_OVERLAY_FORMAT_RGBA8 = 37;
+    public static final int SCREEN_OVERLAY_FORMAT_BGRA8 = 44;
+
     private static final boolean AVAILABLE;
     private static final String LOAD_ERROR;
 
@@ -219,6 +223,15 @@ public final class RemixBridgeNative {
             float liquidFlowAngle);
 
     public static native void nEndChunkBuild(boolean emittedGeometry);
+
+    public static native boolean nDrawScreenOverlay(
+            ByteBuffer pixelData,
+            int width,
+            int height,
+            int format,
+            float opacity);
+
+    public static native boolean nClearScreenOverlay();
 
     public static native boolean nPresent();
 

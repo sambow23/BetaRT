@@ -1,5 +1,7 @@
 package mcrtx.bridge;
 
+import java.nio.ByteBuffer;
+
 public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
     private static final int WATER_STILL_BLOCK_ID = 8;
@@ -354,6 +356,25 @@ public final class MinecraftRenderHooks {
         chunkBuildCaptureActive = false;
         activeChunkRenderPass = 0;
         capturedChunkBlocks = 0;
+    }
+
+    public static synchronized boolean drawScreenOverlay(
+            ByteBuffer pixelData,
+            int width,
+            int height,
+            int format,
+            float opacity) {
+        if (!initialized || pixelData == null) {
+            return false;
+        }
+        return RemixBridgeNative.nDrawScreenOverlay(pixelData, width, height, format, opacity);
+    }
+
+    public static synchronized boolean clearScreenOverlay() {
+        if (!initialized) {
+            return true;
+        }
+        return RemixBridgeNative.nClearScreenOverlay();
     }
 
     public static synchronized boolean present() {

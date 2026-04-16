@@ -1,0 +1,89 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "build mc-rtx release bundle",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build mc-rtx release bundle 2",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build mc-rtx release bundle 3",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build mc-rtx release bundle 4",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build mc-rtx release bundle 5",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		},
+		{
+			"label": "build mc-rtx release bundle 6",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-NoProfile",
+				"-ExecutionPolicy",
+				"Bypass",
+				"-Command",
+				"cmake --build build --config Release --target mcrtx_jni; if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }; powershell -NoProfile -ExecutionPolicy Bypass -File .\\scripts\\build-patched-client.ps1 -Configuration Release"
+			],
+			"isBackground": false,
+			"group": "build"
+		}
+	]
+}

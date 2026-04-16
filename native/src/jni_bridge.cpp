@@ -280,6 +280,36 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(
   RemixRenderer::instance().endChunkBuild(emittedGeometry == JNI_TRUE);
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nDrawScreenOverlay(
+    JNIEnv* env,
+    jclass,
+    jobject pixelBuffer,
+    jint width,
+    jint height,
+    jint format,
+    jfloat opacity) {
+  if (pixelBuffer == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  void* pixelData = env->GetDirectBufferAddress(pixelBuffer);
+  if (pixelData == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  const bool ok = RemixRenderer::instance().drawScreenOverlay(
+      pixelData,
+      static_cast<std::uint32_t>(width),
+      static_cast<std::uint32_t>(height),
+      static_cast<remixapi_Format>(format),
+      opacity);
+  return static_cast<jboolean>(fromJniBoolean(ok));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearScreenOverlay(JNIEnv*, jclass) {
+  return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().clearScreenOverlay()));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPresent(JNIEnv*, jclass) {
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().present()));
 }
