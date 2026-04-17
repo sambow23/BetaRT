@@ -197,6 +197,17 @@ public final class RemixDynamicEntityCapture {
 
         try {
             gs player = (gs) minecraft.h;
+            ls viewEntity = minecraft.i != null ? minecraft.i : player;
+            th.a.a(minecraft.f, minecraft.p, minecraft.q, viewEntity, minecraft.z, partialTicks);
+            double previousRenderOriginX = th.b;
+            double previousRenderOriginY = th.c;
+            double previousRenderOriginZ = th.d;
+            double viewX = viewEntity.bl + (viewEntity.aM - viewEntity.bl) * (double) partialTicks;
+            double viewY = viewEntity.bm + (viewEntity.aN - viewEntity.bm) * (double) partialTicks;
+            double viewZ = viewEntity.bn + (viewEntity.aO - viewEntity.bn) * (double) partialTicks;
+            th.b = viewX;
+            th.c = viewY;
+            th.d = viewZ;
             double worldX = player.bl + (player.aM - player.bl) * (double) partialTicks;
             double worldY = player.bm + (player.aN - player.bm) * (double) partialTicks;
             double worldZ = player.bn + (player.aO - player.bn) * (double) partialTicks;
@@ -218,6 +229,9 @@ public final class RemixDynamicEntityCapture {
                 GL11.glColor3f(brightness, brightness, brightness);
                 ((ds) renderer).a(player, renderX, renderY, renderZ, interpolatedYaw, partialTicks);
             } finally {
+                th.b = previousRenderOriginX;
+                th.c = previousRenderOriginY;
+                th.d = previousRenderOriginZ;
                 GL11.glPopAttrib();
             }
         } catch (RuntimeException exception) {
