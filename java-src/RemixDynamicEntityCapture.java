@@ -2,21 +2,30 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.MatrixMath;
 import java.nio.FloatBuffer;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 public final class RemixDynamicEntityCapture {
     private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
+    private static final int FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID = Integer.MAX_VALUE - 2;
     private static final int TILE_ENTITY_ID_NAMESPACE = 0x40000000;
     private static final float FONT_GLYPH_SIZE = 7.99f;
     private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final String FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/firstperson_shadow/";
     private static final String FONT_TEXTURE_PATH = "/font/default.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
+    private static final float[] firstPersonShadowOverlayInverse = new float[] {
+            1.0f, 0.0f, 0.0f, 0.0f,
+            0.0f, 1.0f, 0.0f, 0.0f,
+            0.0f, 0.0f, 1.0f, 0.0f,
+            0.0f, 0.0f, 0.0f, 1.0f
+    };
 
     private static boolean dynamicCaptureFrameActive;
     private static boolean signRenderActive;
@@ -26,6 +35,7 @@ public final class RemixDynamicEntityCapture {
     private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
+    private static boolean firstPersonShadowCaptureActive;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
 
@@ -164,6 +174,65 @@ public final class RemixDynamicEntityCapture {
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
     }
 
+    public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
+        if (!MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
+            return;
+        }
+
+        bw renderer = th.a.a(minecraft.h);
+        if (!(renderer instanceof ds)) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+        dynamicEntityActive = true;
+        activeDynamicEntityId = FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID;
+        activeDynamicEntityTexture = makeFirstPersonShadowTextureAlias("/mob/char.png");
+        nextDynamicBoneIndex = 0;
+        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID);
+        MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+        firstPersonShadowCaptureActive = true;
+
+        try {
+            gs player = (gs) minecraft.h;
+            double worldX = player.bl + (player.aM - player.bl) * (double) partialTicks;
+            double worldY = player.bm + (player.aN - player.bm) * (double) partialTicks;
+            double worldZ = player.bn + (player.aO - player.bn) * (double) partialTicks;
+            double renderX = worldX - th.b;
+            double renderY = worldY - th.c;
+            double renderZ = worldZ - th.d;
+            float interpolatedYaw = player.aU + (player.aS - player.aU) * partialTicks;
+            float brightness = player.a(partialTicks);
+            MODEL_VIEW_BUFFER.clear();
+            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+            float[] overlayModelView = new float[16];
+            MODEL_VIEW_BUFFER.get(overlayModelView);
+            float[] overlayInverse = MatrixMath.invertAffineColumnMajor(overlayModelView);
+            System.arraycopy(overlayInverse, 0, firstPersonShadowOverlayInverse, 0, firstPersonShadowOverlayInverse.length);
+            GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+            try {
+                GL11.glColorMask(false, false, false, false);
+                GL11.glDepthMask(false);
+                GL11.glColor3f(brightness, brightness, brightness);
+                ((ds) renderer).a(player, renderX, renderY, renderZ, interpolatedYaw, partialTicks);
+            } finally {
+                GL11.glPopAttrib();
+            }
+        } catch (RuntimeException exception) {
+            handleHookFailure(exception);
+            return;
+        } finally {
+            firstPersonShadowCaptureActive = false;
+            if (dynamicEntityActive && activeDynamicEntityId == FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID) {
+                MinecraftRenderHooks.endDynamicEntity();
+                dynamicEntityActive = false;
+                activeDynamicEntityId = -1;
+                activeDynamicEntityTexture = "";
+                nextDynamicBoneIndex = 0;
+            }
+        }
+    }
+
     public static void onFirstPersonRenderEnd() {
         if (!firstPersonActive) {
             return;
@@ -194,6 +263,9 @@ public final class RemixDynamicEntityCapture {
             return;
         }
         String resolvedTexture = normalizeDynamicTexturePath(primaryTexture, fallbackTexture);
+        if (firstPersonShadowCaptureActive) {
+            resolvedTexture = makeFirstPersonShadowTextureAlias(resolvedTexture);
+        }
         if (resolvedTexture.isEmpty() || resolvedTexture.equals(activeDynamicEntityTexture)) {
             return;
         }
@@ -220,7 +292,13 @@ public final class RemixDynamicEntityCapture {
             float[] color = new float[4];
             COLOR_BUFFER.get(color);
 
-            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            float[] modelToWorld;
+            if (firstPersonShadowCaptureActive) {
+                float[] overlayNeutralModelView = MatrixMath.multiplyColumnMajor(firstPersonShadowOverlayInverse, modelView);
+                modelToWorld = MatrixMath.multiplyColumnMajor(buildCameraTranslationMatrix(), overlayNeutralModelView);
+            } else {
+                modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            }
             float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
             int colorRgba = ColorMath.packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
             int boneIndex = allocateDynamicBoneIndex();
@@ -342,6 +420,7 @@ public final class RemixDynamicEntityCapture {
         signRenderActive = false;
         firstPersonActive = false;
         activeFirstPersonTexture = "";
+        firstPersonShadowCaptureActive = false;
     }
 
     private static int applyFontShadow(int colorRgba) {
@@ -389,6 +468,20 @@ public final class RemixDynamicEntityCapture {
         return normalized;
     }
 
+    private static String makeFirstPersonShadowTextureAlias(String texturePath) {
+        String normalized = stripTexturePrefix(texturePath);
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        if (normalized.startsWith(FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX)) {
+            return normalized;
+        }
+        if (normalized.charAt(0) == '/') {
+            normalized = normalized.substring(1);
+        }
+        return FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX + normalized;
+    }
+
     private static String activeCaptureTexture() {
         if (dynamicEntityActive && !activeDynamicEntityTexture.isEmpty()) {
             return activeDynamicEntityTexture;
@@ -427,5 +520,17 @@ public final class RemixDynamicEntityCapture {
                 columnMajorMatrix[0], columnMajorMatrix[4], columnMajorMatrix[8], columnMajorMatrix[12],
                 columnMajorMatrix[1], columnMajorMatrix[5], columnMajorMatrix[9], columnMajorMatrix[13],
                 columnMajorMatrix[2], columnMajorMatrix[6], columnMajorMatrix[10], columnMajorMatrix[14]);
+    }
+
+    private static float[] buildCameraTranslationMatrix() {
+        return new float[] {
+                1.0f, 0.0f, 0.0f, 0.0f,
+                0.0f, 1.0f, 0.0f, 0.0f,
+                0.0f, 0.0f, 1.0f, 0.0f,
+                RemixCameraState.cameraPositionX,
+                RemixCameraState.cameraPositionY,
+                RemixCameraState.cameraPositionZ,
+                1.0f
+        };
     }
 }

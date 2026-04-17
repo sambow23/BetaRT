@@ -268,6 +268,11 @@ std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::
     normalized.erase(normalized.begin());
   }
 
+  constexpr std::string_view kFirstPersonShadowTextureAliasPrefix = "mcrtx_alias/firstperson_shadow/";
+  if (normalized.rfind(kFirstPersonShadowTextureAliasPrefix, 0) == 0) {
+    normalized.erase(0, kFirstPersonShadowTextureAliasPrefix.size());
+  }
+
   std::filesystem::path relativePath(normalized);
   relativePath.make_preferred();
   std::filesystem::path ddsPath = relativePath;

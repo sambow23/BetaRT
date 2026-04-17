@@ -111,6 +111,7 @@ constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
 constexpr std::uint64_t kParticleMaterialHashSeed = 0x4D43525458505443ull;
 constexpr std::uint64_t kDynamicEntityMeshHashSeed = 0x4D43525458454E00ull;
+constexpr int kFirstPersonPlayerShadowEntityId = 0x7FFFFFFD;
 constexpr std::uint64_t kDestroyOverlayMeshHashSeed = 0x4D43525458444F00ull;
 constexpr std::uint64_t kParticleMeshHashSeed = 0x4D43525458505100ull;
 constexpr std::uint64_t kFireMeshHashSeed = 0x4D43525458465200ull;

@@ -266,7 +266,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchFirstPersonRender(MethodNode method) {
-        method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onFirstPersonRenderStart", "()V"));
+        InsnList beginInstructions = new InsnList();
+        beginInstructions.add(firstPersonShadowPlayerRenderCall());
+        beginInstructions.add(staticHelperCall("onFirstPersonRenderStart", "()V"));
+        method.instructions.insertBefore(method.instructions.getFirst(), beginInstructions);
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
             AbstractInsnNode next = node.getNext();
@@ -702,6 +705,20 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onFirstPersonItemRender",
                 "(Liz;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList firstPersonShadowPlayerRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FIRST_PERSON_RENDERER_CLASS, "a", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 1));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onFirstPersonShadowPlayerRender",
+                "(Lnet/minecraft/client/Minecraft;F)V",
                 false));
         return instructions;
     }

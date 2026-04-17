@@ -155,6 +155,7 @@ void RemixRenderer::endDynamicEntity() {
     if (boneCount != 0 && boneCount <= activeDynamicEntity_.boneTransforms.size()) {
       if (DynamicEntityMeshData* meshData = findOrCreateDynamicEntityMesh(activeDynamicEntity_); meshData != nullptr) {
         DynamicEntityFrameInstance frameInstance;
+        frameInstance.entityId = activeDynamicEntity_.entityId;
         frameInstance.meshHandle = meshData->meshHandle;
         frameInstance.quadCount = meshData->quadCount;
         frameInstance.boneTransforms.assign(

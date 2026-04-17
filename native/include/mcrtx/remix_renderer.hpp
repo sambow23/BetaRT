@@ -137,6 +137,7 @@ struct DynamicEntityMeshData {
 };
 
 struct DynamicEntityFrameInstance {
+  int entityId {-1};
   remixapi_MeshHandle meshHandle {nullptr};
   std::size_t quadCount {0};
   std::vector<remixapi_Transform> boneTransforms {};

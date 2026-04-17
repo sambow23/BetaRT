@@ -491,7 +491,9 @@ bool RemixRenderer::drawCapturedGeometry() {
     remixapi_InstanceInfo instanceInfo {};
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &boneTransformsInfo;
-    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
+      ? REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
+      : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
     instanceInfo.mesh = frameInstance.meshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;

@@ -1,5 +1,6 @@
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
+import net.minecraft.client.Minecraft;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
 
@@ -134,6 +135,10 @@ public final class MinecraftRemixHooks {
 
     public static void onFirstPersonRenderStart() {
         RemixDynamicEntityCapture.onFirstPersonRenderStart();
+    }
+
+    public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
+        RemixDynamicEntityCapture.onFirstPersonShadowPlayerRender(minecraft, partialTicks);
     }
 
     public static void onFirstPersonRenderEnd() {
