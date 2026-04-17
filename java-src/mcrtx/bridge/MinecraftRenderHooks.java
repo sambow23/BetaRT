@@ -147,18 +147,25 @@ public final class MinecraftRenderHooks {
         float upx = 0.0f;
         float upy = 1.0f;
         float upz = 0.0f;
-        if (Math.abs(cameraPose.fy) > 0.99f) {
-            upx = 0.0f;
-            upy = 0.0f;
-            upz = 1.0f;
-        }
-
+        // Derive right from forward × worldUp. Well defined until forward is
+        // collinear with worldUp at exact pitch = ±90°; in that case fall back
+        // to a worldUp perpendicular to forward so the basis stays continuous
+        // instead of snapping or dropping the update.
         float rx = cameraPose.fy * upz - cameraPose.fz * upy;
         float ry = cameraPose.fz * upx - cameraPose.fx * upz;
         float rz = cameraPose.fx * upy - cameraPose.fy * upx;
         float rightLength = length(rx, ry, rz);
-        if (rightLength <= 0.0f) {
-            return;
+        if (rightLength <= 1.0e-4f) {
+            upx = 0.0f;
+            upy = 0.0f;
+            upz = 1.0f;
+            rx = cameraPose.fy * upz - cameraPose.fz * upy;
+            ry = cameraPose.fz * upx - cameraPose.fx * upz;
+            rz = cameraPose.fx * upy - cameraPose.fy * upx;
+            rightLength = length(rx, ry, rz);
+            if (rightLength <= 1.0e-6f) {
+                return;
+            }
         }
         cameraPose.rx = rx / rightLength;
         cameraPose.ry = ry / rightLength;

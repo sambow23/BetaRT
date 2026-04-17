@@ -1,4 +1,5 @@
 import java.nio.FloatBuffer;
+import mcrtx.bridge.CameraPose;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
 import org.lwjgl.BufferUtils;
@@ -59,17 +60,15 @@ public final class RemixCameraState {
         float upx = 0.0f;
         float upy = 1.0f;
         float upz = 0.0f;
-        if (Math.abs(cameraForwardY) > 0.99f) {
-            upx = 0.0f;
-            upy = 0.0f;
-            upz = 1.0f;
-        }
-
+        // Derive the right vector from forward × worldUp. This stays well
+        // defined until forward is collinear with worldUp (pitch = ±90°),
+        // where we fall back to the previous frame's right to avoid a
+        // discontinuous basis snap that visibly distorts the image.
         float rx = cameraForwardY * upz - cameraForwardZ * upy;
         float ry = cameraForwardZ * upx - cameraForwardX * upz;
         float rz = cameraForwardX * upy - cameraForwardY * upx;
         float rightLength = (float) Math.sqrt(rx * rx + ry * ry + rz * rz);
-        if (rightLength > 0.0f) {
+        if (rightLength > 1.0e-4f) {
             cameraRightX = rx / rightLength;
             cameraRightY = ry / rightLength;
             cameraRightZ = rz / rightLength;
@@ -90,17 +89,28 @@ public final class RemixCameraState {
         RemixCameraState.aspect = aspect;
         RemixCameraState.nearPlane = 0.05f;
         RemixCameraState.farPlane = farPlane * 2.0f;
-        MinecraftRenderHooks.updateCamera(
-                cameraPositionX,
-                cameraPositionY,
-                cameraPositionZ,
-                cameraForwardX,
-                cameraForwardY,
-                cameraForwardZ,
-                70.0f,
-                aspect,
-                0.05f,
-                farPlane * 2.0f);
+        // Submit the basis we just built directly, rather than routing through
+        // the 10-arg helper that rebuilds right/up from forward × worldUp and
+        // would hit the exact same singularity at pitch = ±90° we just
+        // carefully handled above.
+        CameraPose cameraPose = new CameraPose();
+        cameraPose.px = cameraPositionX;
+        cameraPose.py = cameraPositionY;
+        cameraPose.pz = cameraPositionZ;
+        cameraPose.fx = cameraForwardX;
+        cameraPose.fy = cameraForwardY;
+        cameraPose.fz = cameraForwardZ;
+        cameraPose.ux = cameraUpX;
+        cameraPose.uy = cameraUpY;
+        cameraPose.uz = cameraUpZ;
+        cameraPose.rx = cameraRightX;
+        cameraPose.ry = cameraRightY;
+        cameraPose.rz = cameraRightZ;
+        cameraPose.fovYDegrees = 70.0f;
+        cameraPose.aspect = aspect;
+        cameraPose.nearPlane = 0.05f;
+        cameraPose.farPlane = farPlane * 2.0f;
+        MinecraftRenderHooks.updateCamera(cameraPose);
     }
 
     /**
@@ -145,17 +155,28 @@ public final class RemixCameraState {
         cameraForwardY = -inverse[9];
         cameraForwardZ = -inverse[10];
 
-        MinecraftRenderHooks.updateCamera(
-                cameraPositionX,
-                cameraPositionY,
-                cameraPositionZ,
-                cameraForwardX,
-                cameraForwardY,
-                cameraForwardZ,
-                fovYDegrees,
-                aspect,
-                nearPlane,
-                farPlane);
+        // Submit the basis decomposed from the GL view matrix directly. The
+        // 10-arg helper would re-derive right/up from forward × (0,1,0) and
+        // snap at pitch = ±90°, discarding the authoritative basis we just
+        // extracted from GL_MODELVIEW.
+        CameraPose cameraPose = new CameraPose();
+        cameraPose.px = cameraPositionX;
+        cameraPose.py = cameraPositionY;
+        cameraPose.pz = cameraPositionZ;
+        cameraPose.fx = cameraForwardX;
+        cameraPose.fy = cameraForwardY;
+        cameraPose.fz = cameraForwardZ;
+        cameraPose.ux = cameraUpX;
+        cameraPose.uy = cameraUpY;
+        cameraPose.uz = cameraUpZ;
+        cameraPose.rx = cameraRightX;
+        cameraPose.ry = cameraRightY;
+        cameraPose.rz = cameraRightZ;
+        cameraPose.fovYDegrees = fovYDegrees;
+        cameraPose.aspect = aspect;
+        cameraPose.nearPlane = nearPlane;
+        cameraPose.farPlane = farPlane;
+        MinecraftRenderHooks.updateCamera(cameraPose);
     }
 
     static float[] buildInverseViewMatrix() {
