@@ -2588,6 +2588,25 @@ void appendWaterGeometry(
     float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
+  const bool isWaterMaterial = cell.materialClass == kWaterTerrainMaterialClass;
+  const bool isLavaMaterial = cell.materialClass == kLavaTerrainMaterialClass;
+  const int stillTerrainTileIndex = isLavaMaterial ? kLavaStillTerrainTile : kWaterStillTerrainTile;
+  const int flowingTerrainTileIndex = isLavaMaterial ? kLavaFlowingTerrainTile : kWaterFlowingTerrainTile;
+  const auto canonicalizeLiquidTerrainTile =
+      [isWaterMaterial, isLavaMaterial, stillTerrainTileIndex, flowingTerrainTileIndex](
+          std::int16_t terrainTileIndex,
+          bool preferFlowing) {
+        const int normalizedTerrainTileIndex = normalizeTerrainTileIndex(terrainTileIndex);
+        if (!isWaterMaterial && !isLavaMaterial) {
+          return normalizedTerrainTileIndex;
+        }
+        if (normalizedTerrainTileIndex != stillTerrainTileIndex
+            && normalizedTerrainTileIndex != flowingTerrainTileIndex) {
+          return normalizedTerrainTileIndex;
+        }
+        return preferFlowing ? flowingTerrainTileIndex : stillTerrainTileIndex;
+      };
+
   const auto remapLiquidUv = [&cell](int terrainTileIndex, float atlasU, float atlasV) {
     const float tileOriginU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
     const float tileOriginV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
@@ -2665,14 +2684,14 @@ void appendWaterGeometry(
   const float heightSouthWest = cell.liquidHeights[3];
 
   if ((cell.liquidVisibilityMask & (1 << 1)) != 0) {
-    int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[1]);
+    int terrainTileIndex = canonicalizeLiquidTerrainTile(cell.terrainTiles[1], false);
     double uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 8) / kAtlasSizePixels;
     double uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 8) / kAtlasSizePixels;
     float flowAngle = cell.liquidFlowAngle;
     if (flowAngle > -999.0f) {
-      terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[2]);
-      uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 16) / kAtlasSizePixels;
-      uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 16) / kAtlasSizePixels;
+      terrainTileIndex = canonicalizeLiquidTerrainTile(cell.terrainTiles[2], true);
+      uvCenterU = static_cast<double>((terrainTileIndex & 0x0F) * 16 + 8) / kAtlasSizePixels;
+      uvCenterV = static_cast<double>((terrainTileIndex & 0xF0) + 8) / kAtlasSizePixels;
     } else {
       flowAngle = 0.0f;
     }
@@ -2707,7 +2726,7 @@ void appendWaterGeometry(
   }
 
   if ((cell.liquidVisibilityMask & (1 << 0)) != 0) {
-      const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+      const int terrainTileIndex = canonicalizeLiquidTerrainTile(cell.terrainTiles[0], false);
       const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
       const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
       const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
@@ -2745,7 +2764,7 @@ void appendWaterGeometry(
       continue;
     }
 
-    const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[minecraftSide]);
+    const int terrainTileIndex = canonicalizeLiquidTerrainTile(cell.terrainTiles[minecraftSide], true);
     const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
     const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
     const float tileBaseV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;

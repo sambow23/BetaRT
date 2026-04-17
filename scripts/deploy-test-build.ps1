@@ -5,7 +5,8 @@ param(
     [string]$BundleRoot,
     [string]$Configuration = "Release",
     [switch]$Build,
-    [switch]$Restore
+    [switch]$Restore,
+    [switch]$OverwriteAssets
 )
 
 $ErrorActionPreference = "Stop"
@@ -244,11 +245,27 @@ foreach ($dllTarget in @($instanceLibraryDllPath, $instanceMinecraftDllPath)) {
 }
 
 foreach ($assetsTarget in @($sharedAssetsDir, $instanceAssetsDir)) {
-    if (Test-Path $assetsTarget) {
-        Remove-Item $assetsTarget -Recurse -Force
+    if ($OverwriteAssets -and (Test-Path $assetsTarget)) {
+        if ($PSCmdlet.ShouldProcess($assetsTarget, "Clear existing mcrtx atlas assets before redeploy")) {
+            Remove-Item $assetsTarget -Recurse -Force
+        }
     }
-    if ($PSCmdlet.ShouldProcess($assetsTarget, "Deploy mcrtx atlas assets")) {
-        Copy-Item $bundleAssetsDir $assetsTarget -Recurse -Force
+
+    if ($PSCmdlet.ShouldProcess($assetsTarget, "Deploy mcrtx atlas assets (preserving existing files)")) {
+        New-Item -ItemType Directory -Force -Path $assetsTarget | Out-Null
+        $sourceItems = Get-ChildItem -Path $bundleAssetsDir -Recurse -File
+        foreach ($sourceItem in $sourceItems) {
+            $relativePath = $sourceItem.FullName.Substring($bundleAssetsDir.Length).TrimStart('\', '/')
+            $destinationPath = Join-Path $assetsTarget $relativePath
+            if (-not $OverwriteAssets -and (Test-Path $destinationPath)) {
+                continue
+            }
+            $destinationDir = Split-Path $destinationPath -Parent
+            if ($destinationDir -and -not (Test-Path $destinationDir)) {
+                New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
+            }
+            Copy-Item $sourceItem.FullName $destinationPath -Force
+        }
     }
 }
 

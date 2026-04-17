@@ -303,16 +303,23 @@ function Replace-TerrainLiquidTiles {
     param(
         [string]$TerrainPngPath,
         [string]$WaterPngPath,
-        [string]$LavaPngPath
+        [string]$LavaPngPath,
+        [string]$LavaEmissivePngPath
     )
 
     $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
     $terrainBitmap = $null
     $waterAtlasBitmap = $null
     $lavaAtlasBitmap = $null
+    $lavaEmissiveAtlasBitmap = $null
+    $waterFrames = @()
+    $lavaFrames = @()
+    $periodicWaterFrames = @()
+    $periodicLavaFrames = @()
     $graphics = $null
     $waterGraphics = $null
     $lavaGraphics = $null
+    $lavaEmissiveGraphics = $null
 
     try {
         $terrainBitmap = New-Object System.Drawing.Bitmap($terrainSource)
@@ -322,9 +329,11 @@ function Replace-TerrainLiquidTiles {
         $atlasWidth = $frameCount * $frameWidth
         $waterAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $lavaAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $lavaEmissiveAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $graphics = [System.Drawing.Graphics]::FromImage($terrainBitmap)
         $waterGraphics = [System.Drawing.Graphics]::FromImage($waterAtlasBitmap)
         $lavaGraphics = [System.Drawing.Graphics]::FromImage($lavaAtlasBitmap)
+        $lavaEmissiveGraphics = [System.Drawing.Graphics]::FromImage($lavaEmissiveAtlasBitmap)
 
         function Set-NearestNeighborGraphics {
             param($TargetGraphics)
@@ -415,7 +424,7 @@ function Replace-TerrainLiquidTiles {
             param([hashtable]$Simulation)
 
             $bitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-            $rowOffset = if ($Simulation.Flowing) { $Simulation.Offset * 16 } else { 0 }
+            $rowOffset = 0
 
             for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
                 $sampleIndex = ($pixelIndex - $rowOffset) -band 0xFF
@@ -514,7 +523,7 @@ function Replace-TerrainLiquidTiles {
             param([hashtable]$Simulation)
 
             $bitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-            $rowOffset = if ($Simulation.Flowing) { [int]($Simulation.Offset / 3) * 16 } else { 0 }
+            $rowOffset = 0
 
             for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
                 $sampleIndex = ($pixelIndex - $rowOffset) -band 0xFF
@@ -538,9 +547,231 @@ function Replace-TerrainLiquidTiles {
             return $bitmap
         }
 
+        function New-LavaEmissiveTileBitmap {
+            param([hashtable]$Simulation)
+
+            $bitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            $rowOffset = 0
+
+            for ($pixelIndex = 0; $pixelIndex -lt 256; $pixelIndex++) {
+                $sampleIndex = ($pixelIndex - $rowOffset) -band 0xFF
+                $intensity = $Simulation.Current[$sampleIndex] * 2.0
+                if ($intensity -gt 1.0) {
+                    $intensity = 1.0
+                }
+                if ($intensity -lt 0.0) {
+                    $intensity = 0.0
+                }
+
+                $emissive = ($intensity - 0.18) / 0.82
+                if ($emissive -lt 0.0) {
+                    $emissive = 0.0
+                }
+                if ($emissive -gt 1.0) {
+                    $emissive = 1.0
+                }
+
+                $emissive = [Math]::Pow($emissive, 1.15)
+                # Match the albedo palette exactly so emission only modulates
+                # brightness, never hue. Cool pixels still fall to black via the
+                # $emissive mask above.
+                $red = [int](($intensity * 100.0 + 155.0) * $emissive)
+                $green = [int](($intensity * $intensity * 255.0) * $emissive)
+                $blue = [int]([Math]::Pow($intensity, 4.0) * 128.0 * $emissive)
+
+                $pixelX = $pixelIndex % 16
+                $pixelY = [int][Math]::Floor($pixelIndex / 16)
+                $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb(255, $red, $green, $blue))
+            }
+
+            return $bitmap
+        }
+
+        function Get-BitmapDifference {
+            param(
+                [System.Drawing.Bitmap]$BitmapA,
+                [System.Drawing.Bitmap]$BitmapB
+            )
+
+            $difference = 0.0
+            for ($pixelY = 0; $pixelY -lt 16; $pixelY++) {
+                for ($pixelX = 0; $pixelX -lt 16; $pixelX++) {
+                    $colorA = $BitmapA.GetPixel($pixelX, $pixelY)
+                    $colorB = $BitmapB.GetPixel($pixelX, $pixelY)
+                    $difference += [Math]::Abs($colorA.R - $colorB.R)
+                    $difference += [Math]::Abs($colorA.G - $colorB.G)
+                    $difference += [Math]::Abs($colorA.B - $colorB.B)
+                }
+            }
+
+            return $difference
+        }
+
+        function Select-BestLoopStart {
+            param(
+                [object[]]$Frames,
+                [int]$CycleFrameCount,
+                [scriptblock]$DifferenceEvaluator
+            )
+
+            $searchFrameCount = $Frames.Count - ($CycleFrameCount * 2) + 1
+            $bestStart = 0
+            $bestScore = [double]::PositiveInfinity
+
+            if ($searchFrameCount -le 0) {
+                $searchFrameCount = $Frames.Count - $CycleFrameCount
+                for ($candidateStart = 0; $candidateStart -lt $searchFrameCount; $candidateStart++) {
+                    $candidateScore = & $DifferenceEvaluator $Frames[$candidateStart] $Frames[$candidateStart + $CycleFrameCount]
+                    if ($candidateScore -lt $bestScore) {
+                        $bestScore = $candidateScore
+                        $bestStart = $candidateStart
+                    }
+                }
+
+                return $bestStart
+            }
+
+            for ($candidateStart = 0; $candidateStart -lt $searchFrameCount; $candidateStart++) {
+                $candidateScore = 0.0
+                for ($cycleOffset = 0; $cycleOffset -lt $CycleFrameCount; $cycleOffset++) {
+                    $candidateScore += & $DifferenceEvaluator $Frames[$candidateStart + $cycleOffset] $Frames[$candidateStart + $CycleFrameCount + $cycleOffset]
+                }
+                if ($candidateScore -lt $bestScore) {
+                    $bestScore = $candidateScore
+                    $bestStart = $candidateStart
+                }
+            }
+
+            return $bestStart
+        }
+
+        function Blend-Bitmap {
+            param(
+                [System.Drawing.Bitmap]$BitmapA,
+                [System.Drawing.Bitmap]$BitmapB,
+                [double]$BlendAmount
+            )
+
+            $clampedBlendAmount = [Math]::Max(0.0, [Math]::Min(1.0, $BlendAmount))
+            $inverseBlendAmount = 1.0 - $clampedBlendAmount
+            $blendedBitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+            for ($pixelY = 0; $pixelY -lt 16; $pixelY++) {
+                for ($pixelX = 0; $pixelX -lt 16; $pixelX++) {
+                    $colorA = $BitmapA.GetPixel($pixelX, $pixelY)
+                    $colorB = $BitmapB.GetPixel($pixelX, $pixelY)
+                    $alpha = [int][Math]::Round($colorA.A * $inverseBlendAmount + $colorB.A * $clampedBlendAmount)
+                    $red = [int][Math]::Round($colorA.R * $inverseBlendAmount + $colorB.R * $clampedBlendAmount)
+                    $green = [int][Math]::Round($colorA.G * $inverseBlendAmount + $colorB.G * $clampedBlendAmount)
+                    $blue = [int][Math]::Round($colorA.B * $inverseBlendAmount + $colorB.B * $clampedBlendAmount)
+                    $blendedBitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb($alpha, $red, $green, $blue))
+                }
+            }
+
+            return $blendedBitmap
+        }
+
+        function Shift-BitmapRows {
+            param(
+                [System.Drawing.Bitmap]$Bitmap,
+                [int]$RowOffset
+            )
+
+            $normalizedRowOffset = (($RowOffset % 16) + 16) % 16
+            if ($normalizedRowOffset -eq 0) {
+                return Blend-Bitmap -BitmapA $Bitmap -BitmapB $Bitmap -BlendAmount 0.0
+            }
+
+            $shiftedBitmap = New-Object System.Drawing.Bitmap(16, 16, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+            for ($pixelY = 0; $pixelY -lt 16; $pixelY++) {
+                $sourceY = (($pixelY - $normalizedRowOffset) + 16) % 16
+                for ($pixelX = 0; $pixelX -lt 16; $pixelX++) {
+                    $shiftedBitmap.SetPixel($pixelX, $pixelY, $Bitmap.GetPixel($pixelX, $sourceY))
+                }
+            }
+
+            return $shiftedBitmap
+        }
+
+        function Select-BestLoopBoundary {
+            param(
+                [object[]]$Frames,
+                [scriptblock]$DifferenceEvaluator
+            )
+
+            $bestBoundary = $Frames.Count - 1
+            $bestScore = [double]::PositiveInfinity
+
+            for ($boundaryIndex = 0; $boundaryIndex -lt $Frames.Count; $boundaryIndex++) {
+                $currentFrame = $Frames[$boundaryIndex]
+                $nextFrame = $Frames[(($boundaryIndex + 1) % $Frames.Count)]
+                $boundaryScore = & $DifferenceEvaluator $currentFrame $nextFrame
+                if ($boundaryScore -lt $bestScore) {
+                    $bestScore = $boundaryScore
+                    $bestBoundary = $boundaryIndex
+                }
+            }
+
+            return $bestBoundary
+        }
+
+        function Repair-WorstLoopBoundary {
+            param(
+                [object[]]$Frames,
+                [scriptblock]$DifferenceEvaluator,
+                [string[]]$BitmapPropertyNames,
+                [double]$OutlierRatio = 4.0,
+                [int]$MinimumRepairFrameCount = 4,
+                [int]$MaximumRepairFrameCount = 10
+            )
+
+            if ($Frames.Count -lt 6) {
+                return
+            }
+
+            $boundaryScores = @()
+            for ($boundaryIndex = 0; $boundaryIndex -lt $Frames.Count; $boundaryIndex++) {
+                $currentFrame = $Frames[$boundaryIndex]
+                $nextFrame = $Frames[(($boundaryIndex + 1) % $Frames.Count)]
+                $boundaryScores += (& $DifferenceEvaluator $currentFrame $nextFrame)
+            }
+
+            $averageBoundaryScore = ($boundaryScores | Measure-Object -Average).Average
+            $maximumBoundaryScore = ($boundaryScores | Measure-Object -Maximum).Maximum
+            if (($averageBoundaryScore -le 0) -or ($maximumBoundaryScore -lt ($averageBoundaryScore * $OutlierRatio))) {
+                return
+            }
+
+            $worstBoundary = [array]::IndexOf($boundaryScores, $maximumBoundaryScore)
+            $repairFrameCount = [int][Math]::Ceiling($maximumBoundaryScore / $averageBoundaryScore)
+            $repairFrameCount = [Math]::Max($MinimumRepairFrameCount, $repairFrameCount)
+            $repairFrameCount = [Math]::Min($MaximumRepairFrameCount, $repairFrameCount)
+            $repairFrameCount = [Math]::Min($Frames.Count - 2, $repairFrameCount)
+            $repairFrameCount = [Math]::Max(1, $repairFrameCount)
+
+            $leftSpan = [int][Math]::Floor($repairFrameCount / 2)
+            $rightSpan = $repairFrameCount - $leftSpan + 1
+            $anchorLeftIndex = (($worstBoundary - $leftSpan + $Frames.Count) % $Frames.Count)
+            $anchorRightIndex = (($worstBoundary + $rightSpan) % $Frames.Count)
+
+            for ($repairStep = 1; $repairStep -le $repairFrameCount; $repairStep++) {
+                $repairIndex = (($anchorLeftIndex + $repairStep) % $Frames.Count)
+                $blendAmount = $repairStep / ($repairFrameCount + 1.0)
+                $frame = $Frames[$repairIndex]
+                foreach ($bitmapPropertyName in $BitmapPropertyNames) {
+                    $originalBitmap = $frame[$bitmapPropertyName]
+                    $frame[$bitmapPropertyName] = Blend-Bitmap -BitmapA $Frames[$anchorLeftIndex][$bitmapPropertyName] -BitmapB $Frames[$anchorRightIndex][$bitmapPropertyName] -BlendAmount $blendAmount
+                    if ($null -ne $originalBitmap) {
+                        $originalBitmap.Dispose()
+                    }
+                }
+            }
+        }
+
         Set-NearestNeighborGraphics -TargetGraphics $graphics
         Set-NearestNeighborGraphics -TargetGraphics $waterGraphics
         Set-NearestNeighborGraphics -TargetGraphics $lavaGraphics
+        Set-NearestNeighborGraphics -TargetGraphics $lavaEmissiveGraphics
 
         $waterStillSimulation = New-WaterSimulation -Flowing $false -Seed 1337
         $waterFlowSimulation = New-WaterSimulation -Flowing $true -Seed 1338
@@ -556,21 +787,106 @@ function Replace-TerrainLiquidTiles {
 
         $waterTerrainTileIndices = @(205, 206)
         $lavaTerrainTileIndices = @(237, 238)
+        $loopSearchFrameCount = 96
+        $totalGeneratedFrameCount = $frameCount + $loopSearchFrameCount
 
-        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+        for ($frameIndex = 0; $frameIndex -lt $totalGeneratedFrameCount; $frameIndex++) {
             $waterStillBitmap = New-WaterTileBitmap -Simulation $waterStillSimulation
             $waterFlowBitmap = New-WaterTileBitmap -Simulation $waterFlowSimulation
             $lavaStillBitmap = New-LavaTileBitmap -Simulation $lavaStillSimulation
             $lavaFlowBitmap = New-LavaTileBitmap -Simulation $lavaFlowSimulation
+            $lavaStillEmissiveBitmap = New-LavaEmissiveTileBitmap -Simulation $lavaStillSimulation
+            $lavaFlowEmissiveBitmap = New-LavaEmissiveTileBitmap -Simulation $lavaFlowSimulation
+            $waterFrames += ,@{
+                Still = $waterStillBitmap
+                Flow = $waterFlowBitmap
+            }
+            $lavaFrames += ,@{
+                Still = $lavaStillBitmap
+                Flow = $lavaFlowBitmap
+                StillEmissive = $lavaStillEmissiveBitmap
+                FlowEmissive = $lavaFlowEmissiveBitmap
+            }
+
+            Step-WaterSimulation -Simulation $waterStillSimulation
+            Step-WaterSimulation -Simulation $waterFlowSimulation
+            Step-LavaSimulation -Simulation $lavaStillSimulation
+            Step-LavaSimulation -Simulation $lavaFlowSimulation
+        }
+
+        $waterLoopStart = Select-BestLoopStart -Frames $waterFrames -CycleFrameCount $frameCount -DifferenceEvaluator {
+            param($startFrame, $endFrame)
+            return (Get-BitmapDifference -BitmapA $startFrame.Still -BitmapB $endFrame.Still) + (Get-BitmapDifference -BitmapA $startFrame.Flow -BitmapB $endFrame.Flow)
+        }
+        $lavaLoopStart = Select-BestLoopStart -Frames $lavaFrames -CycleFrameCount $frameCount -DifferenceEvaluator {
+            param($startFrame, $endFrame)
+            return (Get-BitmapDifference -BitmapA $startFrame.Still -BitmapB $endFrame.Still) +
+                (Get-BitmapDifference -BitmapA $startFrame.Flow -BitmapB $endFrame.Flow) +
+                (Get-BitmapDifference -BitmapA $startFrame.StillEmissive -BitmapB $endFrame.StillEmissive) +
+                (Get-BitmapDifference -BitmapA $startFrame.FlowEmissive -BitmapB $endFrame.FlowEmissive)
+        }
+
+        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+            $waterFrameA = $waterFrames[$waterLoopStart + $frameIndex]
+            $waterFrameB = $waterFrames[$waterLoopStart + $frameCount + $frameIndex]
+            $lavaFrameA = $lavaFrames[$lavaLoopStart + $frameIndex]
+            $lavaFrameB = $lavaFrames[$lavaLoopStart + $frameCount + $frameIndex]
+            $periodicWaterFrames += ,@{
+                Still = Blend-Bitmap -BitmapA $waterFrameA.Still -BitmapB $waterFrameB.Still -BlendAmount 0.5
+                Flow = Blend-Bitmap -BitmapA $waterFrameA.Flow -BitmapB $waterFrameB.Flow -BlendAmount 0.5
+            }
+            $periodicLavaFrames += ,@{
+                Still = Blend-Bitmap -BitmapA $lavaFrameA.Still -BitmapB $lavaFrameB.Still -BlendAmount 0.5
+                Flow = Blend-Bitmap -BitmapA $lavaFrameA.Flow -BitmapB $lavaFrameB.Flow -BlendAmount 0.5
+                StillEmissive = Blend-Bitmap -BitmapA $lavaFrameA.StillEmissive -BitmapB $lavaFrameB.StillEmissive -BlendAmount 0.5
+                FlowEmissive = Blend-Bitmap -BitmapA $lavaFrameA.FlowEmissive -BitmapB $lavaFrameB.FlowEmissive -BlendAmount 0.5
+            }
+        }
+
+        Repair-WorstLoopBoundary -Frames $periodicLavaFrames -DifferenceEvaluator {
+            param($currentFrame, $nextFrame)
+            return (Get-BitmapDifference -BitmapA $currentFrame.Still -BitmapB $nextFrame.Still) +
+                (Get-BitmapDifference -BitmapA $currentFrame.Flow -BitmapB $nextFrame.Flow) +
+                (Get-BitmapDifference -BitmapA $currentFrame.StillEmissive -BitmapB $nextFrame.StillEmissive) +
+                (Get-BitmapDifference -BitmapA $currentFrame.FlowEmissive -BitmapB $nextFrame.FlowEmissive)
+        } -BitmapPropertyNames @('Still', 'Flow', 'StillEmissive', 'FlowEmissive')
+
+        $waterLoopBoundary = Select-BestLoopBoundary -Frames $periodicWaterFrames -DifferenceEvaluator {
+            param($currentFrame, $nextFrame)
+            return (Get-BitmapDifference -BitmapA $currentFrame.Still -BitmapB $nextFrame.Still) + (Get-BitmapDifference -BitmapA $currentFrame.Flow -BitmapB $nextFrame.Flow)
+        }
+        $lavaLoopBoundary = Select-BestLoopBoundary -Frames $periodicLavaFrames -DifferenceEvaluator {
+            param($currentFrame, $nextFrame)
+            return (Get-BitmapDifference -BitmapA $currentFrame.Still -BitmapB $nextFrame.Still) +
+                (Get-BitmapDifference -BitmapA $currentFrame.Flow -BitmapB $nextFrame.Flow) +
+                (Get-BitmapDifference -BitmapA $currentFrame.StillEmissive -BitmapB $nextFrame.StillEmissive) +
+                (Get-BitmapDifference -BitmapA $currentFrame.FlowEmissive -BitmapB $nextFrame.FlowEmissive)
+        }
+        $waterLoopRotation = ($waterLoopBoundary + 1) % $frameCount
+        $lavaLoopRotation = ($lavaLoopBoundary + 1) % $frameCount
+
+        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+            $frameDestinationX = $frameIndex * $frameWidth
+            $waterFrame = $periodicWaterFrames[(($frameIndex + $waterLoopRotation) % $frameCount)]
+            $lavaFrame = $periodicLavaFrames[(($frameIndex + $lavaLoopRotation) % $frameCount)]
+            $lavaFlowRowOffset = [int][Math]::Floor($frameIndex / 2)
+            $waterStillOutput = $waterFrame.Still
+            $waterFlowOutput = $waterFrame.Flow
+            $lavaStillOutput = $lavaFrame.Still
+            $lavaFlowOutput = Shift-BitmapRows -Bitmap $lavaFrame.Flow -RowOffset $lavaFlowRowOffset
+            $lavaStillEmissiveOutput = $lavaFrame.StillEmissive
+            $lavaFlowEmissiveOutput = Shift-BitmapRows -Bitmap $lavaFrame.FlowEmissive -RowOffset $lavaFlowRowOffset
+
             try {
-                $frameDestinationX = $frameIndex * $frameWidth
-                $waterGraphics.DrawImage($waterStillBitmap, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
-                $waterGraphics.DrawImage($waterFlowBitmap, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
-                $lavaGraphics.DrawImage($lavaStillBitmap, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
-                $lavaGraphics.DrawImage($lavaFlowBitmap, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+                $waterGraphics.DrawImage($waterStillOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $waterGraphics.DrawImage($waterFlowOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+                $lavaGraphics.DrawImage($lavaStillOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $lavaGraphics.DrawImage($lavaFlowOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+                $lavaEmissiveGraphics.DrawImage($lavaStillEmissiveOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $lavaEmissiveGraphics.DrawImage($lavaFlowEmissiveOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
 
                 if ($frameIndex -eq 0) {
-                    $frameZeroBitmaps = @($waterStillBitmap, $waterFlowBitmap, $lavaStillBitmap, $lavaFlowBitmap)
+                    $frameZeroBitmaps = @($waterStillOutput, $waterFlowOutput, $lavaStillOutput, $lavaFlowOutput)
                     $frameZeroTileIndices = @($waterTerrainTileIndices[0], $waterTerrainTileIndices[1], $lavaTerrainTileIndices[0], $lavaTerrainTileIndices[1])
                     for ($tileArrayIndex = 0; $tileArrayIndex -lt $frameZeroBitmaps.Count; $tileArrayIndex++) {
                         $tileIndex = $frameZeroTileIndices[$tileArrayIndex]
@@ -580,36 +896,59 @@ function Replace-TerrainLiquidTiles {
                     }
                 }
             } finally {
-                $waterStillBitmap.Dispose()
-                $waterFlowBitmap.Dispose()
-                $lavaStillBitmap.Dispose()
-                $lavaFlowBitmap.Dispose()
+                $lavaFlowOutput.Dispose()
+                $lavaFlowEmissiveOutput.Dispose()
             }
-
-            Step-WaterSimulation -Simulation $waterStillSimulation
-            Step-WaterSimulation -Simulation $waterFlowSimulation
-            Step-LavaSimulation -Simulation $lavaStillSimulation
-            Step-LavaSimulation -Simulation $lavaFlowSimulation
         }
 
         $waterGraphics.Dispose()
         $waterGraphics = $null
         $lavaGraphics.Dispose()
         $lavaGraphics = $null
+        $lavaEmissiveGraphics.Dispose()
+        $lavaEmissiveGraphics = $null
         $graphics.Dispose()
         $graphics = $null
 
         $temporaryTerrainPath = "$TerrainPngPath.tmp"
         $temporaryWaterPath = "$WaterPngPath.tmp"
         $temporaryLavaPath = "$LavaPngPath.tmp"
+        $temporaryLavaEmissivePath = "$LavaEmissivePngPath.tmp"
         $terrainBitmap.Save($temporaryTerrainPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $waterAtlasBitmap.Save($temporaryWaterPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $lavaAtlasBitmap.Save($temporaryLavaPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $lavaEmissiveAtlasBitmap.Save($temporaryLavaEmissivePath, [System.Drawing.Imaging.ImageFormat]::Png)
 
         $waterAtlasBitmap.Dispose()
         $waterAtlasBitmap = $null
         $lavaAtlasBitmap.Dispose()
         $lavaAtlasBitmap = $null
+        $lavaEmissiveAtlasBitmap.Dispose()
+        $lavaEmissiveAtlasBitmap = $null
+        foreach ($waterFrame in $waterFrames) {
+            $waterFrame.Still.Dispose()
+            $waterFrame.Flow.Dispose()
+        }
+        foreach ($lavaFrame in $lavaFrames) {
+            $lavaFrame.Still.Dispose()
+            $lavaFrame.Flow.Dispose()
+            $lavaFrame.StillEmissive.Dispose()
+            $lavaFrame.FlowEmissive.Dispose()
+        }
+        foreach ($waterFrame in $periodicWaterFrames) {
+            $waterFrame.Still.Dispose()
+            $waterFrame.Flow.Dispose()
+        }
+        foreach ($lavaFrame in $periodicLavaFrames) {
+            $lavaFrame.Still.Dispose()
+            $lavaFrame.Flow.Dispose()
+            $lavaFrame.StillEmissive.Dispose()
+            $lavaFrame.FlowEmissive.Dispose()
+        }
+        $waterFrames = @()
+        $lavaFrames = @()
+        $periodicWaterFrames = @()
+        $periodicLavaFrames = @()
         $terrainBitmap.Dispose()
         $terrainBitmap = $null
         $terrainSource.Dispose()
@@ -621,7 +960,12 @@ function Replace-TerrainLiquidTiles {
         Remove-Item -Force $temporaryWaterPath
         Copy-Item -Force $temporaryLavaPath $LavaPngPath
         Remove-Item -Force $temporaryLavaPath
+        Copy-Item -Force $temporaryLavaEmissivePath $LavaEmissivePngPath
+        Remove-Item -Force $temporaryLavaEmissivePath
     } finally {
+        if ($null -ne $lavaEmissiveGraphics) {
+            $lavaEmissiveGraphics.Dispose()
+        }
         if ($null -ne $lavaGraphics) {
             $lavaGraphics.Dispose()
         }
@@ -634,8 +978,31 @@ function Replace-TerrainLiquidTiles {
         if ($null -ne $lavaAtlasBitmap) {
             $lavaAtlasBitmap.Dispose()
         }
+        if ($null -ne $lavaEmissiveAtlasBitmap) {
+            $lavaEmissiveAtlasBitmap.Dispose()
+        }
         if ($null -ne $waterAtlasBitmap) {
             $waterAtlasBitmap.Dispose()
+        }
+        foreach ($waterFrame in $waterFrames) {
+            $waterFrame.Still.Dispose()
+            $waterFrame.Flow.Dispose()
+        }
+        foreach ($lavaFrame in $lavaFrames) {
+            $lavaFrame.Still.Dispose()
+            $lavaFrame.Flow.Dispose()
+            $lavaFrame.StillEmissive.Dispose()
+            $lavaFrame.FlowEmissive.Dispose()
+        }
+        foreach ($waterFrame in $periodicWaterFrames) {
+            $waterFrame.Still.Dispose()
+            $waterFrame.Flow.Dispose()
+        }
+        foreach ($lavaFrame in $periodicLavaFrames) {
+            $lavaFrame.Still.Dispose()
+            $lavaFrame.Flow.Dispose()
+            $lavaFrame.StillEmissive.Dispose()
+            $lavaFrame.FlowEmissive.Dispose()
         }
         if ($null -ne $terrainBitmap) {
             $terrainBitmap.Dispose()
@@ -814,11 +1181,12 @@ if ($LASTEXITCODE -ne 0) {
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
-Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png")
+Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationDdsPath (Join-Path $assetsDir "water.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "lava_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
@@ -846,6 +1214,8 @@ Write-Host "Generated water animation atlas: $(Join-Path $assetsDir 'water.png')
 Write-Host "Converted water animation atlas DDS: $(Join-Path $assetsDir 'water.dds')"
 Write-Host "Generated lava animation atlas: $(Join-Path $assetsDir 'lava.png')"
 Write-Host "Converted lava animation atlas DDS: $(Join-Path $assetsDir 'lava.dds')"
+Write-Host "Generated lava emissive atlas: $(Join-Path $assetsDir 'lava_emissive.png')"
+Write-Host "Converted lava emissive atlas DDS: $(Join-Path $assetsDir 'lava_emissive.dds')"
 Write-Host "Extracted particles atlas: $(Join-Path $assetsDir 'particles.png')"
 Write-Host "Converted particles atlas DDS: $(Join-Path $assetsDir 'particles.dds')"
 Write-Host "Extracted GUI item atlas: $(Join-Path $assetsDir 'gui\items.png')"

@@ -83,6 +83,31 @@ std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveTerrainEmissiveTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain_emissive.png");
+    attemptedPaths.push_back(moduleDirectory / L"terrain_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"terrain_emissive.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain_emissive.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain_emissive.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
@@ -173,6 +198,31 @@ std::filesystem::path RemixRenderer::resolveLavaTexturePath() {
   attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"lava.png");
   attemptedPaths.push_back(std::filesystem::current_path() / L"lava.dds");
   attemptedPaths.push_back(std::filesystem::current_path() / L"lava.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
+std::filesystem::path RemixRenderer::resolveLavaEmissiveTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"lava_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"lava_emissive.png");
+    attemptedPaths.push_back(moduleDirectory / L"lava_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"lava_emissive.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"lava_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"lava_emissive.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"lava_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"lava_emissive.png");
 
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {
@@ -274,10 +324,12 @@ std::filesystem::path RemixRenderer::resolveParticleTexturePath(std::uint32_t te
 bool RemixRenderer::initializeTerrainMaterials() {
   destroyTerrainMaterials();
   terrainAtlasPath_ = resolveTerrainAtlasPath();
+  terrainEmissiveTexturePath_ = resolveTerrainEmissiveTexturePath();
   cloudTexturePath_ = resolveCloudTexturePath();
   fireTexturePath_ = resolveFireTexturePath();
   waterTexturePath_ = resolveWaterTexturePath();
   lavaTexturePath_ = resolveLavaTexturePath();
+  lavaEmissiveTexturePath_ = resolveLavaEmissiveTexturePath();
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
@@ -288,6 +340,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
                                        bool cutout,
                                        const std::filesystem::path& texturePath,
                                        std::uint64_t materialHash,
+                                       const wchar_t* emissiveTexturePath,
+                                       float emissiveIntensity,
+                                       remixapi_Float3D emissiveColor,
                                        std::uint8_t spriteSheetColumns,
                                        std::uint8_t spriteSheetRows,
                                        std::uint8_t spriteSheetFps) {
@@ -304,13 +359,14 @@ bool RemixRenderer::initializeTerrainMaterials() {
     remixapi_MaterialInfo materialInfo {};
     materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
     materialInfo.pNext = &opaqueInfo;
-  materialInfo.hash = materialHash;
-  materialInfo.albedoTexture = texturePath.c_str();
-    materialInfo.emissiveIntensity = 0.0f;
-    materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
-  materialInfo.spriteSheetCol = spriteSheetColumns;
-  materialInfo.spriteSheetRow = spriteSheetRows;
-  materialInfo.spriteSheetFps = spriteSheetFps;
+    materialInfo.hash = materialHash;
+    materialInfo.albedoTexture = texturePath.c_str();
+    materialInfo.emissiveTexture = emissiveTexturePath;
+    materialInfo.emissiveIntensity = emissiveIntensity;
+    materialInfo.emissiveColorConstant = emissiveColor;
+    materialInfo.spriteSheetCol = spriteSheetColumns;
+    materialInfo.spriteSheetRow = spriteSheetRows;
+    materialInfo.spriteSheetFps = spriteSheetFps;
     materialInfo.filterMode = 0;
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
@@ -326,11 +382,24 @@ bool RemixRenderer::initializeTerrainMaterials() {
     return true;
   };
 
+  const wchar_t* terrainEmissiveTexture = terrainEmissiveTexturePath_.empty()
+      ? nullptr
+      : terrainEmissiveTexturePath_.c_str();
+  const float terrainEmissiveIntensity = terrainEmissiveTexturePath_.empty()
+      ? 0.0f
+      : kTerrainEmissiveIntensity;
+  const remixapi_Float3D terrainEmissiveColor = terrainEmissiveTexturePath_.empty()
+      ? remixapi_Float3D {0.0f, 0.0f, 0.0f}
+      : kTerrainEmissiveColor;
+
   const bool opaqueCreated = createTerrainMaterial(
       kOpaqueTerrainMaterialClass,
       false,
       terrainAtlasPath_,
       kOpaqueTerrainMaterialHash,
+      terrainEmissiveTexture,
+      terrainEmissiveIntensity,
+      terrainEmissiveColor,
       0,
       0,
       0);
@@ -339,6 +408,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
       true,
       terrainAtlasPath_,
       kCutoutTerrainMaterialHash,
+      terrainEmissiveTexture,
+      terrainEmissiveIntensity,
+      terrainEmissiveColor,
       0,
       0,
       0);
@@ -347,6 +419,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
       false,
       waterTexturePath_,
       kWaterTerrainMaterialHash,
+      nullptr,
+      0.0f,
+      {0.0f, 0.0f, 0.0f},
       kLiquidAnimationFrameCount,
       1,
       kLiquidAnimationFramesPerSecond);
@@ -355,11 +430,17 @@ bool RemixRenderer::initializeTerrainMaterials() {
       false,
       lavaTexturePath_,
       kLavaTerrainMaterialHash,
+      lavaEmissiveTexturePath_.empty() ? nullptr : lavaEmissiveTexturePath_.c_str(),
+      kLavaEmissiveIntensity,
+      kLavaEmissiveColor,
       kLiquidAnimationFrameCount,
       1,
       kLiquidAnimationFramesPerSecond);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
+  }
+  if (!terrainEmissiveTexturePath_.empty()) {
+    log("Terrain emissive map loaded from " + terrainEmissiveTexturePath_.string());
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
@@ -372,6 +453,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (lavaTexturePath_.empty()) {
     log("Lava texture asset not found; lava faces will be skipped");
+  }
+  if (lavaEmissiveTexturePath_.empty()) {
+    log("Lava emissive texture asset not found; lava will fall back to uniform emissive");
   }
   if (!lavaCreated) {
     log("Lava terrain material unavailable; lava faces will be skipped");
@@ -495,6 +579,8 @@ void RemixRenderer::destroyTerrainMaterials() {
   fireTexturePath_.clear();
   waterTexturePath_.clear();
   lavaTexturePath_.clear();
+  lavaEmissiveTexturePath_.clear();
+  terrainEmissiveTexturePath_.clear();
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {

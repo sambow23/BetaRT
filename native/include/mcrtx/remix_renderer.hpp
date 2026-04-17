@@ -323,9 +323,11 @@ private:
   static std::filesystem::path resolveFireTexturePath();
   static std::filesystem::path resolveWaterTexturePath();
   static std::filesystem::path resolveLavaTexturePath();
+  static std::filesystem::path resolveLavaEmissiveTexturePath();
   static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
   static std::filesystem::path resolveParticleTexturePath(std::uint32_t textureKind);
   static std::filesystem::path resolveTerrainAtlasPath();
+  static std::filesystem::path resolveTerrainEmissiveTexturePath();
   void destroyCloudMesh();
   void destroyFireMesh();
   void destroyDestroyOverlayMesh();
@@ -372,10 +374,12 @@ private:
   std::size_t lastSubmittedTorchLightCount_ {0};
   bool loggedLightSubmissionPath_ {false};
   std::filesystem::path terrainAtlasPath_ {};
+  std::filesystem::path terrainEmissiveTexturePath_ {};
   std::filesystem::path cloudTexturePath_ {};
   std::filesystem::path fireTexturePath_ {};
   std::filesystem::path waterTexturePath_ {};
   std::filesystem::path lavaTexturePath_ {};
+  std::filesystem::path lavaEmissiveTexturePath_ {};
   std::array<remixapi_MaterialHandle, 4> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};

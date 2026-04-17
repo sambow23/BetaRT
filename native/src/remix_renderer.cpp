@@ -92,11 +92,13 @@ bool RemixRenderer::initialize(
   // transmittance measurement distance, light volumetric radius falloff)
   // is off by 100x and produces no visible contribution.
   if (remix_.SetConfigVariable != nullptr) {
-    const remixapi_ErrorCode sceneScaleResult = remix_.SetConfigVariable("rtx.sceneScale", "0.01");
-    log(std::string("SetConfigVariable rtx.sceneScale=0.01 -> ") + errorCodeToString(sceneScaleResult));
-    // Raise volumetric RIS sampling so torch lights get picked up in dense light scenes.
-    const remixapi_ErrorCode risResult = remix_.SetConfigVariable("rtx.volumetrics.initialRISSampleCount", "128");
-    log(std::string("SetConfigVariable rtx.volumetrics.initialRISSampleCount=128 -> ") + errorCodeToString(risResult));
+    const auto applyConfig = [this](const char* key, const char* value) {
+      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
+      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
+    };
+    // force these settings otherwise it's boil city
+    applyConfig("rtx.sceneScale", "0.01");
+    applyConfig("rtx.volumetrics.initialRISSampleCount", "32");
   } else {
     log("SetConfigVariable not available; cannot apply scene scale / volumetric tuning");
   }
@@ -105,6 +107,21 @@ bool RemixRenderer::initialize(
     resetLoadedRemix();
     destroyOutputWindow();
     return false;
+  }
+
+  // DLSS-RR's startup preset (updatePathTracerPreset(RayReconstruction) inside
+  // Remix's initializer) forcibly overwrites these DI options via setDeferred,
+  // clobbering anything we set before Startup. Re-apply after Startup so the
+  // pending values land on top of the preset.
+  if (remix_.SetConfigVariable != nullptr) {
+    const auto applyConfig = [this](const char* key, const char* value) {
+      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
+      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
+    };
+    applyConfig("rtx.di.initialSampleCount", "32");
+    applyConfig("rtx.di.enableBestLightSampling", "True");
+    applyConfig("rtx.di.enableDenoiserConfidence", "True");
+    applyConfig("rtx.di.enableDenoiserGradient", "True");
   }
 
   initializeTerrainMaterials();
