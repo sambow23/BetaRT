@@ -527,12 +527,17 @@ bool RemixRenderer::drawCapturedGeometry() {
     blendInfo.dstAlphaBlendFactor = 0;
     blendInfo.alphaBlendOp = 0;
 
+    remixapi_InstanceInfoObjectPickingEXT objectPickingInfo {};
+    objectPickingInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_OBJECT_PICKING_EXT;
+    objectPickingInfo.pNext = &blendInfo;
+    objectPickingInfo.objectPickingValue = 0x434C4F55u;
+
     remixapi_InstanceInfo instanceInfo {};
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-    instanceInfo.pNext = &blendInfo;
+    instanceInfo.pNext = &objectPickingInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
     instanceInfo.mesh = cloudMeshHandle_;
-    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.transform = makeTranslationTransform(cloudTransformX_, cloudTransformY_, cloudTransformZ_);
     instanceInfo.doubleSided = TRUE;
 
     const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);

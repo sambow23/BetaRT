@@ -395,6 +395,12 @@ private:
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
   std::uint64_t nextParticleMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
+  bool cloudMeshFancy_ {false};
+  std::int64_t cloudMeshPhaseX_ {0};
+  std::int64_t cloudMeshPhaseZ_ {0};
+  float cloudTransformX_ {0.0f};
+  float cloudTransformY_ {0.0f};
+  float cloudTransformZ_ {0.0f};
   std::size_t fireQuadCount_ {0};
   std::size_t destroyOverlayCount_ {0};
   std::size_t particleQuadCount_ {0};

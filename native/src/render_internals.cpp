@@ -2823,39 +2823,41 @@ void appendFastCloudGeometry(
     float colorB,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
+  (void)cameraX;
+  (void)cameraZ;
+  (void)cloudHeight;
+  (void)cloudScroll;
   const std::uint32_t vertexColor = packVertexColorRgba(colorR, colorG, colorB, kCloudAlpha);
-  const float uOffset = (cameraX + cloudScroll) * kFastCloudUvScale;
-  const float vOffset = cameraZ * kFastCloudUvScale;
 
   for (float x = -kFastCloudRadius; x < kFastCloudRadius; x += kFastCloudTileSize) {
     for (float z = -kFastCloudRadius; z < kFastCloudRadius; z += kFastCloudTileSize) {
-      const float worldX0 = cameraX + x;
+      const float worldX0 = x;
       const float worldX1 = worldX0 + kFastCloudTileSize;
-      const float worldZ0 = cameraZ + z;
+      const float worldZ0 = z;
       const float worldZ1 = worldZ0 + kFastCloudTileSize;
-      const float u0 = x * kFastCloudUvScale + uOffset;
-      const float u1 = (x + kFastCloudTileSize) * kFastCloudUvScale + uOffset;
-      const float v0 = z * kFastCloudUvScale + vOffset;
-      const float v1 = (z + kFastCloudTileSize) * kFastCloudUvScale + vOffset;
+      const float u0 = x * kFastCloudUvScale;
+      const float u1 = (x + kFastCloudTileSize) * kFastCloudUvScale;
+      const float v0 = z * kFastCloudUvScale;
+      const float v1 = (z + kFastCloudTileSize) * kFastCloudUvScale;
 
       appendCloudQuad(
           worldX0,
-          cloudHeight,
+          0.0f,
           worldZ1,
           u0,
           v1,
           worldX1,
-          cloudHeight,
+          0.0f,
           worldZ1,
           u1,
           v1,
           worldX1,
-          cloudHeight,
+          0.0f,
           worldZ0,
           u1,
           v0,
           worldX0,
-          cloudHeight,
+          0.0f,
           worldZ0,
           u0,
           v0,
@@ -2880,32 +2882,28 @@ void appendFancyCloudGeometry(
     float colorB,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
+  (void)cameraX;
   (void)cameraY;
+  (void)cameraZ;
+  (void)cloudScroll;
   constexpr int kMinCloudCell = -kFancyCloudRadiusCells + 1;
   constexpr int kMaxCloudCell = kFancyCloudRadiusCells;
-  const float bottomY = cloudHeight;
-  const float topY = cloudHeight + kFancyCloudThickness - kFancyCloudInset;
+  (void)cloudHeight;
+  const float bottomY = 0.0f;
+  const float topY = kFancyCloudThickness - kFancyCloudInset;
   const float topCapY = topY + kFancyCloudInset;
-  const float xPhase = (cameraX + cloudScroll) / kFancyCloudScale;
-  const float zPhase = cameraZ / kFancyCloudScale + 0.33f;
-  const float floorX = std::floor(xPhase);
-  const float floorZ = std::floor(zPhase);
-  const float fracX = xPhase - floorX;
-  const float fracZ = zPhase - floorZ;
-  const float baseU = floorX * kFancyCloudUvScale;
-  const float baseV = floorZ * kFancyCloudUvScale;
   const float patchTileMinX = static_cast<float>(kMinCloudCell) * kFancyCloudCellSize;
   const float patchTileMaxX = static_cast<float>(kMaxCloudCell) * kFancyCloudCellSize + kFancyCloudCellSize;
   const float patchTileMinZ = static_cast<float>(kMinCloudCell) * kFancyCloudCellSize;
   const float patchTileMaxZ = static_cast<float>(kMaxCloudCell) * kFancyCloudCellSize + kFancyCloudCellSize;
-  const float patchMinX = cameraX + (patchTileMinX - fracX) * kFancyCloudScale;
-  const float patchMaxX = cameraX + (patchTileMaxX - fracX) * kFancyCloudScale;
-  const float patchMinZ = cameraZ + (patchTileMinZ - fracZ) * kFancyCloudScale;
-  const float patchMaxZ = cameraZ + (patchTileMaxZ - fracZ) * kFancyCloudScale;
-  const float patchMinU = patchTileMinX * kFancyCloudUvScale + baseU;
-  const float patchMaxU = patchTileMaxX * kFancyCloudUvScale + baseU;
-  const float patchMinV = patchTileMinZ * kFancyCloudUvScale + baseV;
-  const float patchMaxV = patchTileMaxZ * kFancyCloudUvScale + baseV;
+  const float patchMinX = patchTileMinX * kFancyCloudScale;
+  const float patchMaxX = patchTileMaxX * kFancyCloudScale;
+  const float patchMinZ = patchTileMinZ * kFancyCloudScale;
+  const float patchMaxZ = patchTileMaxZ * kFancyCloudScale;
+  const float patchMinU = patchTileMinX * kFancyCloudUvScale;
+  const float patchMaxU = patchTileMaxX * kFancyCloudUvScale;
+  const float patchMinV = patchTileMinZ * kFancyCloudUvScale;
+  const float patchMaxV = patchTileMaxZ * kFancyCloudUvScale;
 
   const std::uint32_t bottomColor = packVertexColorRgba(colorR * 0.7f, colorG * 0.7f, colorB * 0.7f, kCloudAlpha);
   const std::uint32_t topColor = packVertexColorRgba(colorR, colorG, colorB, kCloudAlpha);
@@ -2944,14 +2942,14 @@ void appendFancyCloudGeometry(
     for (int cellZ = -kFancyCloudRadiusCells + 1; cellZ <= kFancyCloudRadiusCells; ++cellZ) {
       const float tileX = static_cast<float>(cellX) * kFancyCloudCellSize;
       const float tileZ = static_cast<float>(cellZ) * kFancyCloudCellSize;
-      const float x0 = cameraX + (tileX - fracX) * kFancyCloudScale;
-      const float x1 = cameraX + (tileX + kFancyCloudCellSize - fracX) * kFancyCloudScale;
-      const float z0 = cameraZ + (tileZ - fracZ) * kFancyCloudScale;
-      const float z1 = cameraZ + (tileZ + kFancyCloudCellSize - fracZ) * kFancyCloudScale;
-      const float u0 = tileX * kFancyCloudUvScale + baseU;
-      const float u1 = (tileX + kFancyCloudCellSize) * kFancyCloudUvScale + baseU;
-      const float v0 = tileZ * kFancyCloudUvScale + baseV;
-      const float v1 = (tileZ + kFancyCloudCellSize) * kFancyCloudUvScale + baseV;
+      const float x0 = tileX * kFancyCloudScale;
+      const float x1 = (tileX + kFancyCloudCellSize) * kFancyCloudScale;
+      const float z0 = tileZ * kFancyCloudScale;
+      const float z1 = (tileZ + kFancyCloudCellSize) * kFancyCloudScale;
+      const float u0 = tileX * kFancyCloudUvScale;
+      const float u1 = (tileX + kFancyCloudCellSize) * kFancyCloudUvScale;
+      const float v0 = tileZ * kFancyCloudUvScale;
+      const float v1 = (tileZ + kFancyCloudCellSize) * kFancyCloudUvScale;
 
         appendCloudQuad(
           x0,
@@ -3012,8 +3010,8 @@ void appendFancyCloudGeometry(
       if (cellX > -1) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileX + static_cast<float>(strip);
-          const float worldX = cameraX + (stripBase - fracX) * kFancyCloudScale;
-          const float stripU = (stripBase + 0.5f) * kFancyCloudUvScale + baseU;
+          const float worldX = stripBase * kFancyCloudScale;
+          const float stripU = (stripBase + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
               worldX,
               bottomY,
@@ -3047,8 +3045,8 @@ void appendFancyCloudGeometry(
       if (cellX <= 1) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileX + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
-          const float worldX = cameraX + (stripBase - fracX) * kFancyCloudScale;
-          const float stripU = (tileX + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale + baseU;
+          const float worldX = stripBase * kFancyCloudScale;
+          const float stripU = (tileX + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
               worldX,
               bottomY,
@@ -3082,8 +3080,8 @@ void appendFancyCloudGeometry(
       if (cellZ > -1) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileZ + static_cast<float>(strip);
-          const float worldZ = cameraZ + (stripBase - fracZ) * kFancyCloudScale;
-          const float stripV = (stripBase + 0.5f) * kFancyCloudUvScale + baseV;
+          const float worldZ = stripBase * kFancyCloudScale;
+          const float stripV = (stripBase + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
               x0,
               topY,
@@ -3117,8 +3115,8 @@ void appendFancyCloudGeometry(
       if (cellZ <= 1) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileZ + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
-          const float worldZ = cameraZ + (stripBase - fracZ) * kFancyCloudScale;
-          const float stripV = (tileZ + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale + baseV;
+          const float worldZ = stripBase * kFancyCloudScale;
+          const float stripV = (tileZ + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
               x0,
               topY,

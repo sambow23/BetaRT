@@ -149,9 +149,7 @@ public final class ClientPatchTool {
             if (method.name.equals("a") && method.desc.equals("(Lfd;)V")) {
                 method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
-                patchCloudRender(method, false);
-            } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
-                patchCloudRender(method, true);
+                patchCloudRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
                 patchDestroyOverlayRender(method);
             }
@@ -431,8 +429,8 @@ public final class ClientPatchTool {
         }
     }
 
-    private static void patchCloudRender(MethodNode method, boolean fancy) {
-        method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall(fancy));
+    private static void patchCloudRender(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall());
     }
 
     private static void patchLivingEntityFrameBegin(MethodNode method) {
@@ -785,7 +783,7 @@ public final class ClientPatchTool {
         return instructions;
     }
 
-    private static InsnList cloudRenderCall(boolean fancy) {
+    private static InsnList cloudRenderCall() {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "t", "Lnet/minecraft/client/Minecraft;"));
@@ -794,12 +792,15 @@ public final class ClientPatchTool {
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "x", "I"));
         instructions.add(new VarInsnNode(Opcodes.FLOAD, 1));
-        instructions.add(new InsnNode(fancy ? Opcodes.ICONST_1 : Opcodes.ICONST_0));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, WORLD_RENDERER_CLASS, "t", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "z", "Lkv;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "kv", "j", "Z"));
         instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
                 "onCloudRender",
-            "(Lnet/minecraft/client/Minecraft;Lfd;IFZ)V",
+                "(Lnet/minecraft/client/Minecraft;Lfd;IFZ)V",
                 false));
         return instructions;
     }

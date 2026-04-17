@@ -35,11 +35,34 @@ void RemixRenderer::updateCloudLayer(
     return;
   }
 
-  rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
+  if (fancy) {
+    cloudTransformX_ = cameraX + cloudScroll;
+    cloudTransformY_ = cloudHeight;
+    cloudTransformZ_ = cameraZ;
+
+    if (cloudMeshHandle_ == nullptr || !cloudMeshFancy_) {
+      log(std::string("Rebuilding cloud mesh: mode=") + (fancy ? "fancy" : "fast")
+          + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
+      rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
+    }
+    return;
+  }
+
+  cloudTransformX_ = cameraX + cloudScroll;
+  cloudTransformY_ = cloudHeight;
+  cloudTransformZ_ = cameraZ;
+  if (cloudMeshHandle_ == nullptr || cloudMeshFancy_) {
+    log(std::string("Rebuilding cloud mesh: mode=") + (fancy ? "fancy" : "fast")
+        + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
+    rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
+  }
 }
 
 void RemixRenderer::clearCloudLayer() {
   std::scoped_lock lock(mutex_);
+  if (cloudMeshHandle_ != nullptr) {
+    log("Clearing cloud mesh cache");
+  }
   destroyCloudMesh();
 }
 
@@ -274,7 +297,6 @@ void RemixRenderer::clearWorldScene() {
   }
   chunkMeshes_.clear();
 
-  destroyCloudMesh();
   destroyFireMesh();
   destroyDestroyOverlayMesh();
   destroyParticleMesh();
@@ -445,7 +467,7 @@ bool RemixRenderer::rebuildCloudMesh(
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeCloudMeshHash(nextCloudMeshHash_++);
+  meshInfo.hash = fancy ? 0x4D43525458434C46ull : 0x4D43525458434C30ull;
   meshInfo.surfaces_values = &surface;
   meshInfo.surfaces_count = 1;
 
@@ -458,7 +480,17 @@ bool RemixRenderer::rebuildCloudMesh(
 
   destroyCloudMesh();
   cloudMeshHandle_ = newMeshHandle;
+  cloudMeshFancy_ = fancy;
+  cloudMeshPhaseX_ = 0;
+  cloudMeshPhaseZ_ = 0;
   cloudQuadCount_ = indices.size() / 6;
+  log(std::string("Cloud mesh ready: mode=") + (fancy ? "fancy" : "fast")
+      + " quads=" + std::to_string(cloudQuadCount_)
+      + " hash=0x" + [&]() {
+          std::ostringstream stream;
+          stream << std::hex << meshInfo.hash;
+          return stream.str();
+        }());
   return true;
 }
 
@@ -588,6 +620,7 @@ void RemixRenderer::destroyCloudMesh() {
     remix_.DestroyMesh(cloudMeshHandle_);
   }
   cloudMeshHandle_ = nullptr;
+  cloudMeshFancy_ = false;
   cloudQuadCount_ = 0;
 }
 
