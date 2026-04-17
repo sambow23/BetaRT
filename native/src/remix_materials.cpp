@@ -108,6 +108,31 @@ std::filesystem::path RemixRenderer::resolveTerrainEmissiveTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveRedstoneEmissiveTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"redstone_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"redstone_emissive.png");
+    attemptedPaths.push_back(moduleDirectory / L"redstone_emissive.dds");
+    attemptedPaths.push_back(moduleDirectory / L"redstone_emissive.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"redstone_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"redstone_emissive.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"redstone_emissive.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"redstone_emissive.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
@@ -330,6 +355,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   waterTexturePath_ = resolveWaterTexturePath();
   lavaTexturePath_ = resolveLavaTexturePath();
   lavaEmissiveTexturePath_ = resolveLavaEmissiveTexturePath();
+  redstoneEmissiveTexturePath_ = resolveRedstoneEmissiveTexturePath();
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
@@ -414,6 +440,17 @@ bool RemixRenderer::initializeTerrainMaterials() {
       0,
       0,
       0);
+      const bool poweredRedstoneCreated = createTerrainMaterial(
+        kPoweredRedstoneTerrainMaterialClass,
+        true,
+        terrainAtlasPath_,
+        kPoweredRedstoneTerrainMaterialHash,
+        redstoneEmissiveTexturePath_.empty() ? nullptr : redstoneEmissiveTexturePath_.c_str(),
+        redstoneEmissiveTexturePath_.empty() ? 0.0f : kTerrainEmissiveIntensity,
+        redstoneEmissiveTexturePath_.empty() ? remixapi_Float3D {0.0f, 0.0f, 0.0f} : kTerrainEmissiveColor,
+        0,
+        0,
+        0);
   const bool waterCreated = !waterTexturePath_.empty() && createTerrainMaterial(
       kWaterTerrainMaterialClass,
       false,
@@ -444,6 +481,12 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
+  }
+  if (!redstoneEmissiveTexturePath_.empty()) {
+    log("Redstone emissive map loaded from " + redstoneEmissiveTexturePath_.string());
+  }
+  if (!poweredRedstoneCreated) {
+    log("Powered redstone material unavailable; powered dust will fall back to cutout terrain");
   }
   if (waterTexturePath_.empty()) {
     log("Water texture asset not found; water faces will be skipped");
@@ -581,6 +624,7 @@ void RemixRenderer::destroyTerrainMaterials() {
   lavaTexturePath_.clear();
   lavaEmissiveTexturePath_.clear();
   terrainEmissiveTexturePath_.clear();
+  redstoneEmissiveTexturePath_.clear();
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {

@@ -324,6 +324,7 @@ private:
   static std::filesystem::path resolveWaterTexturePath();
   static std::filesystem::path resolveLavaTexturePath();
   static std::filesystem::path resolveLavaEmissiveTexturePath();
+  static std::filesystem::path resolveRedstoneEmissiveTexturePath();
   static std::filesystem::path resolveDynamicEntityTexturePath(const std::string& texturePath);
   static std::filesystem::path resolveParticleTexturePath(std::uint32_t textureKind);
   static std::filesystem::path resolveTerrainAtlasPath();
@@ -380,7 +381,8 @@ private:
   std::filesystem::path waterTexturePath_ {};
   std::filesystem::path lavaTexturePath_ {};
   std::filesystem::path lavaEmissiveTexturePath_ {};
-  std::array<remixapi_MaterialHandle, 4> terrainMaterialHandles_ {};
+  std::filesystem::path redstoneEmissiveTexturePath_ {};
+  std::array<remixapi_MaterialHandle, 5> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};

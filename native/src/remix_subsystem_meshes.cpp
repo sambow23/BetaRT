@@ -702,6 +702,16 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
         && neighborCell->renderType == kFenceBlockRenderType;
   };
 
+  const auto hasSolidSupport = [&findWorldCell](int worldX, int worldY, int worldZ) {
+    const ChunkBlockCell* neighborCell = findWorldCell(worldX, worldY, worldZ);
+    return neighborCell != nullptr && isSolidSupportBlock(*neighborCell);
+  };
+
+  const auto hasRedstoneConnection = [&findWorldCell](int worldX, int worldY, int worldZ, int direction) {
+    const ChunkBlockCell* neighborCell = findWorldCell(worldX, worldY, worldZ);
+    return neighborCell != nullptr && isRedstoneConnectionCell(*neighborCell, direction);
+  };
+
   std::vector<remixapi_HardcodedVertex> vertices;
   std::vector<std::uint32_t> indices;
   vertices.reserve(destroyOverlayInstances_.size() * 24);
@@ -766,6 +776,54 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       ++overlayCount;
       continue;
     }
+
+        if (isRedstoneDustRenderType(resolvedCell.renderType) && isRedstoneDustBlockId(resolvedCell.blockId)) {
+          const bool blockedAbove = hasSolidSupport(overlay.blockX, overlay.blockY + 1, overlay.blockZ);
+          bool connectWest = hasRedstoneConnection(overlay.blockX - 1, overlay.blockY, overlay.blockZ, 1)
+            || (!hasSolidSupport(overlay.blockX - 1, overlay.blockY, overlay.blockZ)
+              && hasRedstoneConnection(overlay.blockX - 1, overlay.blockY - 1, overlay.blockZ, -1));
+          bool connectEast = hasRedstoneConnection(overlay.blockX + 1, overlay.blockY, overlay.blockZ, 3)
+            || (!hasSolidSupport(overlay.blockX + 1, overlay.blockY, overlay.blockZ)
+              && hasRedstoneConnection(overlay.blockX + 1, overlay.blockY - 1, overlay.blockZ, -1));
+          bool connectNorth = hasRedstoneConnection(overlay.blockX, overlay.blockY, overlay.blockZ - 1, 2)
+            || (!hasSolidSupport(overlay.blockX, overlay.blockY, overlay.blockZ - 1)
+              && hasRedstoneConnection(overlay.blockX, overlay.blockY - 1, overlay.blockZ - 1, -1));
+          bool connectSouth = hasRedstoneConnection(overlay.blockX, overlay.blockY, overlay.blockZ + 1, 0)
+            || (!hasSolidSupport(overlay.blockX, overlay.blockY, overlay.blockZ + 1)
+              && hasRedstoneConnection(overlay.blockX, overlay.blockY - 1, overlay.blockZ + 1, -1));
+
+          const bool climbWest = !blockedAbove && hasSolidSupport(overlay.blockX - 1, overlay.blockY, overlay.blockZ)
+            && hasRedstoneConnection(overlay.blockX - 1, overlay.blockY + 1, overlay.blockZ, -1);
+          const bool climbEast = !blockedAbove && hasSolidSupport(overlay.blockX + 1, overlay.blockY, overlay.blockZ)
+            && hasRedstoneConnection(overlay.blockX + 1, overlay.blockY + 1, overlay.blockZ, -1);
+          const bool climbNorth = !blockedAbove && hasSolidSupport(overlay.blockX, overlay.blockY, overlay.blockZ - 1)
+            && hasRedstoneConnection(overlay.blockX, overlay.blockY + 1, overlay.blockZ - 1, -1);
+          const bool climbSouth = !blockedAbove && hasSolidSupport(overlay.blockX, overlay.blockY, overlay.blockZ + 1)
+            && hasRedstoneConnection(overlay.blockX, overlay.blockY + 1, overlay.blockZ + 1, -1);
+
+          connectWest = connectWest || climbWest;
+          connectEast = connectEast || climbEast;
+          connectNorth = connectNorth || climbNorth;
+          connectSouth = connectSouth || climbSouth;
+
+          appendRedstoneDustGeometry(
+            resolvedCell,
+            connectWest,
+            connectEast,
+            connectNorth,
+            connectSouth,
+            climbWest,
+            climbEast,
+            climbNorth,
+            climbSouth,
+            localX,
+            localY,
+            localZ,
+            vertices,
+            indices);
+          ++overlayCount;
+          continue;
+        }
 
     if (isRailRenderType(resolvedCell.renderType) && isRailBlockId(resolvedCell.blockId)) {
       appendRailGeometry(

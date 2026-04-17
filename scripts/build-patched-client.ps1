@@ -1013,6 +1013,77 @@ function Replace-TerrainLiquidTiles {
     }
 }
 
+function New-RedstoneEmissiveAtlas {
+    param(
+        [string]$TerrainPngPath,
+        [string]$RedstoneEmissivePngPath
+    )
+
+    $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
+    $terrainBitmap = $null
+    $emissiveBitmap = $null
+    $graphics = $null
+
+    try {
+        $terrainBitmap = New-Object System.Drawing.Bitmap($terrainSource)
+        $emissiveBitmap = New-Object System.Drawing.Bitmap($terrainBitmap.Width, $terrainBitmap.Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($emissiveBitmap)
+        $graphics.Clear([System.Drawing.Color]::FromArgb(255, 0, 0, 0))
+
+        $tileSize = 16
+        $redstoneTileIndices = @(164, 165)
+        foreach ($tileIndex in $redstoneTileIndices) {
+            $tileOriginX = ($tileIndex % 16) * $tileSize
+            $tileOriginY = [int][Math]::Floor($tileIndex / 16) * $tileSize
+            for ($pixelY = 0; $pixelY -lt $tileSize; $pixelY++) {
+                for ($pixelX = 0; $pixelX -lt $tileSize; $pixelX++) {
+                    $sourceColor = $terrainBitmap.GetPixel($tileOriginX + $pixelX, $tileOriginY + $pixelY)
+                    if ($sourceColor.A -eq 0) {
+                        continue
+                    }
+
+                    $red = [Math]::Min(255, [int]([Math]::Round($sourceColor.R * 2.4)))
+                    $green = [Math]::Min(255, [int]([Math]::Round($sourceColor.G * 1.4)))
+                    $blue = [Math]::Min(255, [int]([Math]::Round($sourceColor.B * 1.2)))
+                    $emissiveBitmap.SetPixel(
+                        $tileOriginX + $pixelX,
+                        $tileOriginY + $pixelY,
+                        [System.Drawing.Color]::FromArgb(255, $red, $green, $blue))
+                }
+            }
+        }
+
+        $graphics.Dispose()
+        $graphics = $null
+
+        $temporaryEmissivePath = "$RedstoneEmissivePngPath.tmp"
+        $emissiveBitmap.Save($temporaryEmissivePath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $emissiveBitmap.Dispose()
+        $emissiveBitmap = $null
+        $terrainBitmap.Dispose()
+        $terrainBitmap = $null
+        $terrainSource.Dispose()
+        $terrainSource = $null
+
+        Copy-Item -Force $temporaryEmissivePath $RedstoneEmissivePngPath
+        Remove-Item -Force $temporaryEmissivePath
+    } finally {
+        if ($null -ne $graphics) {
+            $graphics.Dispose()
+        }
+        if ($null -ne $emissiveBitmap) {
+            $emissiveBitmap.Dispose()
+        }
+        if ($null -ne $terrainBitmap) {
+            $terrainBitmap.Dispose()
+        }
+        if ($null -ne $terrainSource) {
+            $terrainSource.Dispose()
+        }
+    }
+}
+
 function Export-ZipEntryFile {
     param(
         [string]$ArchivePath,
@@ -1182,7 +1253,9 @@ Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -Desti
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
 Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
+New-RedstoneEmissiveAtlas -TerrainPngPath (Join-Path $assetsDir "terrain.png") -RedstoneEmissivePngPath (Join-Path $assetsDir "redstone_emissive.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "redstone_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "redstone_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationDdsPath (Join-Path $assetsDir "water.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
@@ -1208,6 +1281,8 @@ Write-Host "Patch source jar: $MinecraftJar"
 Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"
 Write-Host "Replaced terrain fire placeholder tiles with generated Beta fire texels"
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"
+Write-Host "Generated redstone emissive atlas: $(Join-Path $assetsDir 'redstone_emissive.png')"
+Write-Host "Converted redstone emissive atlas DDS: $(Join-Path $assetsDir 'redstone_emissive.dds')"
 Write-Host "Generated fire animation atlas: $(Join-Path $assetsDir 'fire.png')"
 Write-Host "Converted fire animation atlas DDS: $(Join-Path $assetsDir 'fire.dds')"
 Write-Host "Generated water animation atlas: $(Join-Path $assetsDir 'water.png')"

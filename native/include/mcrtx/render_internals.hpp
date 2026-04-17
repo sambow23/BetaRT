@@ -28,15 +28,17 @@ namespace detail {
 constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 constexpr int kChunkDimension = 16;
 constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
-constexpr std::size_t kTerrainMaterialClassCount = 4;
+constexpr std::size_t kTerrainMaterialClassCount = 5;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
 constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kLavaTerrainMaterialClass = 3;
+constexpr std::uint8_t kPoweredRedstoneTerrainMaterialClass = 4;
 constexpr std::uint8_t kCubeBlockRenderType = 0;
 constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
 constexpr std::uint8_t kTorchBlockRenderType = 2;
 constexpr std::uint8_t kFireBlockRenderType = 3;
+constexpr std::uint8_t kRedstoneDustBlockRenderType = 5;
 constexpr std::uint8_t kDoorBlockRenderType = 7;
 constexpr std::uint8_t kLadderBlockRenderType = 8;
 constexpr std::uint8_t kRailBlockRenderType = 9;
@@ -51,10 +53,15 @@ constexpr std::uint8_t kSingleSlabBlockId = 44;
 constexpr std::uint8_t kTallGrassBlockId = 31;
 constexpr std::uint8_t kTorchBlockId = 50;
 constexpr std::uint8_t kWoodStairsBlockId = 53;
+constexpr std::uint8_t kRedstoneDustBlockId = 55;
 constexpr std::uint8_t kWoodDoorBlockId = 64;
 constexpr std::uint8_t kLadderBlockId = 65;
 constexpr std::uint8_t kLeverBlockId = 69;
+constexpr std::uint8_t kStonePressurePlateBlockId = 70;
 constexpr std::uint8_t kStoneStairsBlockId = 67;
+constexpr std::uint8_t kWoodPressurePlateBlockId = 72;
+constexpr std::uint8_t kRedstoneTorchOffBlockId = 75;
+constexpr std::uint8_t kRedstoneTorchOnBlockId = 76;
 constexpr std::uint8_t kStoneButtonBlockId = 77;
 constexpr std::uint8_t kIronDoorBlockId = 71;
 constexpr std::uint8_t kGoldenRailBlockId = 27;
@@ -62,6 +69,8 @@ constexpr std::uint8_t kDetectorRailBlockId = 28;
 constexpr std::uint8_t kIceBlockId = 79;
 constexpr std::uint8_t kRailBlockId = 66;
 constexpr std::uint8_t kFenceBlockId = 85;
+constexpr std::uint8_t kRepeaterIdleBlockId = 93;
+constexpr std::uint8_t kRepeaterPoweredBlockId = 94;
 constexpr std::uint8_t kWaterStillBlockId = 8;
 constexpr std::uint8_t kWaterFlowingBlockId = 9;
 constexpr std::uint8_t kLavaStillBlockId = 10;
@@ -96,6 +105,7 @@ constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kLavaTerrainMaterialHash = 0x4D435254584C4156ull;
+constexpr std::uint64_t kPoweredRedstoneTerrainMaterialHash = 0x4D43525458524453ull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
@@ -204,23 +214,26 @@ bool isLiquidBlock(int blockId);
 bool isCrossedQuadRenderType(int renderType);
 bool isFireRenderType(int renderType);
 bool isTorchRenderType(int renderType);
+bool isRedstoneDustRenderType(int renderType);
 bool isDoorRenderType(int renderType);
 bool isLadderRenderType(int renderType);
 bool isRailRenderType(int renderType);
 bool isStairRenderType(int renderType);
 bool isFenceRenderType(int renderType);
 bool isLeverOrButtonRenderType(int renderType);
+bool isRedstoneDustBlockId(int blockId);
 bool isSingleSlabBlockId(int blockId);
 bool isStairBlockId(int blockId);
 bool isDoorBlockId(int blockId);
 bool isRailBlockId(int blockId);
 bool isLeverBlockId(int blockId);
 bool isButtonBlockId(int blockId);
+bool isRedstoneConnectionCell(const ChunkBlockCell& cell, int direction);
 bool isSupportedPass0RenderType(int renderType);
 bool shouldCaptureBlock(int blockId, int renderType);
 bool shouldCaptureBlock(int blockId, int renderType, int renderPass);
 bool usesCutoutMaterialForBlock(int blockId, int renderType);
-std::uint8_t materialClassForBlock(int blockId, int renderType);
+std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderType);
 
 // ---- Transforms and hashes -----------------------------------------------
 
@@ -277,6 +290,7 @@ int blockIndex(int x, int y, int z);
 std::uint32_t faceTintColorForBlock(std::uint8_t blockId, int minecraftSide, std::uint32_t blockColor);
 bool usesFancyLeavesTexture(const ChunkBlockCell& cell);
 bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockCell& neighborCell);
+bool isSolidSupportBlock(const ChunkBlockCell& cell);
 
 // ---- Geometry emitters ----------------------------------------------------
 
@@ -411,6 +425,20 @@ void appendLadderGeometry(
 
 void appendRailGeometry(
     const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendRedstoneDustGeometry(
+    const ChunkBlockCell& cell,
+    bool connectWest,
+    bool connectEast,
+    bool connectNorth,
+    bool connectSouth,
+    bool climbWest,
+    bool climbEast,
+    bool climbNorth,
+    bool climbSouth,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);

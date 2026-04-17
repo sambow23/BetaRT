@@ -243,6 +243,10 @@ bool isTorchRenderType(int renderType) {
   return renderType == kTorchBlockRenderType;
 }
 
+bool isRedstoneDustRenderType(int renderType) {
+  return renderType == kRedstoneDustBlockRenderType;
+}
+
 bool isDoorRenderType(int renderType) {
   return renderType == kDoorBlockRenderType;
 }
@@ -265,6 +269,10 @@ bool isFenceRenderType(int renderType) {
 
 bool isLeverOrButtonRenderType(int renderType) {
   return renderType == kLeverOrButtonBlockRenderType;
+}
+
+bool isRedstoneDustBlockId(int blockId) {
+  return blockId == kRedstoneDustBlockId;
 }
 
 bool isSingleSlabBlockId(int blockId) {
@@ -291,12 +299,40 @@ bool isButtonBlockId(int blockId) {
   return blockId == kStoneButtonBlockId;
 }
 
+bool isRedstoneConnectionCell(const ChunkBlockCell& cell, int direction) {
+  if (cell.blockId == kRedstoneDustBlockId) {
+    return true;
+  }
+
+  if (cell.blockId == kRepeaterIdleBlockId || cell.blockId == kRepeaterPoweredBlockId) {
+    if (direction < 0) {
+      return false;
+    }
+    static constexpr int kRepeaterDirections[4] = {2, 3, 0, 1};
+    return direction == kRepeaterDirections[cell.blockMetadata & 3];
+  }
+
+  switch (cell.blockId) {
+    case kLeverBlockId:
+    case kStonePressurePlateBlockId:
+    case kWoodPressurePlateBlockId:
+    case kRedstoneTorchOffBlockId:
+    case kRedstoneTorchOnBlockId:
+    case kStoneButtonBlockId:
+    case kDetectorRailBlockId:
+      return true;
+    default:
+      return false;
+  }
+}
+
 bool isSupportedPass0RenderType(int renderType) {
   switch (renderType) {
     case kCubeBlockRenderType:
     case kCrossedQuadBlockRenderType:
     case kFireBlockRenderType:
     case kTorchBlockRenderType:
+    case kRedstoneDustBlockRenderType:
     case kDoorBlockRenderType:
     case kLadderBlockRenderType:
     case kRailBlockRenderType:
@@ -332,6 +368,7 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   if (isCrossedQuadRenderType(renderType)
   || isFireRenderType(renderType)
       || isTorchRenderType(renderType)
+      || isRedstoneDustRenderType(renderType)
       || isDoorRenderType(renderType)
       || isLadderRenderType(renderType)
       || isRailRenderType(renderType)) {
@@ -348,12 +385,15 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   }
 }
 
-std::uint8_t materialClassForBlock(int blockId, int renderType) {
+std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderType) {
   if (isWaterBlock(blockId)) {
     return kWaterTerrainMaterialClass;
   }
   if (isLavaBlock(blockId)) {
     return kLavaTerrainMaterialClass;
+  }
+  if (blockId == kRedstoneDustBlockId && renderType == kRedstoneDustBlockRenderType && blockMetadata > 0) {
+    return kPoweredRedstoneTerrainMaterialClass;
   }
   return usesCutoutMaterialForBlock(blockId, renderType) ? kCutoutTerrainMaterialClass : kOpaqueTerrainMaterialClass;
 }
@@ -584,6 +624,12 @@ bool usesPartialCubeBounds(const ChunkBlockCell& cell) {
       || cell.bounds[3] < 1.0f
       || cell.bounds[4] < 1.0f
       || cell.bounds[5] < 1.0f;
+}
+
+bool isSolidSupportBlock(const ChunkBlockCell& cell) {
+  return cell.renderType == kCubeBlockRenderType
+      && !usesPartialCubeBounds(cell)
+      && !usesCutoutMaterialForBlock(cell.blockId, cell.renderType);
 }
 
 std::array<float, 3> computeQuadNormal(
@@ -2194,6 +2240,248 @@ void appendRailGeometry(
       kDefaultVertexColor,
       vertices,
       indices);
+}
+
+void appendRedstoneDustGeometry(
+    const ChunkBlockCell& cell,
+    bool connectWest,
+    bool connectEast,
+    bool connectNorth,
+    bool connectSouth,
+    bool climbWest,
+    bool climbEast,
+    bool climbNorth,
+    bool climbSouth,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const int crossTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+  const int lineTileIndex = crossTileIndex + 1;
+  const int powerLevel = cell.blockMetadata & 0x0F;
+  const float power = static_cast<float>(powerLevel) / 15.0f;
+  float red = power * 0.6f + 0.4f;
+  if (powerLevel == 0) {
+    red = 0.3f;
+  }
+  float green = std::max(power * power * 0.7f - 0.5f, 0.0f);
+  float blue = std::max(power * power * 0.6f - 0.7f, 0.0f);
+  const std::uint32_t vertexColor = packVertexColorRgba(red, green, blue, 1.0f);
+
+  const auto computeTileUv = [](int terrainTileIndex, float& tileMinU, float& tileMaxU, float& tileMinV, float& tileMaxV) {
+    tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+    tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+    tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+    tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  };
+
+  const bool lineX = (connectWest || connectEast) && !connectNorth && !connectSouth;
+  const bool lineZ = (connectNorth || connectSouth) && !connectWest && !connectEast;
+  const int topTileIndex = (lineX || lineZ) ? lineTileIndex : crossTileIndex;
+
+  float topMinU = 0.0f;
+  float topMaxU = 0.0f;
+  float topMinV = 0.0f;
+  float topMaxV = 0.0f;
+  computeTileUv(topTileIndex, topMinU, topMaxU, topMinV, topMaxV);
+
+  float xMin = localX + 0.0f;
+  float xMax = localX + 1.0f;
+  float zMin = localZ + 0.0f;
+  float zMax = localZ + 1.0f;
+  constexpr float kConnectionInset = 0.3125f;
+  constexpr float kConnectionUvInset = 5.0f / 256.0f;
+
+  if (!(lineX || lineZ) && (connectWest || connectEast || connectNorth || connectSouth)) {
+    if (!connectWest) {
+      xMin += kConnectionInset;
+      topMinU += kConnectionUvInset;
+    }
+    if (!connectEast) {
+      xMax -= kConnectionInset;
+      topMaxU -= kConnectionUvInset;
+    }
+    if (!connectNorth) {
+      zMin += kConnectionInset;
+      topMinV += kConnectionUvInset;
+    }
+    if (!connectSouth) {
+      zMax -= kConnectionInset;
+      topMaxV -= kConnectionUvInset;
+    }
+  }
+
+  const float topY = localY + 0.015625f;
+  if (lineZ) {
+    appendCrossedQuadSheet(
+        xMax,
+        topY,
+        zMax,
+        topMaxU,
+        topMaxV,
+        xMax,
+        topY,
+        zMin,
+        topMinU,
+        topMaxV,
+        xMin,
+        topY,
+        zMin,
+        topMinU,
+        topMinV,
+        xMin,
+        topY,
+        zMax,
+        topMaxU,
+        topMinV,
+        vertexColor,
+        vertices,
+        indices);
+  } else {
+    appendCrossedQuadSheet(
+        xMax,
+        topY,
+        zMax,
+        topMaxU,
+        topMaxV,
+        xMax,
+        topY,
+        zMin,
+        topMaxU,
+        topMinV,
+        xMin,
+        topY,
+        zMin,
+        topMinU,
+        topMinV,
+        xMin,
+        topY,
+        zMax,
+        topMinU,
+        topMaxV,
+        vertexColor,
+        vertices,
+        indices);
+  }
+
+  float sideMinU = 0.0f;
+  float sideMaxU = 0.0f;
+  float sideMinV = 0.0f;
+  float sideMaxV = 0.0f;
+  computeTileUv(topTileIndex, sideMinU, sideMaxU, sideMinV, sideMaxV);
+
+  const float wallLowY = localY + 0.0f;
+  const float wallHighY = localY + 1.021875f;
+  const float wallInset = 0.015625f;
+
+  if (climbWest) {
+    appendCrossedQuadSheet(
+        localX + wallInset,
+        wallHighY,
+        localZ + 1.0f,
+        sideMaxU,
+        sideMinV,
+        localX + wallInset,
+        wallLowY,
+        localZ + 1.0f,
+        sideMinU,
+        sideMinV,
+        localX + wallInset,
+        wallLowY,
+        localZ + 0.0f,
+        sideMinU,
+        sideMaxV,
+        localX + wallInset,
+        wallHighY,
+        localZ + 0.0f,
+        sideMaxU,
+        sideMaxV,
+        vertexColor,
+        vertices,
+        indices);
+  }
+
+  if (climbEast) {
+    appendCrossedQuadSheet(
+        localX + 1.0f - wallInset,
+        wallLowY,
+        localZ + 1.0f,
+        sideMinU,
+        sideMaxV,
+        localX + 1.0f - wallInset,
+        wallHighY,
+        localZ + 1.0f,
+        sideMaxU,
+        sideMaxV,
+        localX + 1.0f - wallInset,
+        wallHighY,
+        localZ + 0.0f,
+        sideMaxU,
+        sideMinV,
+        localX + 1.0f - wallInset,
+        wallLowY,
+        localZ + 0.0f,
+        sideMinU,
+        sideMinV,
+        vertexColor,
+        vertices,
+        indices);
+  }
+
+  if (climbNorth) {
+    appendCrossedQuadSheet(
+        localX + 1.0f,
+        wallLowY,
+        localZ + wallInset,
+        sideMinU,
+        sideMaxV,
+        localX + 1.0f,
+        wallHighY,
+        localZ + wallInset,
+        sideMaxU,
+        sideMaxV,
+        localX + 0.0f,
+        wallHighY,
+        localZ + wallInset,
+        sideMaxU,
+        sideMinV,
+        localX + 0.0f,
+        wallLowY,
+        localZ + wallInset,
+        sideMinU,
+        sideMinV,
+        vertexColor,
+        vertices,
+        indices);
+  }
+
+  if (climbSouth) {
+    appendCrossedQuadSheet(
+        localX + 1.0f,
+        wallHighY,
+        localZ + 1.0f - wallInset,
+        sideMaxU,
+        sideMinV,
+        localX + 1.0f,
+        wallLowY,
+        localZ + 1.0f - wallInset,
+        sideMinU,
+        sideMinV,
+        localX + 0.0f,
+        wallLowY,
+        localZ + 1.0f - wallInset,
+        sideMinU,
+        sideMaxV,
+        localX + 0.0f,
+        wallHighY,
+        localZ + 1.0f - wallInset,
+        sideMaxU,
+        sideMaxV,
+        vertexColor,
+        vertices,
+        indices);
+  }
 }
 
 void appendFenceGeometry(

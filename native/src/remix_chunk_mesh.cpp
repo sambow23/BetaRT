@@ -101,7 +101,7 @@ void RemixRenderer::captureBlock(
       static_cast<std::int16_t>(texture5),
   };
   block.renderType = renderType;
-  block.materialClass = materialClassForBlock(blockId, renderType);
+  block.materialClass = materialClassForBlock(blockId, blockMetadata, renderType);
     block.bounds = {boundsMinX, boundsMinY, boundsMinZ, boundsMaxX, boundsMaxY, boundsMaxZ};
   block.liquidVisibilityMask = static_cast<std::uint8_t>(liquidVisibilityMask & 0x3F);
   block.liquidHeights = {liquidHeight0, liquidHeight1, liquidHeight2, liquidHeight3};
@@ -368,6 +368,16 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return &targetMesh->cells[neighborIndex];
   };
 
+  const auto hasSolidSupport = [&findWorldCell](int worldX, int worldY, int worldZ) {
+    const ChunkBlockCell* neighborCell = findWorldCell(worldX, worldY, worldZ);
+    return neighborCell != nullptr && isSolidSupportBlock(*neighborCell);
+  };
+
+  const auto hasRedstoneConnection = [&findWorldCell](int worldX, int worldY, int worldZ, int direction) {
+    const ChunkBlockCell* neighborCell = findWorldCell(worldX, worldY, worldZ);
+    return neighborCell != nullptr && isRedstoneConnectionCell(*neighborCell, direction);
+  };
+
   for (int localY = 0; localY < kChunkDimension; ++localY) {
     for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
       for (int localX = 0; localX < kChunkDimension; ++localX) {
@@ -441,6 +451,53 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               ladderSurface.indices);
           continue;
         }
+
+            if (isRedstoneDustRenderType(cell.renderType) && isRedstoneDustBlockId(cell.blockId)) {
+              const int worldX = chunkKey.originX + localX;
+              const int worldY = chunkKey.originY + localY;
+              const int worldZ = chunkKey.originZ + localZ;
+              const bool blockedAbove = hasSolidSupport(worldX, worldY + 1, worldZ);
+              bool connectWest = hasRedstoneConnection(worldX - 1, worldY, worldZ, 1)
+                || (!hasSolidSupport(worldX - 1, worldY, worldZ) && hasRedstoneConnection(worldX - 1, worldY - 1, worldZ, -1));
+              bool connectEast = hasRedstoneConnection(worldX + 1, worldY, worldZ, 3)
+                || (!hasSolidSupport(worldX + 1, worldY, worldZ) && hasRedstoneConnection(worldX + 1, worldY - 1, worldZ, -1));
+              bool connectNorth = hasRedstoneConnection(worldX, worldY, worldZ - 1, 2)
+                || (!hasSolidSupport(worldX, worldY, worldZ - 1) && hasRedstoneConnection(worldX, worldY - 1, worldZ - 1, -1));
+              bool connectSouth = hasRedstoneConnection(worldX, worldY, worldZ + 1, 0)
+                || (!hasSolidSupport(worldX, worldY, worldZ + 1) && hasRedstoneConnection(worldX, worldY - 1, worldZ + 1, -1));
+
+              const bool climbWest = !blockedAbove && hasSolidSupport(worldX - 1, worldY, worldZ)
+                && hasRedstoneConnection(worldX - 1, worldY + 1, worldZ, -1);
+              const bool climbEast = !blockedAbove && hasSolidSupport(worldX + 1, worldY, worldZ)
+                && hasRedstoneConnection(worldX + 1, worldY + 1, worldZ, -1);
+              const bool climbNorth = !blockedAbove && hasSolidSupport(worldX, worldY, worldZ - 1)
+                && hasRedstoneConnection(worldX, worldY + 1, worldZ - 1, -1);
+              const bool climbSouth = !blockedAbove && hasSolidSupport(worldX, worldY, worldZ + 1)
+                && hasRedstoneConnection(worldX, worldY + 1, worldZ + 1, -1);
+
+              connectWest = connectWest || climbWest;
+              connectEast = connectEast || climbEast;
+              connectNorth = connectNorth || climbNorth;
+              connectSouth = connectSouth || climbSouth;
+
+              SurfaceBuildBuffers& redstoneSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+              appendRedstoneDustGeometry(
+                cell,
+                connectWest,
+                connectEast,
+                connectNorth,
+                connectSouth,
+                climbWest,
+                climbEast,
+                climbNorth,
+                climbSouth,
+                static_cast<float>(localX),
+                static_cast<float>(localY),
+                static_cast<float>(localZ),
+                redstoneSurface.vertices,
+                redstoneSurface.indices);
+              continue;
+            }
 
         if (isRailRenderType(cell.renderType) && isRailBlockId(cell.blockId)) {
           SurfaceBuildBuffers& railSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
