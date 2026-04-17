@@ -131,62 +131,11 @@ public final class MinecraftRenderHooks {
             float aspect,
             float nearPlane,
             float farPlane) {
-        CameraPose cameraPose = new CameraPose();
-        cameraPose.px = px;
-        cameraPose.py = py;
-        cameraPose.pz = pz;
-
-        float forwardLength = length(fx, fy, fz);
-        if (forwardLength <= 0.0f) {
-            return;
-        }
-        cameraPose.fx = fx / forwardLength;
-        cameraPose.fy = fy / forwardLength;
-        cameraPose.fz = fz / forwardLength;
-
-        float upx = 0.0f;
-        float upy = 1.0f;
-        float upz = 0.0f;
-        // Derive right from forward × worldUp. Well defined until forward is
-        // collinear with worldUp at exact pitch = ±90°; in that case fall back
-        // to a worldUp perpendicular to forward so the basis stays continuous
-        // instead of snapping or dropping the update.
-        float rx = cameraPose.fy * upz - cameraPose.fz * upy;
-        float ry = cameraPose.fz * upx - cameraPose.fx * upz;
-        float rz = cameraPose.fx * upy - cameraPose.fy * upx;
-        float rightLength = length(rx, ry, rz);
-        if (rightLength <= 1.0e-4f) {
-            upx = 0.0f;
-            upy = 0.0f;
-            upz = 1.0f;
-            rx = cameraPose.fy * upz - cameraPose.fz * upy;
-            ry = cameraPose.fz * upx - cameraPose.fx * upz;
-            rz = cameraPose.fx * upy - cameraPose.fy * upx;
-            rightLength = length(rx, ry, rz);
-            if (rightLength <= 1.0e-6f) {
-                return;
-            }
-        }
-        cameraPose.rx = rx / rightLength;
-        cameraPose.ry = ry / rightLength;
-        cameraPose.rz = rz / rightLength;
-
-        cameraPose.ux = cameraPose.ry * cameraPose.fz - cameraPose.rz * cameraPose.fy;
-        cameraPose.uy = cameraPose.rz * cameraPose.fx - cameraPose.rx * cameraPose.fz;
-        cameraPose.uz = cameraPose.rx * cameraPose.fy - cameraPose.ry * cameraPose.fx;
-        float upLength = length(cameraPose.ux, cameraPose.uy, cameraPose.uz);
-        if (upLength <= 0.0f) {
-            return;
-        }
-        cameraPose.ux /= upLength;
-        cameraPose.uy /= upLength;
-        cameraPose.uz /= upLength;
-
-        cameraPose.fovYDegrees = fovYDegrees;
-        cameraPose.aspect = aspect;
-        cameraPose.nearPlane = nearPlane;
-        cameraPose.farPlane = farPlane;
-        updateCamera(cameraPose);
+        // The patched client still invokes this legacy path from its original
+        // camera update site, but that path only knows the player-eye pose and
+        // will overwrite the authoritative GL-captured camera used for detached
+        // third-person views. Keep the ABI for the patched bytecode, but let
+        // RemixCameraState drive camera submission instead.
     }
 
     public static synchronized void updateCloudLayer(

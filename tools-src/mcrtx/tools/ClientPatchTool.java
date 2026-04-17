@@ -590,7 +590,11 @@ public final class ClientPatchTool {
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "e", "I"));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "k", "F"));
-        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onCamera", "(Lls;FIIF)V", false));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "z", "Lkv;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "kv", "A", "Z"));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onCamera", "(Lls;FIIFZ)V", false));
         return instructions;
     }
 

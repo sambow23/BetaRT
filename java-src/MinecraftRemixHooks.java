@@ -58,8 +58,8 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.resize(width, height);
     }
 
-    public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane) {
-        RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane);
+    public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane, boolean thirdPersonActive) {
+        RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane, thirdPersonActive);
     }
 
     public static void onFrameViewCaptured() {

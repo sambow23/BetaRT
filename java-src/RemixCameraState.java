@@ -37,7 +37,7 @@ public final class RemixCameraState {
         frameViewCaptured = false;
     }
 
-    public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane) {
+    public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane, boolean thirdPersonActive) {
         if (entity == null) {
             return;
         }
@@ -89,28 +89,6 @@ public final class RemixCameraState {
         RemixCameraState.aspect = aspect;
         RemixCameraState.nearPlane = 0.05f;
         RemixCameraState.farPlane = farPlane * 2.0f;
-        // Submit the basis we just built directly, rather than routing through
-        // the 10-arg helper that rebuilds right/up from forward × worldUp and
-        // would hit the exact same singularity at pitch = ±90° we just
-        // carefully handled above.
-        CameraPose cameraPose = new CameraPose();
-        cameraPose.px = cameraPositionX;
-        cameraPose.py = cameraPositionY;
-        cameraPose.pz = cameraPositionZ;
-        cameraPose.fx = cameraForwardX;
-        cameraPose.fy = cameraForwardY;
-        cameraPose.fz = cameraForwardZ;
-        cameraPose.ux = cameraUpX;
-        cameraPose.uy = cameraUpY;
-        cameraPose.uz = cameraUpZ;
-        cameraPose.rx = cameraRightX;
-        cameraPose.ry = cameraRightY;
-        cameraPose.rz = cameraRightZ;
-        cameraPose.fovYDegrees = 70.0f;
-        cameraPose.aspect = aspect;
-        cameraPose.nearPlane = 0.05f;
-        cameraPose.farPlane = farPlane * 2.0f;
-        MinecraftRenderHooks.updateCamera(cameraPose);
     }
 
     /**
@@ -138,9 +116,9 @@ public final class RemixCameraState {
         VIEW_BUFFER.get(view);
 
         float[] inverse = MatrixMath.invertAffineColumnMajor(view);
-        inverse[12] = cameraPositionX;
-        inverse[13] = cameraPositionY;
-        inverse[14] = cameraPositionZ;
+        inverse[12] += cameraPositionX;
+        inverse[13] += cameraPositionY;
+        inverse[14] += cameraPositionZ;
         inverse[15] = 1.0f;
         System.arraycopy(inverse, 0, frameInverseViewMatrix, 0, 16);
         frameViewCaptured = true;
@@ -160,9 +138,9 @@ public final class RemixCameraState {
         // snap at pitch = ±90°, discarding the authoritative basis we just
         // extracted from GL_MODELVIEW.
         CameraPose cameraPose = new CameraPose();
-        cameraPose.px = cameraPositionX;
-        cameraPose.py = cameraPositionY;
-        cameraPose.pz = cameraPositionZ;
+        cameraPose.px = inverse[12];
+        cameraPose.py = inverse[13];
+        cameraPose.pz = inverse[14];
         cameraPose.fx = cameraForwardX;
         cameraPose.fy = cameraForwardY;
         cameraPose.fz = cameraForwardZ;
