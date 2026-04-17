@@ -39,6 +39,7 @@ $instanceLibraryDllPath = Join-Path $instanceLibrariesDir "mcrtx_jni.dll"
 $instanceAssetsDir = Join-Path $instanceLibrariesDir "mcrtx_assets"
 $instanceMinecraftDllPath = Join-Path $instanceMinecraftDir "mcrtx_jni.dll"
 $instanceConfigPath = Join-Path $InstanceRoot "instance.cfg"
+$instanceRemixConfigPath = Join-Path $instanceMinecraftDir "rtx.conf"
 $deployStateDir = Join-Path $repoRoot "out\deploy-state"
 $backupJar = Join-Path $deployStateDir "minecraft-b1.7.3-client.original.jar"
 $deploymentInfo = Join-Path $deployStateDir "last-deploy.json"
@@ -107,6 +108,55 @@ function Remove-PrismPreLaunchSync {
     param([string]$InstanceConfig)
 
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value ""
+}
+
+function Set-RemixConfigValue {
+    param(
+        [string]$Path,
+        [string]$Key,
+        [string]$Value
+    )
+
+    $replacement = "$Key = $Value"
+    $contentLines = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path $Path) {
+        foreach ($contentLine in Get-Content -Path $Path) {
+            $contentLines.Add($contentLine)
+        }
+    }
+
+    $escapedKey = [regex]::Escape($Key)
+    $pattern = "^\s*$escapedKey\s*=.*$"
+    $matchingIndices = @()
+
+    for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -match $pattern) {
+            $matchingIndices += $lineIndex
+        }
+    }
+
+    if ($matchingIndices.Count -gt 0) {
+        $contentLines[$matchingIndices[0]] = $replacement
+        for ($matchIndex = $matchingIndices.Count - 1; $matchIndex -gt 0; $matchIndex -= 1) {
+            $contentLines.RemoveAt($matchingIndices[$matchIndex])
+        }
+    } else {
+        $contentLines.Add($replacement)
+    }
+
+    Set-Content -Path $Path -Value $contentLines -Encoding ASCII
+}
+
+function Ensure-RemixViewModelConfig {
+    param([string]$ConfigPath)
+
+    if (-not (Test-Path $ConfigPath)) {
+        New-Item -ItemType File -Path $ConfigPath -Force | Out-Null
+    }
+
+    Set-RemixConfigValue -Path $ConfigPath -Key "rtx.viewModel.enable" -Value "True"
+    Set-RemixConfigValue -Path $ConfigPath -Key "rtx.enableNearPlaneOverride" -Value "True"
+    Set-RemixConfigValue -Path $ConfigPath -Key "rtx.nearPlaneOverride" -Value "0.001"
 }
 
 foreach ($requiredPath in @($InstanceRoot, (Split-Path $MinecraftLibraryJar -Parent), $deployScript, $instanceConfigPath, $selfScriptPath)) {
@@ -301,6 +351,10 @@ if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch syn
     $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration
 }
 
+if ($PSCmdlet.ShouldProcess($instanceRemixConfigPath, "Configure Remix viewmodel runtime settings")) {
+    Ensure-RemixViewModelConfig -ConfigPath $instanceRemixConfigPath
+}
+
 if ($WhatIfPreference) {
     Write-Host "Dry run complete for Beta 1.7.3 deployment"
     return
@@ -331,5 +385,7 @@ if ($didWriteMarker) {
 if ($preLaunchCommand) {
     Write-Host "Configured Prism pre-launch sync command in $instanceConfigPath"
 }
+
+Write-Host "Configured Remix viewmodel settings in $instanceRemixConfigPath"
 
 Write-Host "Launch the b1.7.3 PrismLauncher instance to test the current build"

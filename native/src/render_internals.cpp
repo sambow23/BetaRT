@@ -418,6 +418,13 @@ std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
   return 0x4D43525458434C00ull | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
+std::uint64_t makeDynamicEntityMeshKey(int entityId, std::uint64_t geometryFingerprint) {
+  if (entityId == kFirstPersonDynamicEntityId) {
+    return geometryFingerprint ^ 0x564945574D4F4445ull;
+  }
+  return geometryFingerprint;
+}
+
 std::uint64_t makeDynamicEntityMeshHash(std::uint64_t geometryFingerprint) {
   return kDynamicEntityMeshHashSeed ^ geometryFingerprint;
 }

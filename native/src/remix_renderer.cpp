@@ -493,7 +493,9 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.pNext = &boneTransformsInfo;
     instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
       ? REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
-      : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+      : (frameInstance.entityId == kFirstPersonDynamicEntityId
+          ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
+          : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);
     instanceInfo.mesh = frameInstance.meshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
@@ -726,6 +728,8 @@ bool RemixRenderer::submitCamera() {
   const float nearPlane = camera_.nearPlane > 0.001f ? camera_.nearPlane : 0.05f;
   const float farPlane = camera_.farPlane > nearPlane ? camera_.farPlane : (nearPlane + 1024.0f);
   const float aspect = camera_.aspect > 0.001f ? camera_.aspect : 1.0f;
+  const float viewModelNearPlane = std::min(nearPlane, 0.001f);
+  const float viewModelFarPlane = farPlane > viewModelNearPlane ? farPlane : (viewModelNearPlane + 1024.0f);
 
   remixapi_CameraInfoParameterizedEXT params {};
   params.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
@@ -741,10 +745,20 @@ bool RemixRenderer::submitCamera() {
   remixapi_CameraInfo info {};
   info.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
   info.pNext = &params;
+  info.type = REMIXAPI_CAMERA_TYPE_WORLD;
 
-  const remixapi_ErrorCode result = remix_.SetupCamera(&info);
+  remixapi_ErrorCode result = remix_.SetupCamera(&info);
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-    setError("SetupCamera failed: " + errorCodeToString(result));
+    setError("SetupCamera(world) failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  params.nearPlane = viewModelNearPlane;
+  params.farPlane = viewModelFarPlane;
+  info.type = REMIXAPI_CAMERA_TYPE_VIEW_MODEL;
+  result = remix_.SetupCamera(&info);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("SetupCamera(viewmodel) failed: " + errorCodeToString(result));
     return false;
   }
   return true;

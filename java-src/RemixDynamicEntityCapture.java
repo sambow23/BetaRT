@@ -36,8 +36,10 @@ public final class RemixDynamicEntityCapture {
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
     private static boolean firstPersonShadowCaptureActive;
+    private static boolean firstPersonShadowCaptureAvailable = true;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
+    private static boolean loggedFirstPersonShadowCaptureFailure;
 
     private RemixDynamicEntityCapture() {
     }
@@ -175,7 +177,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
-        if (!MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
+        if (!firstPersonShadowCaptureAvailable || !MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
             return;
         }
 
@@ -219,7 +221,7 @@ public final class RemixDynamicEntityCapture {
                 GL11.glPopAttrib();
             }
         } catch (RuntimeException exception) {
-            handleHookFailure(exception);
+            disableFirstPersonShadowCapture(exception);
             return;
         } finally {
             firstPersonShadowCaptureActive = false;
@@ -424,6 +426,15 @@ public final class RemixDynamicEntityCapture {
         firstPersonActive = false;
         activeFirstPersonTexture = "";
         firstPersonShadowCaptureActive = false;
+    }
+
+    private static void disableFirstPersonShadowCapture(RuntimeException exception) {
+        firstPersonShadowCaptureAvailable = false;
+        if (!loggedFirstPersonShadowCaptureFailure) {
+            loggedFirstPersonShadowCaptureFailure = true;
+            System.err.println("[mcrtx] disabling first-person shadow capture after hook failure");
+            exception.printStackTrace();
+        }
     }
 
     private static int applyFontShadow(int colorRgba) {

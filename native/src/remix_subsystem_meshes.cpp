@@ -475,7 +475,8 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   }
 
   const std::uint64_t geometryFingerprint = computeDynamicEntityFingerprint(buildState.quads, boneCount);
-  if (const auto existing = dynamicEntityMeshes_.find(geometryFingerprint); existing != dynamicEntityMeshes_.end()) {
+  const std::uint64_t meshKey = makeDynamicEntityMeshKey(buildState.entityId, geometryFingerprint);
+  if (const auto existing = dynamicEntityMeshes_.find(meshKey); existing != dynamicEntityMeshes_.end()) {
     return &existing->second;
   }
 
@@ -556,7 +557,7 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeDynamicEntityMeshHash(geometryFingerprint);
+  meshInfo.hash = makeDynamicEntityMeshHash(meshKey);
   meshInfo.surfaces_values = surfaces.data();
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
@@ -570,10 +571,10 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   DynamicEntityMeshData meshData;
   meshData.meshHandle = meshHandle;
   meshData.meshHash = meshInfo.hash;
-  meshData.geometryFingerprint = geometryFingerprint;
+  meshData.geometryFingerprint = meshKey;
   meshData.quadCount = quadCount;
   meshData.boneCount = boneCount;
-  const auto [it, inserted] = dynamicEntityMeshes_.emplace(geometryFingerprint, std::move(meshData));
+  const auto [it, inserted] = dynamicEntityMeshes_.emplace(meshKey, std::move(meshData));
   if (!inserted) {
     if (meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
       remix_.DestroyMesh(meshHandle);

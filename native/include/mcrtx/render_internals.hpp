@@ -111,6 +111,7 @@ constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
 constexpr std::uint64_t kParticleMaterialHashSeed = 0x4D43525458505443ull;
 constexpr std::uint64_t kDynamicEntityMeshHashSeed = 0x4D43525458454E00ull;
+constexpr int kFirstPersonDynamicEntityId = 0x7FFFFFFE;
 constexpr int kFirstPersonPlayerShadowEntityId = 0x7FFFFFFD;
 constexpr std::uint64_t kDestroyOverlayMeshHashSeed = 0x4D43525458444F00ull;
 constexpr std::uint64_t kParticleMeshHashSeed = 0x4D43525458505100ull;
@@ -242,6 +243,7 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
 remixapi_Transform makeTranslationTransform(float x, float y, float z);
 std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence);
 std::uint64_t makeCloudMeshHash(std::uint64_t sequence);
+std::uint64_t makeDynamicEntityMeshKey(int entityId, std::uint64_t geometryFingerprint);
 std::uint64_t makeDynamicEntityMeshHash(std::uint64_t geometryFingerprint);
 std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence);
 std::uint64_t makeParticleMeshHash(std::uint64_t sequence);
