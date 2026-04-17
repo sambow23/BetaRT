@@ -3007,7 +3007,7 @@ void appendFancyCloudGeometry(
           vertices,
           indices);
 
-      if (cellX > -1) {
+      if (cellX > kMinCloudCell) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileX + static_cast<float>(strip);
           const float worldX = stripBase * kFancyCloudScale;
@@ -3042,9 +3042,9 @@ void appendFancyCloudGeometry(
         }
       }
 
-      if (cellX <= 1) {
+      if (cellX < kMaxCloudCell) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
-          const float stripBase = tileX + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
+          const float stripBase = tileX + static_cast<float>(strip) + 1.0f + kFancyCloudInset;
           const float worldX = stripBase * kFancyCloudScale;
           const float stripU = (tileX + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
@@ -3077,7 +3077,7 @@ void appendFancyCloudGeometry(
         }
       }
 
-      if (cellZ > -1) {
+      if (cellZ > kMinCloudCell) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
           const float stripBase = tileZ + static_cast<float>(strip);
           const float worldZ = stripBase * kFancyCloudScale;
@@ -3112,9 +3112,9 @@ void appendFancyCloudGeometry(
         }
       }
 
-      if (cellZ <= 1) {
+      if (cellZ < kMaxCloudCell) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {
-          const float stripBase = tileZ + static_cast<float>(strip) + 1.0f - kFancyCloudInset;
+          const float stripBase = tileZ + static_cast<float>(strip) + 1.0f + kFancyCloudInset;
           const float worldZ = stripBase * kFancyCloudScale;
           const float stripV = (tileZ + static_cast<float>(strip) + 0.5f) * kFancyCloudUvScale;
           appendCloudQuad(
