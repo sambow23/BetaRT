@@ -922,6 +922,31 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       continue;
     }
 
+    if (isCactusRenderType(resolvedCell.renderType) && isCactusBlockId(resolvedCell.blockId)) {
+      const ChunkBlockCell* belowCell = findWorldCell(overlay.blockX, overlay.blockY - 1, overlay.blockZ);
+      const ChunkBlockCell* aboveCell = findWorldCell(overlay.blockX, overlay.blockY + 1, overlay.blockZ);
+      const ChunkBlockCell* northCell = findWorldCell(overlay.blockX, overlay.blockY, overlay.blockZ - 1);
+      const ChunkBlockCell* southCell = findWorldCell(overlay.blockX, overlay.blockY, overlay.blockZ + 1);
+      const ChunkBlockCell* westCell = findWorldCell(overlay.blockX - 1, overlay.blockY, overlay.blockZ);
+      const ChunkBlockCell* eastCell = findWorldCell(overlay.blockX + 1, overlay.blockY, overlay.blockZ);
+
+      appendCactusGeometry(
+          belowCell == nullptr || !isSolidSupportBlock(*belowCell),
+          aboveCell == nullptr || !isSolidSupportBlock(*aboveCell),
+          northCell == nullptr || !isSolidSupportBlock(*northCell),
+          southCell == nullptr || !isSolidSupportBlock(*southCell),
+          westCell == nullptr || !isSolidSupportBlock(*westCell),
+          eastCell == nullptr || !isSolidSupportBlock(*eastCell),
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
     if (isBedRenderType(resolvedCell.renderType) && isBedBlockId(resolvedCell.blockId)) {
       appendBedGeometry(
           resolvedCell,

@@ -14,6 +14,7 @@ public final class MinecraftRenderHooks {
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
     private static final int LEVER_OR_BUTTON_BLOCK_RENDER_TYPE = 12;
+    private static final int CACTUS_BLOCK_RENDER_TYPE = 13;
     private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
     private static final int BED_BLOCK_RENDER_TYPE = 14;
 
@@ -477,6 +478,7 @@ public final class MinecraftRenderHooks {
                     || renderType == 9
                     || renderType == STAIRS_BLOCK_RENDER_TYPE
                     || renderType == LEVER_OR_BUTTON_BLOCK_RENDER_TYPE
+                    || renderType == CACTUS_BLOCK_RENDER_TYPE
                     || renderType == BED_BLOCK_RENDER_TYPE
                     || renderType == 11)
                     || (renderType == 4 && (blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID));

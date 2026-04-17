@@ -602,6 +602,34 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isCactusRenderType(cell.renderType) && isCactusBlockId(cell.blockId)) {
+          const int worldX = chunkKey.originX + localX;
+          const int worldY = chunkKey.originY + localY;
+          const int worldZ = chunkKey.originZ + localZ;
+          const ChunkBlockCell* belowCell = findWorldCell(worldX, worldY - 1, worldZ);
+          const ChunkBlockCell* aboveCell = findWorldCell(worldX, worldY + 1, worldZ);
+          const ChunkBlockCell* northCell = findWorldCell(worldX, worldY, worldZ - 1);
+          const ChunkBlockCell* southCell = findWorldCell(worldX, worldY, worldZ + 1);
+          const ChunkBlockCell* westCell = findWorldCell(worldX - 1, worldY, worldZ);
+          const ChunkBlockCell* eastCell = findWorldCell(worldX + 1, worldY, worldZ);
+
+          SurfaceBuildBuffers& cactusSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendCactusGeometry(
+              belowCell == nullptr || !isSolidSupportBlock(*belowCell),
+              aboveCell == nullptr || !isSolidSupportBlock(*aboveCell),
+              northCell == nullptr || !isSolidSupportBlock(*northCell),
+              southCell == nullptr || !isSolidSupportBlock(*southCell),
+              westCell == nullptr || !isSolidSupportBlock(*westCell),
+              eastCell == nullptr || !isSolidSupportBlock(*eastCell),
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              cactusSurface.vertices,
+              cactusSurface.indices);
+          continue;
+        }
+
         if (isBedRenderType(cell.renderType) && isBedBlockId(cell.blockId)) {
           SurfaceBuildBuffers& bedSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendBedGeometry(

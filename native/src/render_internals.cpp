@@ -271,12 +271,20 @@ bool isLeverOrButtonRenderType(int renderType) {
   return renderType == kLeverOrButtonBlockRenderType;
 }
 
+bool isCactusRenderType(int renderType) {
+  return renderType == kCactusBlockRenderType;
+}
+
 bool isBedRenderType(int renderType) {
   return renderType == kBedBlockRenderType;
 }
 
 bool isRedstoneDustBlockId(int blockId) {
   return blockId == kRedstoneDustBlockId;
+}
+
+bool isCactusBlockId(int blockId) {
+  return blockId == kCactusBlockId;
 }
 
 bool isBedBlockId(int blockId) {
@@ -347,6 +355,7 @@ bool isSupportedPass0RenderType(int renderType) {
     case kStairBlockRenderType:
     case kFenceBlockRenderType:
     case kLeverOrButtonBlockRenderType:
+    case kCactusBlockRenderType:
     case kBedBlockRenderType:
       return true;
     default:
@@ -378,6 +387,7 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   || isFireRenderType(renderType)
       || isTorchRenderType(renderType)
       || isRedstoneDustRenderType(renderType)
+      || isCactusRenderType(renderType)
       || isDoorRenderType(renderType)
       || isBedRenderType(renderType)
       || isLadderRenderType(renderType)
@@ -1724,6 +1734,112 @@ void appendBoxGeometry(
           maxY,
           maxZ,
           terrainTileIndex,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+  }
+
+  void appendCactusGeometry(
+      bool renderBottom,
+      bool renderTop,
+      bool renderNorth,
+      bool renderSouth,
+      bool renderWest,
+      bool renderEast,
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    constexpr float kCactusInset = 0.0625f;
+
+    if (renderBottom) {
+      appendBoundsFaceGeometry(
+          4,
+          localX,
+          localY,
+          localZ,
+          localX + 1.0f,
+          localY,
+          localZ + 1.0f,
+          cell.terrainTiles[0],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+
+    if (renderTop) {
+      appendBoundsFaceGeometry(
+          5,
+          localX,
+          localY + 1.0f,
+          localZ,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles[1],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+
+    if (renderNorth) {
+      appendBoundsFaceGeometry(
+          0,
+          localX,
+          localY,
+          localZ + kCactusInset,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + kCactusInset,
+          cell.terrainTiles[2],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+
+    if (renderSouth) {
+      appendBoundsFaceGeometry(
+          1,
+          localX,
+          localY,
+          localZ + 1.0f - kCactusInset,
+          localX + 1.0f,
+          localY + 1.0f,
+          localZ + 1.0f - kCactusInset,
+          cell.terrainTiles[3],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+
+    if (renderWest) {
+      appendBoundsFaceGeometry(
+          2,
+          localX + kCactusInset,
+          localY,
+          localZ,
+          localX + kCactusInset,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles[4],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
+
+    if (renderEast) {
+      appendBoundsFaceGeometry(
+          3,
+          localX + 1.0f - kCactusInset,
+          localY,
+          localZ,
+          localX + 1.0f - kCactusInset,
+          localY + 1.0f,
+          localZ + 1.0f,
+          cell.terrainTiles[5],
           kDefaultVertexColor,
           vertices,
           indices);
