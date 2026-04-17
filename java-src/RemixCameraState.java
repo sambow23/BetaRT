@@ -44,7 +44,7 @@ public final class RemixCameraState {
         bt position = entity.e(partialTicks);
         bt forward = entity.f(partialTicks);
         cameraPositionX = (float) position.a;
-        cameraPositionY = (float) (position.b + (double) entity.w());
+        cameraPositionY = (float) (position.b + (double) entity.bf - 1.62);
         cameraPositionZ = (float) position.c;
 
         float fx = (float) forward.a;
