@@ -345,6 +345,9 @@ public final class RemixDynamicEntityCapture {
             int drawMode,
             boolean hasTexture,
             boolean hasColor) {
+        if (firstPersonShadowCaptureActive) {
+            return;
+        }
         String activeTexture = activeCaptureTexture();
         if (activeTexture.isEmpty()) {
             return;
