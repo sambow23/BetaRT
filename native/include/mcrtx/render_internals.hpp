@@ -258,6 +258,7 @@ std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence);
 std::uint64_t makeParticleMeshHash(std::uint64_t sequence);
 std::uint64_t makeFireMeshHash(std::uint64_t sequence);
 std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value);
+std::uint64_t computeChunkMeshFingerprint(const std::vector<SurfaceBuildBuffers>& surfaces);
 std::uint64_t makeTorchLightHash(const WorldBlockPosition& position);
 
 // ---- Torch light placement ------------------------------------------------

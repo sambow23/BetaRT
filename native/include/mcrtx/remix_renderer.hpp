@@ -105,6 +105,7 @@ struct ChunkMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
   std::uint64_t geometryFingerprint {0};
+  std::uint64_t meshFingerprint {0};
   std::size_t blockCount {0};
   std::array<std::uint8_t, 4096> occupancy {};
   std::array<ChunkBlockCell, 4096> cells {};

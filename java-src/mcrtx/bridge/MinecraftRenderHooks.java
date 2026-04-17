@@ -453,7 +453,7 @@ public final class MinecraftRenderHooks {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
-        RemixBridgeNative.nEndChunkBuild(emittedGeometry && capturedChunkBlocks > 0);
+        RemixBridgeNative.nEndChunkBuild(capturedChunkBlocks > 0);
         chunkBuildCaptureActive = false;
         activeChunkRenderPass = 0;
         capturedChunkBlocks = 0;

@@ -431,8 +431,14 @@ remixapi_Transform makeTranslationTransform(float x, float y, float z) {
 }
 
 std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
-  (void)key;
-  return 0x4D43525458000000ull | (sequence & 0x0000FFFFFFFFFFFFull);
+  std::uint64_t hash = 0x4D43525458484B30ull;
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(key.originX));
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(key.originY));
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(key.originZ));
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(key.renderPass));
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(sequence));
+  hash = mixHashComponent(hash, static_cast<std::uint32_t>(sequence >> 32));
+  return hash;
 }
 
 std::uint64_t makeCloudMeshHash(std::uint64_t sequence) {
@@ -465,6 +471,38 @@ std::uint64_t makeFireMeshHash(std::uint64_t sequence) {
 std::uint64_t mixHashComponent(std::uint64_t hash, std::uint32_t value) {
   hash ^= static_cast<std::uint64_t>(value) + 0x9e3779b97f4a7c15ull + (hash << 6) + (hash >> 2);
   return hash;
+}
+
+std::uint64_t computeChunkMeshFingerprint(const std::vector<SurfaceBuildBuffers>& surfaces) {
+  std::uint64_t fingerprint = 0x4D435254584D4553ull;
+  fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surfaces.size()));
+
+  for (const SurfaceBuildBuffers& surface : surfaces) {
+    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(surface.materialHandle);
+    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey));
+    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey >> 32));
+    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surface.vertices.size()));
+    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surface.indices.size()));
+
+    for (const remixapi_HardcodedVertex& vertex : surface.vertices) {
+      for (float position : vertex.position) {
+        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(position));
+      }
+      for (float normal : vertex.normal) {
+        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(normal));
+      }
+      for (float texcoord : vertex.texcoord) {
+        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(texcoord));
+      }
+      fingerprint = mixHashComponent(fingerprint, vertex.color);
+    }
+
+    for (std::uint32_t index : surface.indices) {
+      fingerprint = mixHashComponent(fingerprint, index);
+    }
+  }
+
+  return fingerprint;
 }
 
 std::uint64_t makeTorchLightHash(const WorldBlockPosition& position) {

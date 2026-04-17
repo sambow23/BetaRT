@@ -177,6 +177,7 @@ bool RemixRenderer::rebuildChunkMesh(
   if (blocks.empty()) {
     destroyChunkMesh(meshData);
     meshData.geometryFingerprint = 0;
+    meshData.meshFingerprint = 0;
     meshData.blockCount = 0;
     meshData.occupancy.fill(0);
     meshData.cells.fill(ChunkBlockCell {});
@@ -218,6 +219,7 @@ bool RemixRenderer::rebuildChunkMesh(
   if (occupiedBlocks == 0) {
     destroyChunkMesh(meshData);
     meshData.geometryFingerprint = 0;
+    meshData.meshFingerprint = 0;
     meshData.blockCount = 0;
     meshData.occupancy.fill(0);
     meshData.cells.fill(ChunkBlockCell {});
@@ -226,17 +228,16 @@ bool RemixRenderer::rebuildChunkMesh(
   }
 
   const std::uint64_t geometryFingerprint = computeChunkFingerprint(occupancy, cells);
-  if (meshData.blockCount == occupiedBlocks
-      && meshData.geometryFingerprint == geometryFingerprint
-      && meshData.hasOccupancy) {
-    return true;
+  if (meshData.blockCount != occupiedBlocks
+      || meshData.geometryFingerprint != geometryFingerprint
+      || !meshData.hasOccupancy) {
+    meshData.geometryFingerprint = geometryFingerprint;
+    meshData.blockCount = occupiedBlocks;
+    meshData.occupancy = occupancy;
+    meshData.cells = cells;
+    meshData.hasOccupancy = true;
   }
 
-  meshData.geometryFingerprint = geometryFingerprint;
-  meshData.blockCount = occupiedBlocks;
-  meshData.occupancy = occupancy;
-  meshData.cells = cells;
-  meshData.hasOccupancy = true;
   return rebuildChunkMeshFromData(chunkKey, meshData, false);
 }
 
@@ -244,6 +245,8 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     const ChunkKey& chunkKey,
     ChunkMeshData& meshData,
     bool forceRebuild) {
+  (void)forceRebuild;
+
   if (!meshData.hasOccupancy || meshData.blockCount == 0) {
     destroyChunkMesh(meshData);
     return true;
@@ -769,12 +772,21 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 
   if (surfaces.empty()) {
     destroyChunkMesh(meshData);
+    meshData.meshFingerprint = 0;
+    return true;
+  }
+
+  const std::uint64_t meshFingerprint = computeChunkMeshFingerprint(surfacesToBuild);
+  if (meshData.meshHandle != nullptr && meshData.meshFingerprint == meshFingerprint) {
+    if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
+      return false;
+    }
     return true;
   }
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeChunkMeshHash(chunkKey, nextChunkMeshHash_++);
+  meshInfo.hash = makeChunkMeshHash(chunkKey, meshFingerprint);
   meshInfo.surfaces_values = surfaces.data();
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
@@ -795,12 +807,14 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   destroyChunkMeshHandle(meshData);
   meshData.meshHandle = newMeshHandle;
   meshData.meshHash = meshInfo.hash;
+  meshData.meshFingerprint = meshFingerprint;
   return true;
 }
 
 void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
   destroyChunkMeshHandle(meshData);
   destroyChunkTorchLights(meshData);
+  meshData.meshFingerprint = 0;
 }
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
