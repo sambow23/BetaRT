@@ -2880,9 +2880,12 @@ void appendFancyCloudGeometry(
     float colorB,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
+  (void)cameraY;
+  constexpr int kMinCloudCell = -kFancyCloudRadiusCells + 1;
+  constexpr int kMaxCloudCell = kFancyCloudRadiusCells;
   const float bottomY = cloudHeight;
   const float topY = cloudHeight + kFancyCloudThickness - kFancyCloudInset;
-  const float relativeCloudHeight = cloudHeight - cameraY;
+  const float topCapY = topY + kFancyCloudInset;
   const float xPhase = (cameraX + cloudScroll) / kFancyCloudScale;
   const float zPhase = cameraZ / kFancyCloudScale + 0.33f;
   const float floorX = std::floor(xPhase);
@@ -2891,11 +2894,51 @@ void appendFancyCloudGeometry(
   const float fracZ = zPhase - floorZ;
   const float baseU = floorX * kFancyCloudUvScale;
   const float baseV = floorZ * kFancyCloudUvScale;
+  const float patchTileMinX = static_cast<float>(kMinCloudCell) * kFancyCloudCellSize;
+  const float patchTileMaxX = static_cast<float>(kMaxCloudCell) * kFancyCloudCellSize + kFancyCloudCellSize;
+  const float patchTileMinZ = static_cast<float>(kMinCloudCell) * kFancyCloudCellSize;
+  const float patchTileMaxZ = static_cast<float>(kMaxCloudCell) * kFancyCloudCellSize + kFancyCloudCellSize;
+  const float patchMinX = cameraX + (patchTileMinX - fracX) * kFancyCloudScale;
+  const float patchMaxX = cameraX + (patchTileMaxX - fracX) * kFancyCloudScale;
+  const float patchMinZ = cameraZ + (patchTileMinZ - fracZ) * kFancyCloudScale;
+  const float patchMaxZ = cameraZ + (patchTileMaxZ - fracZ) * kFancyCloudScale;
+  const float patchMinU = patchTileMinX * kFancyCloudUvScale + baseU;
+  const float patchMaxU = patchTileMaxX * kFancyCloudUvScale + baseU;
+  const float patchMinV = patchTileMinZ * kFancyCloudUvScale + baseV;
+  const float patchMaxV = patchTileMaxZ * kFancyCloudUvScale + baseV;
 
   const std::uint32_t bottomColor = packVertexColorRgba(colorR * 0.7f, colorG * 0.7f, colorB * 0.7f, kCloudAlpha);
   const std::uint32_t topColor = packVertexColorRgba(colorR, colorG, colorB, kCloudAlpha);
   const std::uint32_t xSideColor = packVertexColorRgba(colorR * 0.9f, colorG * 0.9f, colorB * 0.9f, kCloudAlpha);
   const std::uint32_t zSideColor = packVertexColorRgba(colorR * 0.8f, colorG * 0.8f, colorB * 0.8f, kCloudAlpha);
+
+  appendCloudQuad(
+      patchMinX,
+      topCapY,
+      patchMaxZ,
+      patchMinU,
+      patchMaxV,
+      patchMaxX,
+      topCapY,
+      patchMaxZ,
+      patchMaxU,
+      patchMaxV,
+      patchMaxX,
+      topCapY,
+      patchMinZ,
+      patchMaxU,
+      patchMinV,
+      patchMinX,
+      topCapY,
+      patchMinZ,
+      patchMinU,
+      patchMinV,
+      0.0f,
+      1.0f,
+      0.0f,
+      topColor,
+      vertices,
+      indices);
 
   for (int cellX = -kFancyCloudRadiusCells + 1; cellX <= kFancyCloudRadiusCells; ++cellX) {
     for (int cellZ = -kFancyCloudRadiusCells + 1; cellZ <= kFancyCloudRadiusCells; ++cellZ) {
@@ -2910,65 +2953,61 @@ void appendFancyCloudGeometry(
       const float v0 = tileZ * kFancyCloudUvScale + baseV;
       const float v1 = (tileZ + kFancyCloudCellSize) * kFancyCloudUvScale + baseV;
 
-      if (relativeCloudHeight > -kFancyCloudThickness - 1.0f) {
         appendCloudQuad(
-            x0,
-            bottomY,
-            z1,
-            u0,
-            v1,
-            x1,
-            bottomY,
-            z1,
-            u1,
-            v1,
-            x1,
-            bottomY,
-            z0,
-            u1,
-            v0,
-            x0,
-            bottomY,
-            z0,
-            u0,
-            v0,
-            0.0f,
-            -1.0f,
-            0.0f,
-            bottomColor,
-            vertices,
-            indices);
-      }
+          x0,
+          bottomY,
+          z1,
+          u0,
+          v1,
+          x1,
+          bottomY,
+          z1,
+          u1,
+          v1,
+          x1,
+          bottomY,
+          z0,
+          u1,
+          v0,
+          x0,
+          bottomY,
+          z0,
+          u0,
+          v0,
+          0.0f,
+          -1.0f,
+          0.0f,
+          bottomColor,
+          vertices,
+          indices);
 
-      if (relativeCloudHeight <= kFancyCloudThickness + 1.0f) {
         appendCloudQuad(
-            x0,
-            topY,
-            z1,
-            u0,
-            v1,
-            x1,
-            topY,
-            z1,
-            u1,
-            v1,
-            x1,
-            topY,
-            z0,
-            u1,
-            v0,
-            x0,
-            topY,
-            z0,
-            u0,
-            v0,
-            0.0f,
-            1.0f,
-            0.0f,
-            topColor,
-            vertices,
-            indices);
-      }
+          x0,
+          topY,
+          z1,
+          u0,
+          v1,
+          x1,
+          topY,
+          z1,
+          u1,
+          v1,
+          x1,
+          topY,
+          z0,
+          u1,
+          v0,
+          x0,
+          topY,
+          z0,
+          u0,
+          v0,
+          0.0f,
+          1.0f,
+          0.0f,
+          topColor,
+          vertices,
+          indices);
 
       if (cellX > -1) {
         for (int strip = 0; strip < static_cast<int>(kFancyCloudCellSize); ++strip) {

@@ -14,18 +14,9 @@ public final class RemixCloudCapture {
             return;
         }
 
-        bt cloudColor = world.c(partialTicks);
-        float colorR = (float) cloudColor.a;
-        float colorG = (float) cloudColor.b;
-        float colorB = (float) cloudColor.c;
-        if (minecraft.z.g) {
-            float grayscale = (colorR * 30.0f + colorG * 59.0f + colorB * 11.0f) / 100.0f;
-            float greenWeighted = (colorR * 30.0f + colorG * 70.0f) / 100.0f;
-            float blueWeighted = (colorR * 30.0f + colorB * 70.0f) / 100.0f;
-            colorR = grayscale;
-            colorG = greenWeighted;
-            colorB = blueWeighted;
-        }
+        float colorR = 1.0f;
+        float colorG = 1.0f;
+        float colorB = 1.0f;
 
         ls entity = minecraft.i;
         float cameraX = (float) (entity.aJ + (entity.aM - entity.aJ) * (double) partialTicks);
