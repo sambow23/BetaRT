@@ -851,6 +851,12 @@ function Replace-TerrainLiquidTiles {
                 (Get-BitmapDifference -BitmapA $currentFrame.FlowEmissive -BitmapB $nextFrame.FlowEmissive)
         } -BitmapPropertyNames @('Still', 'Flow', 'StillEmissive', 'FlowEmissive')
 
+        Repair-WorstLoopBoundary -Frames $periodicWaterFrames -DifferenceEvaluator {
+            param($currentFrame, $nextFrame)
+            return (Get-BitmapDifference -BitmapA $currentFrame.Still -BitmapB $nextFrame.Still) +
+                (Get-BitmapDifference -BitmapA $currentFrame.Flow -BitmapB $nextFrame.Flow)
+        } -BitmapPropertyNames @('Still', 'Flow')
+
         $waterLoopBoundary = Select-BestLoopBoundary -Frames $periodicWaterFrames -DifferenceEvaluator {
             param($currentFrame, $nextFrame)
             return (Get-BitmapDifference -BitmapA $currentFrame.Still -BitmapB $nextFrame.Still) + (Get-BitmapDifference -BitmapA $currentFrame.Flow -BitmapB $nextFrame.Flow)
@@ -869,9 +875,10 @@ function Replace-TerrainLiquidTiles {
             $frameDestinationX = $frameIndex * $frameWidth
             $waterFrame = $periodicWaterFrames[(($frameIndex + $waterLoopRotation) % $frameCount)]
             $lavaFrame = $periodicLavaFrames[(($frameIndex + $lavaLoopRotation) % $frameCount)]
+            $waterFlowRowOffset = [int][Math]::Floor($frameIndex / 2)
             $lavaFlowRowOffset = [int][Math]::Floor($frameIndex / 2)
             $waterStillOutput = $waterFrame.Still
-            $waterFlowOutput = $waterFrame.Flow
+            $waterFlowOutput = Shift-BitmapRows -Bitmap $waterFrame.Flow -RowOffset $waterFlowRowOffset
             $lavaStillOutput = $lavaFrame.Still
             $lavaFlowOutput = Shift-BitmapRows -Bitmap $lavaFrame.Flow -RowOffset $lavaFlowRowOffset
             $lavaStillEmissiveOutput = $lavaFrame.StillEmissive
@@ -896,6 +903,7 @@ function Replace-TerrainLiquidTiles {
                     }
                 }
             } finally {
+                $waterFlowOutput.Dispose()
                 $lavaFlowOutput.Dispose()
                 $lavaFlowEmissiveOutput.Dispose()
             }
