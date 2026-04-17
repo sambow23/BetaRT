@@ -922,6 +922,18 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       continue;
     }
 
+    if (isBedRenderType(resolvedCell.renderType) && isBedBlockId(resolvedCell.blockId)) {
+      appendBedGeometry(
+          resolvedCell,
+          localX,
+          localY,
+          localZ,
+          vertices,
+          indices);
+      ++overlayCount;
+      continue;
+    }
+
     if (resolvedCell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(resolvedCell)) {
       appendBoxGeometry(
           localX + resolvedCell.bounds[0],

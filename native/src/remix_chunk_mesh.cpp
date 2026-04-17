@@ -602,6 +602,18 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isBedRenderType(cell.renderType) && isBedBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& bedSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendBedGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              bedSurface.vertices,
+              bedSurface.indices);
+          continue;
+        }
+
         if (cell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(cell)) {
           SurfaceBuildBuffers& partialCubeSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendBoxGeometry(

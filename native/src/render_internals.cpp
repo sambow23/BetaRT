@@ -271,8 +271,16 @@ bool isLeverOrButtonRenderType(int renderType) {
   return renderType == kLeverOrButtonBlockRenderType;
 }
 
+bool isBedRenderType(int renderType) {
+  return renderType == kBedBlockRenderType;
+}
+
 bool isRedstoneDustBlockId(int blockId) {
   return blockId == kRedstoneDustBlockId;
+}
+
+bool isBedBlockId(int blockId) {
+  return blockId == kBedBlockId;
 }
 
 bool isSingleSlabBlockId(int blockId) {
@@ -339,6 +347,7 @@ bool isSupportedPass0RenderType(int renderType) {
     case kStairBlockRenderType:
     case kFenceBlockRenderType:
     case kLeverOrButtonBlockRenderType:
+    case kBedBlockRenderType:
       return true;
     default:
       return false;
@@ -370,6 +379,7 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
       || isTorchRenderType(renderType)
       || isRedstoneDustRenderType(renderType)
       || isDoorRenderType(renderType)
+      || isBedRenderType(renderType)
       || isLadderRenderType(renderType)
       || isRailRenderType(renderType)) {
     return true;
@@ -379,6 +389,7 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
     case 18:
     case 20:
     case 52:
+    case kTrapdoorBlockId:
       return true;
     default:
       return false;
@@ -1610,6 +1621,113 @@ void appendBoxGeometry(
         kDefaultVertexColor,
         vertices,
         indices);
+  }
+
+  void appendBedGeometry(
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+    static constexpr int kFootConnectedSide[4] = {3, 4, 2, 5};
+    static constexpr int kHeadConnectedSide[4] = {2, 5, 3, 4};
+    static constexpr int kFlippedSideByFacing[4] = {5, 3, 4, 2};
+    static constexpr float kTopUvOrder[4][4][2] = {
+        {{1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}},
+        {{0.0f, 1.0f}, {0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}},
+        {{0.0f, 0.0f}, {1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}},
+        {{1.0f, 0.0f}, {1.0f, 1.0f}, {0.0f, 1.0f}, {0.0f, 0.0f}},
+    };
+
+    const int facing = cell.blockMetadata & 3;
+    const bool isHead = (cell.blockMetadata & 8) != 0;
+    const int hiddenMinecraftSide = isHead ? kHeadConnectedSide[facing] : kFootConnectedSide[facing];
+    const int flippedMinecraftSide = kFlippedSideByFacing[facing];
+
+    const float minX = localX + cell.bounds[0];
+    const float minY = localY + cell.bounds[1];
+    const float minZ = localZ + cell.bounds[2];
+    const float maxX = localX + cell.bounds[3];
+    const float maxY = localY + cell.bounds[4];
+    const float maxZ = localZ + cell.bounds[5];
+
+    const auto appendBedQuad = [&vertices, &indices](
+                                   float x0, float y0, float z0, float u0, float v0,
+                                   float x1, float y1, float z1, float u1, float v1,
+                                   float x2, float y2, float z2, float u2, float v2,
+                                   float x3, float y3, float z3, float u3, float v3) {
+      const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+      appendCloudQuad(
+          x0, y0, z0, u0, v0,
+          x1, y1, z1, u1, v1,
+          x2, y2, z2, u2, v2,
+          x3, y3, z3, u3, v3,
+          normal[0], normal[1], normal[2],
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    };
+
+    const auto appendMappedBedFace = [&](std::int16_t terrainTileIndex, const float uvOrder[4][2]) {
+      const int terrainTile = normalizeTerrainTileIndex(terrainTileIndex);
+      const float tileMinU = static_cast<float>((terrainTile & 0x0F) * 16) / kAtlasSizePixels;
+      const float tileMinV = static_cast<float>(terrainTile & 0xF0) / kAtlasSizePixels;
+      const float tileMaxU = (static_cast<float>((terrainTile & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels)
+          / kAtlasSizePixels;
+      const float tileMaxV = (static_cast<float>(terrainTile & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels)
+          / kAtlasSizePixels;
+
+      const auto mapU = [tileMinU, tileMaxU](float normalized) {
+        return tileMinU + (tileMaxU - tileMinU) * normalized;
+      };
+      const auto mapV = [tileMinV, tileMaxV](float normalized) {
+        return tileMinV + (tileMaxV - tileMinV) * normalized;
+      };
+
+      appendBedQuad(
+          maxX, maxY, maxZ, mapU(uvOrder[0][0]), mapV(uvOrder[0][1]),
+          maxX, maxY, minZ, mapU(uvOrder[1][0]), mapV(uvOrder[1][1]),
+          minX, maxY, minZ, mapU(uvOrder[2][0]), mapV(uvOrder[2][1]),
+          minX, maxY, maxZ, mapU(uvOrder[3][0]), mapV(uvOrder[3][1]));
+    };
+
+    appendBedQuad(
+        minX, minY, maxZ, static_cast<float>((normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0x0F) * 16) / kAtlasSizePixels,
+        (static_cast<float>(normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels,
+        minX, minY, minZ, static_cast<float>((normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0x0F) * 16) / kAtlasSizePixels,
+        static_cast<float>(normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0xF0) / kAtlasSizePixels,
+        maxX, minY, minZ, (static_cast<float>((normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels,
+        static_cast<float>(normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0xF0) / kAtlasSizePixels,
+        maxX, minY, maxZ, (static_cast<float>((normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels,
+        (static_cast<float>(normalizeTerrainTileIndex(cell.terrainTiles[0]) & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels);
+
+    appendMappedBedFace(cell.terrainTiles[1], kTopUvOrder[facing]);
+
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+      const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
+      if (minecraftSide == 0 || minecraftSide == 1 || minecraftSide == hiddenMinecraftSide) {
+        continue;
+      }
+
+      std::int16_t terrainTileIndex = cell.terrainTiles[minecraftSide];
+      if (minecraftSide == flippedMinecraftSide && terrainTileIndex > 0) {
+        terrainTileIndex = static_cast<std::int16_t>(-terrainTileIndex);
+      }
+
+      appendBoundsFaceGeometry(
+          faceIndex,
+          minX,
+          minY,
+          minZ,
+          maxX,
+          maxY,
+          maxZ,
+          terrainTileIndex,
+          kDefaultVertexColor,
+          vertices,
+          indices);
+    }
   }
 
   void appendLeverGeometry(

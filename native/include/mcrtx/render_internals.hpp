@@ -45,11 +45,13 @@ constexpr std::uint8_t kRailBlockRenderType = 9;
 constexpr std::uint8_t kStairBlockRenderType = 10;
 constexpr std::uint8_t kFenceBlockRenderType = 11;
 constexpr std::uint8_t kLeverOrButtonBlockRenderType = 12;
+constexpr std::uint8_t kBedBlockRenderType = 14;
 constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
 constexpr std::uint8_t kDoubleSlabBlockId = 43;
 constexpr std::uint8_t kSingleSlabBlockId = 44;
+constexpr std::uint8_t kBedBlockId = 26;
 constexpr std::uint8_t kTallGrassBlockId = 31;
 constexpr std::uint8_t kTorchBlockId = 50;
 constexpr std::uint8_t kWoodStairsBlockId = 53;
@@ -71,6 +73,7 @@ constexpr std::uint8_t kRailBlockId = 66;
 constexpr std::uint8_t kFenceBlockId = 85;
 constexpr std::uint8_t kRepeaterIdleBlockId = 93;
 constexpr std::uint8_t kRepeaterPoweredBlockId = 94;
+constexpr std::uint8_t kTrapdoorBlockId = 96;
 constexpr std::uint8_t kWaterStillBlockId = 8;
 constexpr std::uint8_t kWaterFlowingBlockId = 9;
 constexpr std::uint8_t kLavaStillBlockId = 10;
@@ -224,7 +227,9 @@ bool isRailRenderType(int renderType);
 bool isStairRenderType(int renderType);
 bool isFenceRenderType(int renderType);
 bool isLeverOrButtonRenderType(int renderType);
+bool isBedRenderType(int renderType);
 bool isRedstoneDustBlockId(int blockId);
+bool isBedBlockId(int blockId);
 bool isSingleSlabBlockId(int blockId);
 bool isStairBlockId(int blockId);
 bool isDoorBlockId(int blockId);
@@ -405,6 +410,12 @@ void appendStairGeometry(
 void appendDoorGeometry(
     const ChunkBlockCell& cell,
     int resolvedMetadata,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendBedGeometry(
+    const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);
