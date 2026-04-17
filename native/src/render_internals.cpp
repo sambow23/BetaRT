@@ -477,6 +477,9 @@ TorchLightPlacement makeTorchLightPlacement(
   placement.lightX = static_cast<float>(worldX) + kTorchLightOffsetX;
   placement.lightY = static_cast<float>(worldY) + kTorchLightOffsetY;
   placement.lightZ = static_cast<float>(worldZ) + kTorchLightOffsetZ;
+  placement.radiance = cell.blockId == kRedstoneTorchOnBlockId
+      ? kRedstoneTorchLightRadiance
+      : kTorchLightRadiance;
 
   switch (cell.blockMetadata & 7) {
     case 1:

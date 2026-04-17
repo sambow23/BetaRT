@@ -138,6 +138,7 @@ constexpr float kTorchLightRadius = 0.06f;
 constexpr float kWallTorchLightHorizontalOffset = 0.27f;
 constexpr float kWallTorchLightVerticalOffset = 0.22f;
 inline constexpr remixapi_Float3D kTorchLightRadiance = {540.0f, 331.5f, 121.5f};
+inline constexpr remixapi_Float3D kRedstoneTorchLightRadiance = {220.0f, 36.0f, 24.0f};
 
 inline constexpr float kFaceVertexOffsets[6][4][3] = {
   {{0.0f, 0.0f, 0.0f}, {1.0f, 0.0f, 0.0f}, {1.0f, 1.0f, 0.0f}, {0.0f, 1.0f, 0.0f}},

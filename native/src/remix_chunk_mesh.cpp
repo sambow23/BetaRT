@@ -424,11 +424,13 @@ bool RemixRenderer::rebuildChunkMeshFromData(
         }
 
         if (isTorchRenderType(cell.renderType)) {
-          desiredTorchLights.push_back(makeTorchLightPlacement(
-            cell,
-            chunkKey.originX + localX,
-            chunkKey.originY + localY,
-            chunkKey.originZ + localZ));
+          if (cell.blockId == kTorchBlockId || cell.blockId == kRedstoneTorchOnBlockId) {
+            desiredTorchLights.push_back(makeTorchLightPlacement(
+              cell,
+              chunkKey.originX + localX,
+              chunkKey.originY + localY,
+              chunkKey.originZ + localZ));
+          }
           SurfaceBuildBuffers& torchSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendTorchGeometry(
               cell,

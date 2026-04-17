@@ -98,6 +98,7 @@ struct TorchLightPlacement {
   float lightX {0.0f};
   float lightY {0.0f};
   float lightZ {0.0f};
+  remixapi_Float3D radiance {0.0f, 0.0f, 0.0f};
 };
 
 struct ChunkMeshData {

@@ -315,7 +315,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
   lightInfo.hash = makeTorchLightHash(placement.blockPosition);
-  lightInfo.radiance = kTorchLightRadiance;
+  lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
 
@@ -357,7 +357,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
   lightInfo.hash = makeTorchLightHash(placement.blockPosition);
-  lightInfo.radiance = kTorchLightRadiance;
+  lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
 
