@@ -5,9 +5,11 @@
 #include <atomic>
 #include <bit>
 #include <cctype>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -16,6 +18,63 @@
 namespace mcrtx {
 
 using namespace mcrtx::detail;
+namespace {
+
+constexpr std::uint64_t kPerfLogIntervalFrames = 60;
+constexpr auto kStandaloneAutonomousFrameInterval = std::chrono::milliseconds(16);
+
+std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count());
+}
+
+std::string formatMilliseconds(std::uint64_t nanoseconds) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2)
+         << (static_cast<double>(nanoseconds) / 1000000.0);
+  return stream.str();
+}
+
+std::string formatAverageMilliseconds(const DurationPerfCounter& counter, std::uint64_t fallbackSamples) {
+  const std::uint64_t divisor = counter.sampleCount != 0 ? counter.sampleCount : fallbackSamples;
+  if (divisor == 0) {
+    return "0.00";
+  }
+  return formatMilliseconds(counter.totalNanoseconds / divisor);
+}
+
+std::string formatAverageCount(const CountPerfCounter& counter, std::uint64_t fallbackSamples) {
+  const std::uint64_t divisor = counter.sampleCount != 0 ? counter.sampleCount : fallbackSamples;
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(2)
+         << (divisor == 0 ? 0.0 : static_cast<double>(counter.totalCount) / static_cast<double>(divisor));
+  return stream.str();
+}
+
+void appendDurationSummary(
+    std::ostringstream& stream,
+    const char* label,
+    const DurationPerfCounter& counter,
+    std::uint64_t fallbackSamples) {
+  stream << ' ' << label << "AvgMs=" << formatAverageMilliseconds(counter, fallbackSamples)
+         << ' ' << label << "MaxMs=" << formatMilliseconds(counter.maxNanoseconds);
+}
+
+void appendCountSummary(
+    std::ostringstream& stream,
+    const char* label,
+    const CountPerfCounter& counter,
+    std::uint64_t fallbackSamples) {
+  stream << ' ' << label << "Avg=" << formatAverageCount(counter, fallbackSamples)
+         << ' ' << label << "Max=" << counter.maxCount;
+}
+
+std::string describeRequestedWindowMode() {
+  const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
+  return configuredWindowMode.empty() ? std::string("<default>") : configuredWindowMode;
+}
+
+}  // namespace
+
 std::size_t ChunkKeyHash::operator()(const ChunkKey& key) const noexcept {
   std::size_t hash = 0;
   hash ^= static_cast<std::size_t>(key.originX) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
@@ -43,7 +102,7 @@ bool RemixRenderer::initialize(
   std::uint32_t width,
   std::uint32_t height,
   std::filesystem::path remixDllPath) {
-  std::scoped_lock lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
 
   if (initialized_) {
     return true;
@@ -60,9 +119,19 @@ bool RemixRenderer::initialize(
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
 
   bool usedLegacySourceWindowEnvVar = false;
+  standaloneOutputWindow_ = shouldUseStandaloneOutputWindow();
   overlayOutputWindow_ = shouldUseOverlayOutputWindow(&usedLegacySourceWindowEnvVar);
   if (usedLegacySourceWindowEnvVar) {
     log("MCRTX_USE_SOURCE_WINDOW is deprecated; using detached dual-window mode instead");
+  }
+  log(
+      "Window mode requested=" + describeRequestedWindowMode()
+      + " effective=" + (standaloneOutputWindow_ ? std::string("standalone") : (overlayOutputWindow_ ? std::string("overlay") : std::string("dual")))
+      + (standaloneOutputWindow_ ? " standaloneAsync=enabled" : " standaloneAsync=disabled"));
+
+  if (standaloneOutputWindow_) {
+    lock.unlock();
+    return startStandaloneWorker(std::move(remixDllPath));
   }
 
   if (!createOutputWindow(sourceHwnd_)) {
@@ -79,7 +148,7 @@ bool RemixRenderer::initialize(
     return false;
   }
 
-  if (remix_.DrawScreenOverlay == nullptr) {
+  if (!standaloneOutputWindow_ && remix_.DrawScreenOverlay == nullptr) {
     setError("Loaded Remix runtime does not support DrawScreenOverlay; update dxvk-remix-gmod/d3d9.dll to a build with screen overlay support");
     resetLoadedRemix();
     destroyOutputWindow();
@@ -129,19 +198,213 @@ bool RemixRenderer::initialize(
   initialized_ = true;
   log(overlayOutputWindow_
       ? "Remix renderer initialized in single-window overlay mode"
-      : "Remix renderer initialized in dual-window mode");
+      : (standaloneOutputWindow_
+        ? "Remix renderer initialized in standalone mode"
+        : "Remix renderer initialized in dual-window mode"));
   return true;
 }
 
 void RemixRenderer::shutdown() {
-  std::scoped_lock lock(mutex_);
+  std::thread standaloneWorker;
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    if (standaloneWorkerActive_) {
+      standaloneWorkerStopRequested_ = true;
+      standaloneWorkerPresentRequested_ = true;
+      standaloneWorkerEvent_.notify_all();
+      standaloneWorker = std::move(standaloneWorker_);
+    } else {
+      shutdownLocked();
+      return;
+    }
+  }
 
+  if (standaloneWorker.joinable()) {
+    standaloneWorker.join();
+  }
+}
+
+bool RemixRenderer::startStandaloneWorker(std::filesystem::path remixDllPath) {
+  std::thread standaloneWorker;
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    standaloneWorkerInitReady_ = false;
+    standaloneWorkerStopRequested_ = false;
+    standaloneWorkerPresentRequested_ = false;
+    standaloneWorkerThreadId_ = 0;
+    standaloneWorkerActive_ = true;
+    standaloneWorker_ = std::thread(&RemixRenderer::standaloneRenderWorkerMain, this, std::move(remixDllPath));
+    standaloneWorkerEvent_.wait(lock, [this]() { return standaloneWorkerInitReady_; });
+    if (initialized_) {
+      return true;
+    }
+    standaloneWorker = std::move(standaloneWorker_);
+  }
+
+  if (standaloneWorker.joinable()) {
+    standaloneWorker.join();
+  }
+  return false;
+}
+
+bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPath) {
+  if (!createOutputWindow(sourceHwnd_)) {
+    return false;
+  }
+  HWND presentationHwnd = outputHwnd_;
+
+  if (remixDllPath.empty()) {
+    remixDllPath = resolveRemixDllPath();
+  }
+
+  if (!loadRemix(remixDllPath)) {
+    destroyOutputWindow();
+    return false;
+  }
+
+  if (remix_.SetConfigVariable != nullptr) {
+    const auto applyConfig = [this](const char* key, const char* value) {
+      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
+      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
+    };
+    applyConfig("rtx.sceneScale", "0.01");
+    applyConfig("rtx.volumetrics.initialRISSampleCount", "32");
+  } else {
+    log("SetConfigVariable not available; cannot apply scene scale / volumetric tuning");
+  }
+
+  if (!startup(presentationHwnd)) {
+    resetLoadedRemix();
+    destroyOutputWindow();
+    return false;
+  }
+
+  if (remix_.SetConfigVariable != nullptr) {
+    const auto applyConfig = [this](const char* key, const char* value) {
+      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
+      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
+    };
+    applyConfig("rtx.di.initialSampleCount", "32");
+    applyConfig("rtx.di.enableBestLightSampling", "True");
+    applyConfig("rtx.di.enableDenoiserConfidence", "True");
+    applyConfig("rtx.di.enableDenoiserGradient", "True");
+  }
+
+  initializeTerrainMaterials();
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    initialized_ = true;
+  }
+  log("Remix renderer initialized in standalone mode (async worker threadId=" + std::to_string(GetCurrentThreadId()) + ")");
+  return true;
+}
+
+void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPath) {
+  const DWORD workerThreadId = GetCurrentThreadId();
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    standaloneWorkerThreadId_ = workerThreadId;
+  }
+
+  const bool initialized = initializeStandaloneWorker(std::move(remixDllPath));
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    standaloneWorkerInitReady_ = true;
+    if (!initialized) {
+      standaloneWorkerActive_ = false;
+    }
+  }
+  standaloneWorkerEvent_.notify_all();
+  if (!initialized) {
+    return;
+  }
+
+  log("Standalone async render worker ready threadId=" + std::to_string(workerThreadId));
+  auto nextStandaloneRenderAt = std::chrono::steady_clock::now();
+  for (;;) {
+    std::string perfSummary;
+    bool presentOk = true;
+    {
+      std::unique_lock<std::mutex> lock(mutex_);
+      standaloneWorkerEvent_.wait_until(lock, nextStandaloneRenderAt, [this]() {
+        return standaloneWorkerStopRequested_ || standaloneWorkerPresentRequested_;
+      });
+      if (standaloneWorkerStopRequested_) {
+        break;
+      }
+      standaloneWorkerPresentRequested_ = false;
+    }
+
+    if (std::chrono::steady_clock::now() < nextStandaloneRenderAt) {
+      continue;
+    }
+
+    {
+      std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+      if (!lock.owns_lock()) {
+        Sleep(1);
+        continue;
+      }
+      presentOk = presentLocked(lock, perfSummary);
+    }
+    nextStandaloneRenderAt = std::chrono::steady_clock::now() + kStandaloneAutonomousFrameInterval;
+    if (!perfSummary.empty()) {
+      log(perfSummary);
+    }
+    if (!presentOk) {
+      Sleep(1);
+    }
+  }
+
+  {
+    std::unique_lock<std::mutex> lock(mutex_);
+    shutdownLocked();
+    standaloneWorkerInitReady_ = false;
+    standaloneWorkerStopRequested_ = false;
+    standaloneWorkerPresentRequested_ = false;
+    standaloneWorkerThreadId_ = 0;
+    standaloneWorkerActive_ = false;
+  }
+  standaloneWorkerEvent_.notify_all();
+  log("Standalone async render worker stopped");
+}
+
+void RemixRenderer::resetPerFramePerfCounters() noexcept {
+  perfCaptureBlockCallsThisFrame_ = 0;
+  perfChunkBuildsThisFrame_ = 0;
+  perfChunkMeshRebuildsThisFrame_ = 0;
+  perfChunkBuildWorkNanosThisFrame_ = 0;
+  perfChunkMeshRebuildNanosThisFrame_ = 0;
+  perfNeighborRefreshNanosThisFrame_ = 0;
+  perfCachedChunkMeshesThisFrame_ = 0;
+  perfSubmittedChunkMeshesThisFrame_ = 0;
+  perfSubmittedChunkBlocksThisFrame_ = 0;
+}
+
+void RemixRenderer::shutdownLocked() {
+  renderSubmissionInFlight_ = false;
+  flushDeferredDestroyQueuesLocked();
   if (initialized_ && remix_.Shutdown) {
+    if (!standaloneOutputWindow_ && remix_.DrawScreenOverlay != nullptr) {
+      remix_.DrawScreenOverlay(
+          nullptr,
+          0,
+          0,
+          REMIXAPI_FORMAT_R8G8B8A8_UNORM,
+          0.0f);
+    }
+
     for (auto& [chunkKey, meshData] : chunkMeshes_) {
       destroyChunkMesh(meshData);
     }
     destroyCloudMesh();
     destroyFireMesh();
+    destroyDestroyOverlayMesh();
+    destroyParticleMesh();
+    destroyDynamicEntityMeshes();
+    while (!torchLights_.empty()) {
+      destroyTorchLight(torchLights_.begin()->first);
+    }
     destroyTerrainMaterials();
     remix_.Shutdown();
   }
@@ -149,6 +412,7 @@ void RemixRenderer::shutdown() {
   destroyOutputWindow();
   initialized_ = false;
   overlayOutputWindow_ = true;
+  standaloneOutputWindow_ = false;
   sourceHwnd_ = nullptr;
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
@@ -161,8 +425,12 @@ void RemixRenderer::shutdown() {
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
+  deferredMeshDestroys_.clear();
+  deferredLightDestroys_.clear();
   nextChunkMeshHash_ = 1;
   presentedFrames_ = 0;
+  perfWindow_.reset();
+  resetPerFramePerfCounters();
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;
@@ -208,6 +476,10 @@ bool RemixRenderer::drawScreenOverlay(
     return false;
   }
 
+  if (standaloneOutputWindow_) {
+    return true;
+  }
+
   if (remix_.DrawScreenOverlay == nullptr) {
     setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
     return false;
@@ -245,6 +517,10 @@ bool RemixRenderer::clearScreenOverlay() {
     return true;
   }
 
+  if (standaloneOutputWindow_) {
+    return true;
+  }
+
   if (remix_.DrawScreenOverlay == nullptr) {
     setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
     return false;
@@ -267,6 +543,10 @@ bool RemixRenderer::clearScreenOverlay() {
 remixapi_UIState RemixRenderer::getUiState() const {
   std::scoped_lock lock(mutex_);
 
+  if (standaloneOutputWindow_) {
+    return REMIXAPI_UI_STATE_NONE;
+  }
+
   if (!initialized_ || remix_.GetUIState == nullptr) {
     return REMIXAPI_UI_STATE_NONE;
   }
@@ -276,6 +556,10 @@ remixapi_UIState RemixRenderer::getUiState() const {
 
 bool RemixRenderer::setUiState(remixapi_UIState state) {
   std::scoped_lock lock(mutex_);
+
+  if (standaloneOutputWindow_) {
+    return state == REMIXAPI_UI_STATE_NONE;
+  }
 
   if (!initialized_) {
     setError("setUiState called before initialize");
@@ -311,32 +595,307 @@ void RemixRenderer::updateCamera(const CameraState& camera) {
 }
 
 bool RemixRenderer::present() {
-  std::scoped_lock lock(mutex_);
+  std::unique_lock<std::mutex> lock(mutex_);
+
+  if (standaloneOutputWindow_) {
+    if (!initialized_) {
+      setError("present called before initialize");
+      return false;
+    }
+    standaloneWorkerPresentRequested_ = true;
+    standaloneWorkerEvent_.notify_all();
+    return true;
+  }
+
+  std::string perfSummary;
+  const bool ok = presentLocked(lock, perfSummary);
+  lock.unlock();
+  if (!perfSummary.empty()) {
+    log(perfSummary);
+  }
+  return ok;
+}
+
+void RemixRenderer::destroyMeshHandle(remixapi_MeshHandle& meshHandle) {
+  if (meshHandle == nullptr) {
+    return;
+  }
+
+  if (renderSubmissionInFlight_) {
+    deferredMeshDestroys_.push_back(meshHandle);
+  } else if (remix_.DestroyMesh != nullptr) {
+    remix_.DestroyMesh(meshHandle);
+  }
+
+  meshHandle = nullptr;
+}
+
+void RemixRenderer::destroyLightHandle(remixapi_LightHandle lightHandle) {
+  if (lightHandle == nullptr) {
+    return;
+  }
+
+  if (renderSubmissionInFlight_) {
+    deferredLightDestroys_.push_back(lightHandle);
+  } else if (remix_.DestroyLight != nullptr) {
+    remix_.DestroyLight(lightHandle);
+  }
+}
+
+void RemixRenderer::flushDeferredDestroyQueuesLocked() {
+  if (renderSubmissionInFlight_) {
+    return;
+  }
+
+  if (remix_.DestroyMesh != nullptr) {
+    for (remixapi_MeshHandle meshHandle : deferredMeshDestroys_) {
+      if (meshHandle != nullptr) {
+        remix_.DestroyMesh(meshHandle);
+      }
+    }
+  }
+  deferredMeshDestroys_.clear();
+
+  if (remix_.DestroyLight != nullptr) {
+    for (remixapi_LightHandle lightHandle : deferredLightDestroys_) {
+      if (lightHandle != nullptr) {
+        remix_.DestroyLight(lightHandle);
+      }
+    }
+  }
+  deferredLightDestroys_.clear();
+}
+
+bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene) {
+  if (!rebuildFireMesh()) {
+    return false;
+  }
+
+  if (!rebuildDestroyOverlayMesh()) {
+    return false;
+  }
+
+  if (!rebuildParticleMesh()) {
+    return false;
+  }
+
+  snapshot = {};
+  snapshot.camera = camera_;
+  snapshot.chunkMeshes.reserve(chunkMeshes_.size());
+  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+    if (meshData.meshHandle == nullptr) {
+      continue;
+    }
+
+    ChunkRenderInstance renderInstance;
+    renderInstance.chunkKey = chunkKey;
+    renderInstance.meshHandle = meshData.meshHandle;
+    renderInstance.blockCount = meshData.blockCount;
+    snapshot.chunkMeshes.push_back(renderInstance);
+    snapshot.cachedChunkMeshes += 1;
+    snapshot.submittedChunkBlocks += meshData.blockCount;
+  }
+
+  snapshot.dynamicEntities.reserve(dynamicEntityFrameInstances_.size());
+  for (const DynamicEntityFrameInstance& frameInstance : dynamicEntityFrameInstances_) {
+    if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
+      continue;
+    }
+
+    snapshot.submittedDynamicEntityQuads += frameInstance.quadCount;
+    snapshot.dynamicEntities.push_back(frameInstance);
+  }
+
+  snapshot.cloudMeshHandle = cloudMeshHandle_;
+  snapshot.fireMeshHandle = fireMeshHandle_;
+  snapshot.destroyOverlayMeshHandle = destroyOverlayMeshHandle_;
+  snapshot.particleMeshHandle = particleMeshHandle_;
+  snapshot.cloudTransformX = cloudTransformX_;
+  snapshot.cloudTransformY = cloudTransformY_;
+  snapshot.cloudTransformZ = cloudTransformZ_;
+  snapshot.submittedCloudQuads = cloudMeshHandle_ != nullptr ? cloudQuadCount_ : 0;
+  snapshot.submittedFireQuads = fireMeshHandle_ != nullptr ? fireQuadCount_ : 0;
+  snapshot.submittedDestroyOverlays = destroyOverlayMeshHandle_ != nullptr ? destroyOverlayCount_ : 0;
+  snapshot.submittedParticleQuads = particleMeshHandle_ != nullptr ? particleQuadCount_ : 0;
+
+  snapshot.torchLights.reserve(torchLights_.size());
+  for (const auto& [position, lightHandle] : torchLights_) {
+    (void)position;
+    if (lightHandle != nullptr) {
+      snapshot.torchLights.push_back(lightHandle);
+    }
+  }
+  snapshot.submittedTorchLights = snapshot.torchLights.size();
+
+  if (!snapshot.hasScene()) {
+    logNoCapturedScene = presentedFrames_ < 4;
+    return true;
+  }
+
+  renderSubmissionInFlight_ = true;
+  return true;
+}
+
+bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::string& perfSummary) {
+  const auto lockAcquiredAt = std::chrono::steady_clock::now();
+  const auto lockRequestedAt = lockAcquiredAt;
 
   if (!initialized_) {
     setError("present called before initialize");
     return false;
   }
 
+  const auto outputWindowStart = std::chrono::steady_clock::now();
   updateOutputWindowSize();
   pumpOutputWindowMessages();
+  const auto outputWindowEnd = std::chrono::steady_clock::now();
 
-  if (!submitCamera()) {
+  FrameRenderSnapshot snapshot;
+  bool logNoCapturedScene = false;
+  if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
     return false;
   }
 
-  if (!drawCapturedGeometry()) {
+  std::uint64_t lockHoldNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockAcquiredAt);
+  lock.unlock();
+
+  const auto cameraSubmitStart = std::chrono::steady_clock::now();
+  if (!submitCamera(snapshot.camera)) {
+    lock.lock();
+    renderSubmissionInFlight_ = false;
+    flushDeferredDestroyQueuesLocked();
     return false;
   }
+  const auto cameraSubmitEnd = std::chrono::steady_clock::now();
 
+  const auto geometrySubmitStart = std::chrono::steady_clock::now();
+  if (!drawCapturedGeometry(snapshot)) {
+    lock.lock();
+    renderSubmissionInFlight_ = false;
+    flushDeferredDestroyQueuesLocked();
+    return false;
+  }
+  const auto geometrySubmitEnd = std::chrono::steady_clock::now();
+
+  const auto remixPresentStart = std::chrono::steady_clock::now();
   const remixapi_ErrorCode result = remix_.Present(nullptr);
+  const auto remixPresentEnd = std::chrono::steady_clock::now();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    lock.lock();
+    renderSubmissionInFlight_ = false;
+    flushDeferredDestroyQueuesLocked();
     setError("Present failed: " + errorCodeToString(result));
     return false;
   }
 
+  const auto uiSyncStart = std::chrono::steady_clock::now();
+  remixapi_UIState uiState {};
+  bool hasUiState = false;
   if (remix_.GetUIState != nullptr) {
-    syncOutputWindowInteractivity(remix_.GetUIState());
+    uiState = remix_.GetUIState();
+    hasUiState = true;
+  }
+
+  lock.lock();
+  const auto secondLockAcquiredAt = std::chrono::steady_clock::now();
+  renderSubmissionInFlight_ = false;
+  flushDeferredDestroyQueuesLocked();
+  if (hasUiState) {
+    syncOutputWindowInteractivity(uiState);
+  }
+
+  perfCachedChunkMeshesThisFrame_ = snapshot.cachedChunkMeshes;
+  perfSubmittedChunkMeshesThisFrame_ = snapshot.chunkMeshes.size();
+  perfSubmittedChunkBlocksThisFrame_ = snapshot.submittedChunkBlocks;
+
+  if (logNoCapturedScene) {
+    log("No captured scene meshes available yet");
+  }
+
+  if (presentedFrames_ < 8
+      || snapshot.chunkMeshes.size() != lastSubmittedChunkCount_
+      || snapshot.submittedChunkBlocks != lastSubmittedBlockCount_
+      || snapshot.submittedCloudQuads != lastSubmittedCloudQuadCount_
+      || snapshot.submittedFireQuads != lastSubmittedFireQuadCount_
+      || snapshot.submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
+      || snapshot.submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
+      || snapshot.submittedParticleQuads != lastSubmittedParticleQuadCount_
+      || snapshot.submittedTorchLights != lastSubmittedTorchLightCount_) {
+    if (presentedFrames_ < 8) {
+      std::ostringstream stream;
+      stream << "Submitted " << snapshot.chunkMeshes.size()
+             << " chunk meshes covering " << snapshot.submittedChunkBlocks
+             << " blocks and " << snapshot.submittedCloudQuads
+             << " cloud quads and " << snapshot.submittedFireQuads
+             << " fire quads and " << snapshot.submittedDynamicEntityQuads
+             << " dynamic entity quads and " << snapshot.submittedDestroyOverlays
+             << " destroy overlays and "
+             << snapshot.submittedParticleQuads << " particle quads and "
+             << snapshot.submittedTorchLights
+             << " torch lights";
+      log(stream.str());
+    }
+  }
+
+  lastSubmittedChunkCount_ = snapshot.chunkMeshes.size();
+  lastSubmittedBlockCount_ = snapshot.submittedChunkBlocks;
+  lastSubmittedCloudQuadCount_ = snapshot.submittedCloudQuads;
+  lastSubmittedFireQuadCount_ = snapshot.submittedFireQuads;
+  lastSubmittedDynamicEntityQuadCount_ = snapshot.submittedDynamicEntityQuads;
+  lastSubmittedDestroyOverlayCount_ = snapshot.submittedDestroyOverlays;
+  lastSubmittedParticleQuadCount_ = snapshot.submittedParticleQuads;
+  lastSubmittedTorchLightCount_ = snapshot.submittedTorchLights;
+  ++presentedFrames_;
+
+  const auto frameEnd = std::chrono::steady_clock::now();
+  perfWindow_.frames += 1;
+  perfWindow_.presentLockWait.add(toNanoseconds(lockAcquiredAt - lockRequestedAt));
+  lockHoldNanoseconds += toNanoseconds(frameEnd - secondLockAcquiredAt);
+  perfWindow_.presentLockHold.add(lockHoldNanoseconds);
+  perfWindow_.outputWindowWork.add(toNanoseconds(outputWindowEnd - outputWindowStart));
+  perfWindow_.cameraSubmit.add(toNanoseconds(cameraSubmitEnd - cameraSubmitStart));
+  perfWindow_.geometrySubmit.add(toNanoseconds(geometrySubmitEnd - geometrySubmitStart));
+  perfWindow_.remixPresent.add(toNanoseconds(remixPresentEnd - remixPresentStart));
+  perfWindow_.uiStateSync.add(toNanoseconds(frameEnd - uiSyncStart));
+  perfWindow_.frameCaptureBlockCalls.add(perfCaptureBlockCallsThisFrame_);
+  perfWindow_.frameCachedChunkMeshes.add(perfCachedChunkMeshesThisFrame_);
+  perfWindow_.frameChunkBuilds.add(perfChunkBuildsThisFrame_);
+  perfWindow_.frameChunkMeshRebuilds.add(perfChunkMeshRebuildsThisFrame_);
+  perfWindow_.frameSubmittedChunkMeshes.add(perfSubmittedChunkMeshesThisFrame_);
+  perfWindow_.frameSubmittedChunkBlocks.add(perfSubmittedChunkBlocksThisFrame_);
+  perfWindow_.frameChunkBuildWork.add(perfChunkBuildWorkNanosThisFrame_);
+  perfWindow_.frameChunkMeshRebuildWork.add(perfChunkMeshRebuildNanosThisFrame_);
+  perfWindow_.frameNeighborRefreshWork.add(perfNeighborRefreshNanosThisFrame_);
+
+  NativePerfWindow summaryWindow {};
+  const bool shouldLogSummary = perfWindow_.frames >= kPerfLogIntervalFrames;
+  if (shouldLogSummary) {
+    summaryWindow = perfWindow_;
+    perfWindow_.reset();
+  }
+
+  resetPerFramePerfCounters();
+
+  if (shouldLogSummary) {
+    std::ostringstream stream;
+    stream << "perf native frames=" << summaryWindow.frames;
+    appendDurationSummary(stream, "lockWait", summaryWindow.presentLockWait, summaryWindow.frames);
+    appendDurationSummary(stream, "lockHold", summaryWindow.presentLockHold, summaryWindow.frames);
+    appendDurationSummary(stream, "window", summaryWindow.outputWindowWork, summaryWindow.frames);
+    appendDurationSummary(stream, "camera", summaryWindow.cameraSubmit, summaryWindow.frames);
+    appendDurationSummary(stream, "draw", summaryWindow.geometrySubmit, summaryWindow.frames);
+    appendDurationSummary(stream, "present", summaryWindow.remixPresent, summaryWindow.frames);
+    appendDurationSummary(stream, "uiSync", summaryWindow.uiStateSync, summaryWindow.frames);
+    appendDurationSummary(stream, "chunkBuild", summaryWindow.frameChunkBuildWork, summaryWindow.frames);
+    appendDurationSummary(stream, "chunkRebuild", summaryWindow.frameChunkMeshRebuildWork, summaryWindow.frames);
+    appendDurationSummary(stream, "neighborRefresh", summaryWindow.frameNeighborRefreshWork, summaryWindow.frames);
+    appendCountSummary(stream, "captureBlocks", summaryWindow.frameCaptureBlockCalls, summaryWindow.frames);
+    appendCountSummary(stream, "cachedChunks", summaryWindow.frameCachedChunkMeshes, summaryWindow.frames);
+    appendCountSummary(stream, "chunkBuilds", summaryWindow.frameChunkBuilds, summaryWindow.frames);
+    appendCountSummary(stream, "chunkRebuilds", summaryWindow.frameChunkMeshRebuilds, summaryWindow.frames);
+    appendCountSummary(stream, "submittedChunks", summaryWindow.frameSubmittedChunkMeshes, summaryWindow.frames);
+    appendCountSummary(stream, "submittedBlocks", summaryWindow.frameSubmittedChunkBlocks, summaryWindow.frames);
+    perfSummary = stream.str();
   }
 
   return true;
@@ -387,43 +946,9 @@ bool RemixRenderer::startup(HWND hwnd) {
   return true;
 }
 
-bool RemixRenderer::drawCapturedGeometry() {
-  if (!rebuildFireMesh()) {
-    return false;
-  }
-
-  if (!rebuildDestroyOverlayMesh()) {
-    return false;
-  }
-
-  if (!rebuildParticleMesh()) {
-    return false;
-  }
-
-  if (chunkMeshes_.empty()
-      && cloudMeshHandle_ == nullptr
-      && fireMeshHandle_ == nullptr
-      && dynamicEntityFrameInstances_.empty()
-      && destroyOverlayMeshHandle_ == nullptr
-      && particleMeshHandle_ == nullptr
-      && torchLights_.empty()) {
-    if (presentedFrames_ < 4) {
-      log("No captured scene meshes available yet");
-    }
-    ++presentedFrames_;
-    return true;
-  }
-
-  std::size_t submittedChunks = 0;
-  std::size_t submittedBlocks = 0;
-  std::size_t submittedCloudQuads = 0;
-  std::size_t submittedFireQuads = 0;
-  std::size_t submittedDynamicEntityQuads = 0;
-  std::size_t submittedDestroyOverlays = 0;
-  std::size_t submittedParticleQuads = 0;
-  std::size_t submittedTorchLights = 0;
-  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
-    if (meshData.meshHandle == nullptr) {
+bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
+  for (const ChunkRenderInstance& chunkInstance : snapshot.chunkMeshes) {
+    if (chunkInstance.meshHandle == nullptr) {
       continue;
     }
 
@@ -436,7 +961,7 @@ bool RemixRenderer::drawCapturedGeometry() {
     blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
     blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
     blendInfo.isVertexColorBakedLighting = FALSE;
-    if (chunkKey.renderPass == 1) {
+    if (chunkInstance.chunkKey.renderPass == 1) {
       blendInfo.alphaBlendEnabled = TRUE;
       blendInfo.srcColorBlendFactor = 6;
       blendInfo.dstColorBlendFactor = 7;
@@ -450,27 +975,21 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &blendInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = meshData.meshHandle;
+    instanceInfo.mesh = chunkInstance.meshHandle;
     instanceInfo.transform = makeTranslationTransform(
-        static_cast<float>(chunkKey.originX),
-        static_cast<float>(chunkKey.originY),
-        static_cast<float>(chunkKey.originZ));
-    instanceInfo.doubleSided = chunkKey.renderPass == 1 ? TRUE : FALSE;
+        static_cast<float>(chunkInstance.chunkKey.originX),
+        static_cast<float>(chunkInstance.chunkKey.originY),
+        static_cast<float>(chunkInstance.chunkKey.originZ));
+    instanceInfo.doubleSided = chunkInstance.chunkKey.renderPass == 1 ? TRUE : FALSE;
 
     const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    ++submittedChunks;
-    submittedBlocks += meshData.blockCount;
   }
 
-  for (const DynamicEntityFrameInstance& frameInstance : dynamicEntityFrameInstances_) {
-    if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
-      continue;
-    }
+  for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
 
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
@@ -505,11 +1024,9 @@ bool RemixRenderer::drawCapturedGeometry() {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    submittedDynamicEntityQuads += frameInstance.quadCount;
   }
 
-  if (cloudMeshHandle_ != nullptr) {
+  if (snapshot.cloudMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -536,8 +1053,11 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &objectPickingInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = cloudMeshHandle_;
-    instanceInfo.transform = makeTranslationTransform(cloudTransformX_, cloudTransformY_, cloudTransformZ_);
+    instanceInfo.mesh = snapshot.cloudMeshHandle;
+    instanceInfo.transform = makeTranslationTransform(
+        snapshot.cloudTransformX,
+        snapshot.cloudTransformY,
+        snapshot.cloudTransformZ);
     instanceInfo.doubleSided = TRUE;
 
     const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
@@ -545,11 +1065,9 @@ bool RemixRenderer::drawCapturedGeometry() {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    submittedCloudQuads = cloudQuadCount_;
   }
 
-  if (fireMeshHandle_ != nullptr) {
+  if (snapshot.fireMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -571,7 +1089,7 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &blendInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = fireMeshHandle_;
+    instanceInfo.mesh = snapshot.fireMeshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
@@ -580,11 +1098,9 @@ bool RemixRenderer::drawCapturedGeometry() {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    submittedFireQuads = fireQuadCount_;
   }
 
-  if (destroyOverlayMeshHandle_ != nullptr) {
+  if (snapshot.destroyOverlayMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -599,7 +1115,7 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &blendInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = destroyOverlayMeshHandle_;
+    instanceInfo.mesh = snapshot.destroyOverlayMeshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
@@ -608,11 +1124,9 @@ bool RemixRenderer::drawCapturedGeometry() {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    submittedDestroyOverlays = destroyOverlayCount_;
   }
 
-  if (particleMeshHandle_ != nullptr) {
+  if (snapshot.particleMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -634,7 +1148,7 @@ bool RemixRenderer::drawCapturedGeometry() {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &blendInfo;
     instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = particleMeshHandle_;
+    instanceInfo.mesh = snapshot.particleMeshHandle;
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
@@ -643,11 +1157,9 @@ bool RemixRenderer::drawCapturedGeometry() {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
     }
-
-    submittedParticleQuads = particleQuadCount_;
   }
 
-  if (!torchLights_.empty()) {
+  if (!snapshot.torchLights.empty()) {
     if (!loggedLightSubmissionPath_) {
       loggedLightSubmissionPath_ = true;
       std::ostringstream pathStream;
@@ -661,7 +1173,7 @@ bool RemixRenderer::drawCapturedGeometry() {
       }
       pathStream << "; CreateLightBatched="
                  << (remix_.CreateLightBatched != nullptr ? "yes" : "no")
-                 << "; torch lights registered=" << torchLights_.size();
+                 << "; torch lights registered=" << snapshot.submittedTorchLights;
       log(pathStream.str());
     }
     if (remix_.AutoInstancePersistentLights != nullptr) {
@@ -670,10 +1182,8 @@ bool RemixRenderer::drawCapturedGeometry() {
         setError("AutoInstancePersistentLights failed: " + errorCodeToString(result));
         return false;
       }
-      submittedTorchLights = torchLights_.size();
     } else if (remix_.DrawLightInstance != nullptr) {
-      for (const auto& [position, lightHandle] : torchLights_) {
-        (void)position;
+      for (remixapi_LightHandle lightHandle : snapshot.torchLights) {
         if (lightHandle == nullptr) {
           continue;
         }
@@ -683,66 +1193,26 @@ bool RemixRenderer::drawCapturedGeometry() {
           setError("DrawLightInstance failed: " + errorCodeToString(result));
           return false;
         }
-
-        ++submittedTorchLights;
       }
     }
   }
-
-  if (presentedFrames_ < 8
-      || submittedChunks != lastSubmittedChunkCount_
-      || submittedBlocks != lastSubmittedBlockCount_
-      || submittedCloudQuads != lastSubmittedCloudQuadCount_
-      || submittedFireQuads != lastSubmittedFireQuadCount_
-      || submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
-      || submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
-      || submittedParticleQuads != lastSubmittedParticleQuadCount_
-      || submittedTorchLights != lastSubmittedTorchLightCount_) {
-    // Per-frame submission counts are too noisy for the standard log; only
-    // emit them during the first few frames so we can confirm the scene is
-    // flowing. After that, deltas get swallowed to keep the log readable.
-    if (presentedFrames_ < 8) {
-      std::ostringstream stream;
-      stream << "Submitted " << submittedChunks
-             << " chunk meshes covering " << submittedBlocks
-             << " blocks and " << submittedCloudQuads
-            << " cloud quads and " << submittedFireQuads
-            << " fire quads and " << submittedDynamicEntityQuads
-             << " dynamic entity quads and " << submittedDestroyOverlays
-             << " destroy overlays and "
-             << submittedParticleQuads << " particle quads and "
-             << submittedTorchLights
-             << " torch lights";
-      log(stream.str());
-    }
-  }
-
-  lastSubmittedChunkCount_ = submittedChunks;
-  lastSubmittedBlockCount_ = submittedBlocks;
-  lastSubmittedCloudQuadCount_ = submittedCloudQuads;
-  lastSubmittedFireQuadCount_ = submittedFireQuads;
-  lastSubmittedDynamicEntityQuadCount_ = submittedDynamicEntityQuads;
-  lastSubmittedDestroyOverlayCount_ = submittedDestroyOverlays;
-  lastSubmittedParticleQuadCount_ = submittedParticleQuads;
-  lastSubmittedTorchLightCount_ = submittedTorchLights;
-  ++presentedFrames_;
   return true;
 }
 
-bool RemixRenderer::submitCamera() {
-  const float nearPlane = camera_.nearPlane > 0.001f ? camera_.nearPlane : 0.05f;
-  const float farPlane = camera_.farPlane > nearPlane ? camera_.farPlane : (nearPlane + 1024.0f);
-  const float aspect = camera_.aspect > 0.001f ? camera_.aspect : 1.0f;
+bool RemixRenderer::submitCamera(const CameraState& camera) {
+  const float nearPlane = camera.nearPlane > 0.001f ? camera.nearPlane : 0.05f;
+  const float farPlane = camera.farPlane > nearPlane ? camera.farPlane : (nearPlane + 1024.0f);
+  const float aspect = camera.aspect > 0.001f ? camera.aspect : 1.0f;
   const float viewModelNearPlane = std::min(nearPlane, 0.001f);
   const float viewModelFarPlane = farPlane > viewModelNearPlane ? farPlane : (viewModelNearPlane + 1024.0f);
 
   remixapi_CameraInfoParameterizedEXT params {};
   params.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
-  params.position = {camera_.position[0], camera_.position[1], camera_.position[2]};
-  params.forward = {camera_.forward[0], camera_.forward[1], camera_.forward[2]};
-  params.up = {camera_.up[0], camera_.up[1], camera_.up[2]};
-  params.right = {camera_.right[0], camera_.right[1], camera_.right[2]};
-  params.fovYInDegrees = camera_.fovYDegrees;
+  params.position = {camera.position[0], camera.position[1], camera.position[2]};
+  params.forward = {camera.forward[0], camera.forward[1], camera.forward[2]};
+  params.up = {camera.up[0], camera.up[1], camera.up[2]};
+  params.right = {camera.right[0], camera.right[1], camera.right[2]};
+  params.fovYInDegrees = camera.fovYDegrees;
   params.aspect = aspect;
   params.nearPlane = nearPlane;
   params.farPlane = farPlane;

@@ -89,7 +89,8 @@ bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar) {
     const std::string_view mode(configuredWindowMode);
     if (equalsIgnoreCase(mode, "dual")
         || equalsIgnoreCase(mode, "detached")
-        || equalsIgnoreCase(mode, "separate")) {
+        || equalsIgnoreCase(mode, "separate")
+        || equalsIgnoreCase(mode, "standalone")) {
       return false;
     }
 
@@ -109,6 +110,11 @@ bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar) {
   }
 
   return true;
+}
+
+bool shouldUseStandaloneOutputWindow() {
+  const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
+  return !configuredWindowMode.empty() && equalsIgnoreCase(configuredWindowMode, "standalone");
 }
 
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {

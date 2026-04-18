@@ -201,6 +201,7 @@ HMODULE getCurrentModuleHandle();
 bool isTruthyEnvValue(const char* envValue);
 std::string readEnvironmentVariable(const char* name);
 bool equalsIgnoreCase(std::string_view left, std::string_view right);
+bool shouldUseStandaloneOutputWindow();
 bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar = nullptr);
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect);
 LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);

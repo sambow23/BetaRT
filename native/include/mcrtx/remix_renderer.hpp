@@ -1,11 +1,14 @@
 #pragma once
 
 #include <array>
+#include <chrono>
+#include <condition_variable>
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
 #include <mutex>
 #include <string>
+#include <thread>
 #include <unordered_map>
 #include <vector>
 
@@ -32,6 +35,86 @@ struct ChunkBuildState {
   int renderPass {0};
   std::uint64_t blockCount {0};
   std::array<std::uint32_t, 256> blockIdCounts {};
+};
+
+struct DurationPerfCounter {
+  std::uint64_t sampleCount {0};
+  std::uint64_t totalNanoseconds {0};
+  std::uint64_t maxNanoseconds {0};
+
+  void add(std::uint64_t nanoseconds) noexcept {
+    ++sampleCount;
+    totalNanoseconds += nanoseconds;
+    if (nanoseconds > maxNanoseconds) {
+      maxNanoseconds = nanoseconds;
+    }
+  }
+
+  void reset() noexcept {
+    sampleCount = 0;
+    totalNanoseconds = 0;
+    maxNanoseconds = 0;
+  }
+};
+
+struct CountPerfCounter {
+  std::uint64_t sampleCount {0};
+  std::uint64_t totalCount {0};
+  std::uint64_t maxCount {0};
+
+  void add(std::uint64_t count) noexcept {
+    ++sampleCount;
+    totalCount += count;
+    if (count > maxCount) {
+      maxCount = count;
+    }
+  }
+
+  void reset() noexcept {
+    sampleCount = 0;
+    totalCount = 0;
+    maxCount = 0;
+  }
+};
+
+struct NativePerfWindow {
+  std::uint64_t frames {0};
+  DurationPerfCounter presentLockWait {};
+  DurationPerfCounter presentLockHold {};
+  DurationPerfCounter outputWindowWork {};
+  DurationPerfCounter cameraSubmit {};
+  DurationPerfCounter geometrySubmit {};
+  DurationPerfCounter remixPresent {};
+  DurationPerfCounter uiStateSync {};
+  DurationPerfCounter frameChunkBuildWork {};
+  DurationPerfCounter frameChunkMeshRebuildWork {};
+  DurationPerfCounter frameNeighborRefreshWork {};
+  CountPerfCounter frameCaptureBlockCalls {};
+  CountPerfCounter frameCachedChunkMeshes {};
+  CountPerfCounter frameChunkBuilds {};
+  CountPerfCounter frameChunkMeshRebuilds {};
+  CountPerfCounter frameSubmittedChunkMeshes {};
+  CountPerfCounter frameSubmittedChunkBlocks {};
+
+  void reset() noexcept {
+    frames = 0;
+    presentLockWait.reset();
+    presentLockHold.reset();
+    outputWindowWork.reset();
+    cameraSubmit.reset();
+    geometrySubmit.reset();
+    remixPresent.reset();
+    uiStateSync.reset();
+    frameChunkBuildWork.reset();
+    frameChunkMeshRebuildWork.reset();
+    frameNeighborRefreshWork.reset();
+    frameCaptureBlockCalls.reset();
+    frameCachedChunkMeshes.reset();
+    frameChunkBuilds.reset();
+    frameChunkMeshRebuilds.reset();
+    frameSubmittedChunkMeshes.reset();
+    frameSubmittedChunkBlocks.reset();
+  }
 };
 
 struct ChunkBlockCell {
@@ -109,6 +192,7 @@ struct ChunkMeshData {
   std::size_t blockCount {0};
   std::array<std::uint8_t, 4096> occupancy {};
   std::array<ChunkBlockCell, 4096> cells {};
+  std::vector<std::uint16_t> fireCellIndices {};
   std::vector<TorchLightPlacement> torchLights {};
   bool hasOccupancy {false};
 };
@@ -159,6 +243,44 @@ struct ParticleQuad {
   std::array<float, 8> texcoords {};
   std::uint32_t color {0xFFFFFFFFu};
   std::uint32_t textureKind {0};
+};
+
+struct ChunkRenderInstance {
+  ChunkKey chunkKey {};
+  remixapi_MeshHandle meshHandle {nullptr};
+  std::size_t blockCount {0};
+};
+
+struct FrameRenderSnapshot {
+  CameraState camera {};
+  std::vector<ChunkRenderInstance> chunkMeshes {};
+  std::vector<DynamicEntityFrameInstance> dynamicEntities {};
+  std::vector<remixapi_LightHandle> torchLights {};
+  remixapi_MeshHandle cloudMeshHandle {nullptr};
+  remixapi_MeshHandle fireMeshHandle {nullptr};
+  remixapi_MeshHandle destroyOverlayMeshHandle {nullptr};
+  remixapi_MeshHandle particleMeshHandle {nullptr};
+  float cloudTransformX {0.0f};
+  float cloudTransformY {0.0f};
+  float cloudTransformZ {0.0f};
+  std::size_t cachedChunkMeshes {0};
+  std::size_t submittedChunkBlocks {0};
+  std::size_t submittedCloudQuads {0};
+  std::size_t submittedFireQuads {0};
+  std::size_t submittedDynamicEntityQuads {0};
+  std::size_t submittedDestroyOverlays {0};
+  std::size_t submittedParticleQuads {0};
+  std::size_t submittedTorchLights {0};
+
+  bool hasScene() const noexcept {
+    return !chunkMeshes.empty()
+        || !dynamicEntities.empty()
+        || cloudMeshHandle != nullptr
+        || fireMeshHandle != nullptr
+        || destroyOverlayMeshHandle != nullptr
+        || particleMeshHandle != nullptr
+        || !torchLights.empty();
+  }
 };
 
 class RemixRenderer {
@@ -336,6 +458,9 @@ private:
   void destroyFireMesh();
   void destroyDestroyOverlayMesh();
   void destroyParticleMesh();
+  void destroyMeshHandle(remixapi_MeshHandle& meshHandle);
+  void destroyLightHandle(remixapi_LightHandle lightHandle);
+  void flushDeferredDestroyQueuesLocked();
   void destroyChunkMeshHandle(ChunkMeshData& meshData);
   void destroyChunkTorchLights(ChunkMeshData& meshData);
   void destroyTorchLight(const WorldBlockPosition& position);
@@ -345,18 +470,34 @@ private:
   void destroyChunkMesh(ChunkMeshData& meshData);
   bool rebuildParticleMesh();
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
-  bool drawCapturedGeometry();
-  bool submitCamera();
+  bool prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene);
+  bool drawCapturedGeometry(const FrameRenderSnapshot& snapshot);
+  bool submitCamera(const CameraState& camera);
+  bool startStandaloneWorker(std::filesystem::path remixDllPath);
+  bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
+  void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
+  bool presentLocked(std::unique_lock<std::mutex>& lock, std::string& perfSummary);
+  void resetPerFramePerfCounters() noexcept;
+  void shutdownLocked();
   void setError(std::string message);
   static void log(const std::string& message);
 
   mutable std::mutex mutex_;
+  std::condition_variable standaloneWorkerEvent_ {};
+  std::thread standaloneWorker_ {};
   remixapi_Interface remix_ {};
   HMODULE remixDll_ {nullptr};
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool outputWindowInteractive_ {false};
   bool overlayOutputWindow_ {true};
+  bool standaloneOutputWindow_ {false};
+  bool standaloneWorkerActive_ {false};
+  bool standaloneWorkerInitReady_ {false};
+  bool standaloneWorkerStopRequested_ {false};
+  bool standaloneWorkerPresentRequested_ {false};
+  DWORD standaloneWorkerThreadId_ {0};
+  bool renderSubmissionInFlight_ {false};
   bool initialized_ {false};
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
@@ -368,6 +509,16 @@ private:
   std::uint64_t capturedBlocks_ {0};
   std::uint64_t nextChunkMeshHash_ {1};
   std::uint64_t presentedFrames_ {0};
+  NativePerfWindow perfWindow_ {};
+  std::uint64_t perfCaptureBlockCallsThisFrame_ {0};
+  std::uint64_t perfChunkBuildsThisFrame_ {0};
+  std::uint64_t perfChunkMeshRebuildsThisFrame_ {0};
+  std::uint64_t perfChunkBuildWorkNanosThisFrame_ {0};
+  std::uint64_t perfChunkMeshRebuildNanosThisFrame_ {0};
+  std::uint64_t perfNeighborRefreshNanosThisFrame_ {0};
+  std::uint64_t perfCachedChunkMeshesThisFrame_ {0};
+  std::uint64_t perfSubmittedChunkMeshesThisFrame_ {0};
+  std::uint64_t perfSubmittedChunkBlocksThisFrame_ {0};
   std::size_t lastSubmittedChunkCount_ {0};
   std::size_t lastSubmittedBlockCount_ {0};
   std::size_t lastSubmittedCloudQuadCount_ {0};
@@ -417,6 +568,8 @@ private:
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
+  std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
+  std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::string lastError_;
 };
 

@@ -4,6 +4,8 @@ param(
     [string]$MinecraftLibraryJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar",
     [string]$BundleRoot,
     [string]$Configuration = "Release",
+    [ValidateSet("single", "overlay", "dual", "detached", "separate", "standalone")]
+    [string]$WindowMode = "standalone",
     [switch]$Build,
     [switch]$Restore,
     [switch]$OverwriteAssets
@@ -54,7 +56,8 @@ function Set-InstanceConfigValue {
     param(
         [string]$Path,
         [string]$Key,
-        [string]$Value
+        [string]$Value,
+        [string]$Section = "General"
     )
 
     $replacement = "$Key=$Value"
@@ -62,23 +65,57 @@ function Set-InstanceConfigValue {
     foreach ($contentLine in Get-Content -Path $Path) {
         $contentLines.Add($contentLine)
     }
+
     $escapedKey = [regex]::Escape($Key)
     $pattern = "^$escapedKey=.*$"
+    $sectionHeader = "[$Section]"
+    $sectionStart = -1
+    for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -eq $sectionHeader) {
+            $sectionStart = $lineIndex
+            break
+        }
+    }
+
+    if ($sectionStart -lt 0) {
+        throw "Section [$Section] not found in $Path"
+    }
+
+    $sectionEnd = $contentLines.Count
+    for ($lineIndex = $sectionStart + 1; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -match '^\[.+\]$') {
+            $sectionEnd = $lineIndex
+            break
+        }
+    }
+
     $matchingIndices = @()
+    $duplicateIndices = @()
 
     for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
         if ($contentLines[$lineIndex] -match $pattern) {
-            $matchingIndices += $lineIndex
+            if ($lineIndex -gt $sectionStart -and $lineIndex -lt $sectionEnd) {
+                $matchingIndices += $lineIndex
+            } else {
+                $duplicateIndices += $lineIndex
+            }
         }
     }
 
     if ($matchingIndices.Count -gt 0) {
         $contentLines[$matchingIndices[0]] = $replacement
         for ($matchIndex = $matchingIndices.Count - 1; $matchIndex -gt 0; $matchIndex -= 1) {
-            $contentLines.RemoveAt($matchingIndices[$matchIndex])
+            $duplicateIndices += $matchingIndices[$matchIndex]
         }
     } else {
-        $contentLines.Add($replacement)
+        $contentLines.Insert($sectionEnd, $replacement)
+    }
+
+    if ($duplicateIndices.Count -gt 0) {
+        $duplicateIndices = @($duplicateIndices | Sort-Object -Descending -Unique)
+        foreach ($duplicateIndex in $duplicateIndices) {
+            $contentLines.RemoveAt($duplicateIndex)
+        }
     }
 
     Set-Content -Path $Path -Value $contentLines -Encoding ASCII
@@ -87,7 +124,7 @@ function Set-InstanceConfigValue {
 function Convert-ToPrismPath {
     param([string]$Path)
 
-    return $Path.Replace("\", "/")
+    return ($Path -replace '\\', '/')
 }
 
 function Ensure-PrismPreLaunchSync {
@@ -108,6 +145,17 @@ function Remove-PrismPreLaunchSync {
     param([string]$InstanceConfig)
 
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value ""
+}
+
+function Set-PrismWindowMode {
+    param(
+        [string]$InstanceConfig,
+        [string]$Mode
+    )
+
+    $envValue = '{\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\"}'
+    Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideEnv" -Value "true"
+    Set-InstanceConfigValue -Path $InstanceConfig -Key "Env" -Value $envValue
 }
 
 function Set-RemixConfigValue {
@@ -351,6 +399,10 @@ if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch syn
     $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration
 }
 
+if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism window mode environment")) {
+    Set-PrismWindowMode -InstanceConfig $instanceConfigPath -Mode $WindowMode
+}
+
 if ($PSCmdlet.ShouldProcess($instanceRemixConfigPath, "Configure Remix viewmodel runtime settings")) {
     Ensure-RemixViewModelConfig -ConfigPath $instanceRemixConfigPath
 }
@@ -385,6 +437,8 @@ if ($didWriteMarker) {
 if ($preLaunchCommand) {
     Write-Host "Configured Prism pre-launch sync command in $instanceConfigPath"
 }
+
+Write-Host "Configured Prism window mode '$WindowMode' in $instanceConfigPath"
 
 Write-Host "Configured Remix viewmodel settings in $instanceRemixConfigPath"
 

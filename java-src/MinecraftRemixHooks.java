@@ -1,6 +1,7 @@
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
+import java.util.Locale;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.opengl.Display;
 
@@ -12,6 +13,8 @@ import org.lwjgl.opengl.Display;
  */
 public final class MinecraftRemixHooks {
     private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
+    private static final int PERF_LOG_INTERVAL_FRAMES = 60;
+    private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
 
     private static boolean loggedDisplayCreate;
     private static boolean loggedDisplayReset;
@@ -19,6 +22,26 @@ public final class MinecraftRemixHooks {
     private static boolean remixUiOpen;
     private static boolean remixUiHotkeyHeld;
     private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
+    private static long perfFrameCount;
+    private static long perfTotalFrameNanos;
+    private static long perfMaxFrameNanos;
+    private static long perfTotalRenderMethodNanos;
+    private static long perfMaxRenderMethodNanos;
+    private static long perfTotalPrePresentNanos;
+    private static long perfMaxPrePresentNanos;
+    private static long perfTotalFlushNanos;
+    private static long perfMaxFlushNanos;
+    private static long perfTotalPresentNanos;
+    private static long perfMaxPresentNanos;
+    private static long perfTotalPostPresentNanos;
+    private static long perfMaxPostPresentNanos;
+    private static long perfTotalQueueDepthBeforeFlush;
+    private static int perfMaxQueueDepthBeforeFlush;
+    private static long perfTotalQueueDepthAfterFlush;
+    private static int perfMaxQueueDepthAfterFlush;
+    private static long perfTotalSectionsRecaptured;
+    private static int perfMaxSectionsRecaptured;
+    private static long activeRenderMethodStartNanos;
 
     static {
         System.out.println("[mcrtx] MinecraftRemixHooks loaded");
@@ -33,6 +56,7 @@ public final class MinecraftRemixHooks {
             System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
         }
         resetRemixUiTracking();
+        resetPerfTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
     }
@@ -40,6 +64,7 @@ public final class MinecraftRemixHooks {
     public static void onShutdown() {
         System.out.println("[mcrtx] onShutdown");
         resetRemixUiTracking();
+        resetPerfTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.shutdown();
     }
@@ -50,6 +75,7 @@ public final class MinecraftRemixHooks {
             System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
         }
         resetRemixUiTracking();
+        resetPerfTracking();
         UiOverlayCapture.reset();
         MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
     }
@@ -67,30 +93,58 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onPresent() {
+        long frameStartNanos = System.nanoTime();
+        long renderMethodStartNanos = activeRenderMethodStartNanos;
         RemixChunkCapture.flushPendingChunkRecaptures();
+        long flushEndNanos = System.nanoTime();
         if (!loggedPresent) {
             loggedPresent = true;
             System.out.println("[mcrtx] onPresent");
         }
         MinecraftRenderHooks.present();
+        long presentEndNanos = System.nanoTime();
         RemixDynamicEntityCapture.onFramePresented();
         RemixCameraState.onFramePresented();
+        long frameEndNanos = System.nanoTime();
+        long prePresentNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameStartNanos - renderMethodStartNanos) : 0L;
+        long renderMethodNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameEndNanos - renderMethodStartNanos) : 0L;
+        activeRenderMethodStartNanos = 0L;
+        recordPresentPerf(
+                frameEndNanos - frameStartNanos,
+            renderMethodNanos,
+            prePresentNanos,
+                flushEndNanos - frameStartNanos,
+                presentEndNanos - flushEndNanos,
+                frameEndNanos - presentEndNanos,
+                RemixChunkCapture.lastFlushDurationNanos(),
+                RemixChunkCapture.lastPendingQueueDepthBeforeFlush(),
+                RemixChunkCapture.lastPendingQueueDepthAfterFlush(),
+                RemixChunkCapture.lastSectionsRecaptured());
     }
 
     public static void onUiRenderBegin(int width, int height) {
+        if (STANDALONE_WINDOW_MODE) {
+            return;
+        }
         UiOverlayCapture.begin(width, height);
     }
 
     public static void onUiRenderEnd() {
+        if (STANDALONE_WINDOW_MODE) {
+            return;
+        }
         UiOverlayCapture.end();
     }
 
     public static void onRemixUiTick(net.minecraft.client.Minecraft minecraft) {
+        if (STANDALONE_WINDOW_MODE) {
+            return;
+        }
         syncRemixUiInput(minecraft, true);
     }
 
     public static boolean isWindowInteractionActive() {
-        return Display.isActive() || remixUiOpen;
+        return Display.isActive() || (!STANDALONE_WINDOW_MODE && remixUiOpen);
     }
 
     public static void onWorldChanged(fd world) {
@@ -196,6 +250,137 @@ public final class MinecraftRemixHooks {
         remixUiOpen = false;
         remixUiHotkeyHeld = false;
         preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
+    }
+
+    private static void resetPerfTracking() {
+        perfFrameCount = 0L;
+        perfTotalFrameNanos = 0L;
+        perfMaxFrameNanos = 0L;
+        perfTotalRenderMethodNanos = 0L;
+        perfMaxRenderMethodNanos = 0L;
+        perfTotalPrePresentNanos = 0L;
+        perfMaxPrePresentNanos = 0L;
+        perfTotalFlushNanos = 0L;
+        perfMaxFlushNanos = 0L;
+        perfTotalPresentNanos = 0L;
+        perfMaxPresentNanos = 0L;
+        perfTotalPostPresentNanos = 0L;
+        perfMaxPostPresentNanos = 0L;
+        perfTotalQueueDepthBeforeFlush = 0L;
+        perfMaxQueueDepthBeforeFlush = 0;
+        perfTotalQueueDepthAfterFlush = 0L;
+        perfMaxQueueDepthAfterFlush = 0;
+        perfTotalSectionsRecaptured = 0L;
+        perfMaxSectionsRecaptured = 0;
+        activeRenderMethodStartNanos = 0L;
+    }
+
+    public static void onFrameRenderStart() {
+        activeRenderMethodStartNanos = System.nanoTime();
+    }
+
+    private static void recordPresentPerf(
+            long frameNanos,
+            long renderMethodNanos,
+            long prePresentNanos,
+            long hookFlushNanos,
+            long presentNanos,
+            long postPresentNanos,
+            long chunkFlushNanos,
+            int queueDepthBeforeFlush,
+            int queueDepthAfterFlush,
+            int sectionsRecaptured) {
+        long flushNanos = chunkFlushNanos > 0L ? chunkFlushNanos : hookFlushNanos;
+        ++perfFrameCount;
+        perfTotalFrameNanos += frameNanos;
+        perfMaxFrameNanos = Math.max(perfMaxFrameNanos, frameNanos);
+        perfTotalRenderMethodNanos += renderMethodNanos;
+        perfMaxRenderMethodNanos = Math.max(perfMaxRenderMethodNanos, renderMethodNanos);
+        perfTotalPrePresentNanos += prePresentNanos;
+        perfMaxPrePresentNanos = Math.max(perfMaxPrePresentNanos, prePresentNanos);
+        perfTotalFlushNanos += flushNanos;
+        perfMaxFlushNanos = Math.max(perfMaxFlushNanos, flushNanos);
+        perfTotalPresentNanos += presentNanos;
+        perfMaxPresentNanos = Math.max(perfMaxPresentNanos, presentNanos);
+        perfTotalPostPresentNanos += postPresentNanos;
+        perfMaxPostPresentNanos = Math.max(perfMaxPostPresentNanos, postPresentNanos);
+        perfTotalQueueDepthBeforeFlush += queueDepthBeforeFlush;
+        perfMaxQueueDepthBeforeFlush = Math.max(perfMaxQueueDepthBeforeFlush, queueDepthBeforeFlush);
+        perfTotalQueueDepthAfterFlush += queueDepthAfterFlush;
+        perfMaxQueueDepthAfterFlush = Math.max(perfMaxQueueDepthAfterFlush, queueDepthAfterFlush);
+        perfTotalSectionsRecaptured += sectionsRecaptured;
+        perfMaxSectionsRecaptured = Math.max(perfMaxSectionsRecaptured, sectionsRecaptured);
+
+        if (perfFrameCount < PERF_LOG_INTERVAL_FRAMES) {
+            return;
+        }
+
+        StringBuilder summary = new StringBuilder(256);
+        summary.append("[mcrtx] perf java frames=")
+                .append(perfFrameCount)
+                .append(" frameAvgMs=")
+                .append(formatAverageMillis(perfTotalFrameNanos, perfFrameCount))
+                .append(" frameMaxMs=")
+                .append(formatMillis(perfMaxFrameNanos))
+            .append(" renderMethodAvgMs=")
+            .append(formatAverageMillis(perfTotalRenderMethodNanos, perfFrameCount))
+            .append(" renderMethodMaxMs=")
+            .append(formatMillis(perfMaxRenderMethodNanos))
+            .append(" prePresentAvgMs=")
+            .append(formatAverageMillis(perfTotalPrePresentNanos, perfFrameCount))
+            .append(" prePresentMaxMs=")
+            .append(formatMillis(perfMaxPrePresentNanos))
+                .append(" flushAvgMs=")
+                .append(formatAverageMillis(perfTotalFlushNanos, perfFrameCount))
+                .append(" flushMaxMs=")
+                .append(formatMillis(perfMaxFlushNanos))
+                .append(" presentAvgMs=")
+                .append(formatAverageMillis(perfTotalPresentNanos, perfFrameCount))
+                .append(" presentMaxMs=")
+                .append(formatMillis(perfMaxPresentNanos))
+                .append(" postAvgMs=")
+                .append(formatAverageMillis(perfTotalPostPresentNanos, perfFrameCount))
+                .append(" queueBeforeAvg=")
+                .append(formatAverageCount(perfTotalQueueDepthBeforeFlush, perfFrameCount))
+                .append(" queueBeforeMax=")
+                .append(perfMaxQueueDepthBeforeFlush)
+                .append(" queueAfterAvg=")
+                .append(formatAverageCount(perfTotalQueueDepthAfterFlush, perfFrameCount))
+                .append(" queueAfterMax=")
+                .append(perfMaxQueueDepthAfterFlush)
+                .append(" sectionsAvg=")
+                .append(formatAverageCount(perfTotalSectionsRecaptured, perfFrameCount))
+                .append(" sectionsMax=")
+                .append(perfMaxSectionsRecaptured);
+        System.out.println(summary.toString());
+        resetPerfTracking();
+    }
+
+    private static String formatAverageMillis(long totalNanos, long sampleCount) {
+        if (sampleCount <= 0L) {
+            return "0.00";
+        }
+        return formatDouble((double) totalNanos / (double) sampleCount / 1000000.0);
+    }
+
+    private static String formatAverageCount(long totalCount, long sampleCount) {
+        if (sampleCount <= 0L) {
+            return "0.0";
+        }
+        return formatDouble((double) totalCount / (double) sampleCount);
+    }
+
+    private static String formatMillis(long nanos) {
+        return formatDouble((double) nanos / 1000000.0);
+    }
+
+    private static String formatDouble(double value) {
+        return String.format(Locale.ROOT, "%.2f", value);
+    }
+
+    private static boolean detectStandaloneWindowMode() {
+        String configuredMode = System.getenv("MCRTX_WINDOW_MODE");
+        return configuredMode != null && configuredMode.equalsIgnoreCase("standalone");
     }
 
     private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {

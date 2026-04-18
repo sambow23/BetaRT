@@ -608,43 +608,29 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   meshData.boneCount = boneCount;
   const auto [it, inserted] = dynamicEntityMeshes_.emplace(meshKey, std::move(meshData));
   if (!inserted) {
-    if (meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
-      remix_.DestroyMesh(meshHandle);
-    }
+    destroyMeshHandle(meshHandle);
   }
   return &it->second;
 }
 
 void RemixRenderer::destroyCloudMesh() {
-  if (cloudMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(cloudMeshHandle_);
-  }
-  cloudMeshHandle_ = nullptr;
+  destroyMeshHandle(cloudMeshHandle_);
   cloudMeshFancy_ = false;
   cloudQuadCount_ = 0;
 }
 
 void RemixRenderer::destroyFireMesh() {
-  if (fireMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(fireMeshHandle_);
-  }
-  fireMeshHandle_ = nullptr;
+  destroyMeshHandle(fireMeshHandle_);
   fireQuadCount_ = 0;
 }
 
 void RemixRenderer::destroyDestroyOverlayMesh() {
-  if (destroyOverlayMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(destroyOverlayMeshHandle_);
-  }
-  destroyOverlayMeshHandle_ = nullptr;
+  destroyMeshHandle(destroyOverlayMeshHandle_);
   destroyOverlayCount_ = 0;
 }
 
 void RemixRenderer::destroyParticleMesh() {
-  if (particleMeshHandle_ != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(particleMeshHandle_);
-  }
-  particleMeshHandle_ = nullptr;
+  destroyMeshHandle(particleMeshHandle_);
   particleQuadCount_ = 0;
 }
 
@@ -654,9 +640,7 @@ void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
     return;
   }
 
-  if (lightIt->second != nullptr && remix_.DestroyLight != nullptr) {
-    remix_.DestroyLight(lightIt->second);
-  }
+  destroyLightHandle(lightIt->second);
   torchLights_.erase(lightIt);
 }
 
@@ -681,10 +665,7 @@ void RemixRenderer::destroyDynamicEntityMeshes() {
 }
 
 void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
-  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(meshData.meshHandle);
-  }
-  meshData.meshHandle = nullptr;
+  destroyMeshHandle(meshData.meshHandle);
   meshData.meshHash = 0;
   meshData.geometryFingerprint = 0;
   meshData.quadCount = 0;
@@ -1116,45 +1097,40 @@ bool RemixRenderer::rebuildFireMesh() {
 
   std::size_t fireCount = 0;
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
-    if (chunkKey.renderPass != 0 || !meshData.hasOccupancy) {
+    if (chunkKey.renderPass != 0 || !meshData.hasOccupancy || meshData.fireCellIndices.empty()) {
       continue;
     }
 
-    for (int localY = 0; localY < kChunkDimension; ++localY) {
-      for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
-        for (int localX = 0; localX < kChunkDimension; ++localX) {
-          const int cellIndex = blockIndex(localX, localY, localZ);
-          if (meshData.occupancy[cellIndex] == 0) {
-            continue;
-          }
-
-          const ChunkBlockCell& cell = meshData.cells[cellIndex];
-          if (!isFireRenderType(cell.renderType)) {
-            continue;
-          }
-
-          const int worldX = chunkKey.originX + localX;
-          const int worldY = chunkKey.originY + localY;
-          const int worldZ = chunkKey.originZ + localZ;
-          appendFireGeometry(
-              worldX,
-              worldY,
-              worldZ,
-              findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
-              findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
-              findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
-              findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
-              findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
-              findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
-              static_cast<float>(worldX),
-              static_cast<float>(worldY),
-              static_cast<float>(worldZ),
-              frameIndex,
-              vertices,
-              indices);
-          ++fireCount;
-        }
+    for (std::uint16_t fireCellIndex : meshData.fireCellIndices) {
+      const ChunkBlockCell& cell = meshData.cells[fireCellIndex];
+      if (!isFireRenderType(cell.renderType)) {
+        continue;
       }
+
+      const int localY = fireCellIndex / (kChunkDimension * kChunkDimension);
+      const int localPlaneIndex = fireCellIndex % (kChunkDimension * kChunkDimension);
+      const int localZ = localPlaneIndex / kChunkDimension;
+      const int localX = localPlaneIndex % kChunkDimension;
+      const int worldX = chunkKey.originX + localX;
+      const int worldY = chunkKey.originY + localY;
+      const int worldZ = chunkKey.originZ + localZ;
+      appendFireGeometry(
+          worldX,
+          worldY,
+          worldZ,
+          findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
+          findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
+          findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
+          findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
+          findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
+          findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
+          static_cast<float>(worldX),
+          static_cast<float>(worldY),
+          static_cast<float>(worldZ),
+          frameIndex,
+          vertices,
+          indices);
+      ++fireCount;
     }
   }
 

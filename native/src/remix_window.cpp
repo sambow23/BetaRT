@@ -22,7 +22,7 @@ using namespace mcrtx::detail;
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   if (outputHwnd_ != nullptr) {
     updateOutputWindowSize();
-    ShowWindow(outputHwnd_, outputWindowInteractive_ ? SW_SHOW : SW_SHOWNOACTIVATE);
+    ShowWindow(outputHwnd_, (standaloneOutputWindow_ || outputWindowInteractive_) ? SW_SHOW : SW_SHOWNOACTIVATE);
     return true;
   }
 
@@ -33,7 +33,7 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
 
   RECT sourceClientRect {};
   const bool hasSourceClientRect = getSourceClientRectInScreenSpace(sourceHwnd, sourceClientRect);
-  DWORD exStyle = WS_EX_NOACTIVATE;
+  DWORD exStyle = standaloneOutputWindow_ ? 0 : WS_EX_NOACTIVATE;
   DWORD style = WS_POPUP;
   HWND parentHwnd = sourceHwnd;
   int windowX = hasSourceClientRect ? sourceClientRect.left : CW_USEDEFAULT;
@@ -98,11 +98,13 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
         outerHeight,
         SWP_NOACTIVATE | SWP_SHOWWINDOW);
   }
-  ShowWindow(outputHwnd_, SW_SHOWNOACTIVATE);
+  ShowWindow(outputHwnd_, standaloneOutputWindow_ ? SW_SHOW : SW_SHOWNOACTIVATE);
   UpdateWindow(outputHwnd_);
   log(overlayOutputWindow_
       ? "Created Remix client-area overlay window"
-      : "Created Remix detached development window");
+      : (standaloneOutputWindow_
+          ? "Created Remix standalone window"
+          : "Created Remix detached development window"));
   return true;
 }
 
@@ -131,6 +133,10 @@ void RemixRenderer::pumpOutputWindowMessages() {
 
 void RemixRenderer::updateOutputWindowSize() {
   if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
+    return;
+  }
+
+  if (standaloneOutputWindow_) {
     return;
   }
 
@@ -175,6 +181,10 @@ void RemixRenderer::updateOutputWindowSize() {
 }
 
 void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
+  if (standaloneOutputWindow_) {
+    return;
+  }
+
   if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
     return;
   }

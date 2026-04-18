@@ -16,8 +16,18 @@ public final class RemixChunkCapture {
     private static boolean loggedChunkBuild;
     private static boolean loggedWorldListenerAttach;
     private static fd attachedWorld;
+    private static int lastPendingQueueDepthBeforeFlush;
+    private static int lastPendingQueueDepthAfterFlush;
+    private static int lastSectionsRecaptured;
+    private static long lastFlushDurationNanos;
 
     private RemixChunkCapture() {
+    }
+
+    private static void clearPendingRecaptureForSection(int originX, int originY, int originZ) {
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            PENDING_RECAPTURE_SECTIONS.remove(new DirtyChunkSection(originX, originY, originZ));
+        }
     }
 
     public static fd attachedWorld() {
@@ -60,6 +70,9 @@ public final class RemixChunkCapture {
             loggedChunkBuild = true;
             System.out.println("[mcrtx] chunk build hook active");
         }
+
+        // A live vanilla rebuild for this section makes any queued recapture redundant.
+        clearPendingRecaptureForSection(originX, originY, originZ);
         return MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
     }
 
@@ -317,13 +330,6 @@ public final class RemixChunkCapture {
             return;
         }
 
-        minX -= 1;
-        minY -= 1;
-        minZ -= 1;
-        maxX += 1;
-        maxY += 1;
-        maxZ += 1;
-
         if (maxY < 0 || minY >= 128) {
             return;
         }
@@ -350,13 +356,27 @@ public final class RemixChunkCapture {
     }
 
     public static void flushPendingChunkRecaptures() {
+        long flushStartNanos = System.nanoTime();
+        int queueDepthBefore = 0;
+        int sectionsRecaptured = 0;
         if (attachedWorld == null || !MinecraftRenderHooks.isInitialized()) {
+            synchronized (PENDING_RECAPTURE_SECTIONS) {
+                lastPendingQueueDepthBeforeFlush = 0;
+                lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
+            }
+            lastSectionsRecaptured = 0;
+            lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
             return;
         }
 
         List<DirtyChunkSection> sectionsToRecapture = new ArrayList<DirtyChunkSection>(MAX_RECAPTURE_SECTIONS_PER_PRESENT);
         synchronized (PENDING_RECAPTURE_SECTIONS) {
-            if (PENDING_RECAPTURE_SECTIONS.isEmpty()) {
+            queueDepthBefore = PENDING_RECAPTURE_SECTIONS.size();
+            if (queueDepthBefore == 0) {
+                lastPendingQueueDepthBeforeFlush = 0;
+                lastPendingQueueDepthAfterFlush = 0;
+                lastSectionsRecaptured = 0;
+                lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
                 return;
             }
 
@@ -372,18 +392,53 @@ public final class RemixChunkCapture {
             }
 
             if (!recaptureChunkSection(attachedWorld, section.originX, section.originY, section.originZ)) {
+                synchronized (PENDING_RECAPTURE_SECTIONS) {
+                    lastPendingQueueDepthBeforeFlush = queueDepthBefore;
+                    lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
+                }
+                lastSectionsRecaptured = sectionsRecaptured;
+                lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
                 return;
             }
 
             synchronized (PENDING_RECAPTURE_SECTIONS) {
                 PENDING_RECAPTURE_SECTIONS.remove(section);
             }
+            ++sectionsRecaptured;
         }
+
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            lastPendingQueueDepthBeforeFlush = queueDepthBefore;
+            lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
+        }
+
+        lastSectionsRecaptured = sectionsRecaptured;
+        lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
     }
 
     static void clearPendingRecaptures() {
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             PENDING_RECAPTURE_SECTIONS.clear();
         }
+        lastPendingQueueDepthBeforeFlush = 0;
+        lastPendingQueueDepthAfterFlush = 0;
+        lastSectionsRecaptured = 0;
+        lastFlushDurationNanos = 0L;
+    }
+
+    static int lastPendingQueueDepthBeforeFlush() {
+        return lastPendingQueueDepthBeforeFlush;
+    }
+
+    static int lastPendingQueueDepthAfterFlush() {
+        return lastPendingQueueDepthAfterFlush;
+    }
+
+    static int lastSectionsRecaptured() {
+        return lastSectionsRecaptured;
+    }
+
+    static long lastFlushDurationNanos() {
+        return lastFlushDurationNanos;
     }
 }

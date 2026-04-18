@@ -351,6 +351,7 @@ public final class ClientPatchTool {
     }
 
     private static void patchPxFrame(MethodNode method) {
+        method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onFrameRenderStart", "()V"));
         method.instructions.insert(cameraUpdateCall());
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {

@@ -19,6 +19,15 @@
 namespace mcrtx {
 
 using namespace mcrtx::detail;
+
+namespace {
+
+std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
+  return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count());
+}
+
+}  // namespace
+
 bool RemixRenderer::beginChunkBuild(
     int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass) {
   std::scoped_lock lock(mutex_);
@@ -76,6 +85,7 @@ void RemixRenderer::captureBlock(
     return;
   }
 
+  ++perfCaptureBlockCallsThisFrame_;
   ++activeChunkBuild_.blockCount;
   ++capturedBlocks_;
   if (blockId >= 0 && blockId < static_cast<int>(activeChunkBuild_.blockIdCounts.size())) {
@@ -112,28 +122,47 @@ void RemixRenderer::captureBlock(
 
 void RemixRenderer::endChunkBuild(bool emittedGeometry) {
   std::scoped_lock lock(mutex_);
+  const auto buildStart = std::chrono::steady_clock::now();
 
   if (!chunkBuildActive_) {
     return;
   }
 
   const ChunkKey chunkKey = makeChunkKey(activeChunkBuild_);
+  std::uint64_t rebuildNanos = 0;
+  std::uint64_t neighborRefreshNanos = 0;
+  bool rebuiltChunkMesh = false;
   if (emittedGeometry && !activeChunkBlocks_.empty()) {
     ChunkMeshData& meshData = chunkMeshes_[chunkKey];
+    const auto rebuildStart = std::chrono::steady_clock::now();
     if (!rebuildChunkMesh(chunkKey, activeChunkBlocks_, meshData)) {
       activeChunkBlocks_.clear();
       chunkBuildActive_ = false;
       activeChunkBuild_ = {};
       return;
     }
+    rebuildNanos = toNanoseconds(std::chrono::steady_clock::now() - rebuildStart);
+    rebuiltChunkMesh = true;
+    const auto neighborRefreshStart = std::chrono::steady_clock::now();
     refreshNeighborChunkMeshes(chunkKey);
+    neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
   } else {
     auto chunkIt = chunkMeshes_.find(chunkKey);
     if (chunkIt != chunkMeshes_.end()) {
       destroyChunkMesh(chunkIt->second);
       chunkMeshes_.erase(chunkIt);
+      const auto neighborRefreshStart = std::chrono::steady_clock::now();
       refreshNeighborChunkMeshes(chunkKey);
+      neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
     }
+  }
+
+  perfChunkBuildsThisFrame_ += 1;
+  perfChunkBuildWorkNanosThisFrame_ += toNanoseconds(std::chrono::steady_clock::now() - buildStart);
+  perfChunkMeshRebuildNanosThisFrame_ += rebuildNanos;
+  perfNeighborRefreshNanosThisFrame_ += neighborRefreshNanos;
+  if (rebuiltChunkMesh) {
+    perfChunkMeshRebuildsThisFrame_ += 1;
   }
 
   ++capturedChunkBuilds_;
@@ -163,10 +192,7 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
 }
 
 void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
-  if (meshData.meshHandle != nullptr && remix_.DestroyMesh != nullptr) {
-    remix_.DestroyMesh(meshData.meshHandle);
-  }
-  meshData.meshHandle = nullptr;
+  destroyMeshHandle(meshData.meshHandle);
   meshData.meshHash = 0;
 }
 
@@ -187,6 +213,8 @@ bool RemixRenderer::rebuildChunkMesh(
 
   std::array<std::uint8_t, kBlocksPerChunk> occupancy {};
   std::array<ChunkBlockCell, kBlocksPerChunk> cells {};
+  std::vector<std::uint16_t> fireCellIndices;
+  fireCellIndices.reserve(16);
   std::size_t occupiedBlocks = 0;
   for (const CapturedBlockInstance& block : blocks) {
     const int localX = block.position[0] - chunkKey.originX;
@@ -214,6 +242,9 @@ bool RemixRenderer::rebuildChunkMesh(
     cells[occupancyIndex].liquidHeights = block.liquidHeights;
     cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
     cells[occupancyIndex].blockColor = block.blockColor;
+    if (isFireRenderType(block.renderType)) {
+      fireCellIndices.push_back(static_cast<std::uint16_t>(occupancyIndex));
+    }
   }
 
   if (occupiedBlocks == 0) {
@@ -223,6 +254,7 @@ bool RemixRenderer::rebuildChunkMesh(
     meshData.blockCount = 0;
     meshData.occupancy.fill(0);
     meshData.cells.fill(ChunkBlockCell {});
+    meshData.fireCellIndices.clear();
     meshData.hasOccupancy = false;
     return true;
   }
@@ -235,8 +267,9 @@ bool RemixRenderer::rebuildChunkMesh(
     meshData.blockCount = occupiedBlocks;
     meshData.occupancy = occupancy;
     meshData.cells = cells;
-    meshData.hasOccupancy = true;
   }
+  meshData.fireCellIndices = std::move(fireCellIndices);
+  meshData.hasOccupancy = true;
 
   return rebuildChunkMeshFromData(chunkKey, meshData, false);
 }
@@ -798,9 +831,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   }
 
   if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
-    if (newMeshHandle != nullptr && remix_.DestroyMesh != nullptr) {
-      remix_.DestroyMesh(newMeshHandle);
-    }
+    destroyMeshHandle(newMeshHandle);
     return false;
   }
 
@@ -815,6 +846,7 @@ void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
   destroyChunkMeshHandle(meshData);
   destroyChunkTorchLights(meshData);
   meshData.meshFingerprint = 0;
+  meshData.fireCellIndices.clear();
 }
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
