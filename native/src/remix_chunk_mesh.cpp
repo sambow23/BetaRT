@@ -455,6 +455,18 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isCropRenderType(cell.renderType) && isCropBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& cropSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendCropGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              cropSurface.vertices,
+              cropSurface.indices);
+          continue;
+        }
+
         if (isFireRenderType(cell.renderType)) {
           continue;
         }
@@ -675,6 +687,30 @@ bool RemixRenderer::rebuildChunkMeshFromData(
               static_cast<float>(localZ),
               bedSurface.vertices,
               bedSurface.indices);
+          continue;
+        }
+
+        if (isRepeaterRenderType(cell.renderType) && isRepeaterBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& repeaterSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendRepeaterGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              repeaterSurface.vertices,
+              repeaterSurface.indices);
+          continue;
+        }
+
+        if (cell.blockId == kNetherPortalBlockId) {
+          SurfaceBuildBuffers& portalSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendPortalGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              portalSurface.vertices,
+              portalSurface.indices);
           continue;
         }
 

@@ -233,6 +233,31 @@ std::filesystem::path RemixRenderer::resolveLavaTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolvePortalTexturePath() {
+  std::vector<std::filesystem::path> attemptedPaths;
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"portal.dds");
+    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"portal.png");
+    attemptedPaths.push_back(moduleDirectory / L"portal.dds");
+    attemptedPaths.push_back(moduleDirectory / L"portal.png");
+  }
+
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"portal.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"portal.png");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"portal.dds");
+  attemptedPaths.push_back(std::filesystem::current_path() / L"portal.png");
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
 std::filesystem::path RemixRenderer::resolveLavaEmissiveTexturePath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
@@ -359,6 +384,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   fireTexturePath_ = resolveFireTexturePath();
   waterTexturePath_ = resolveWaterTexturePath();
   lavaTexturePath_ = resolveLavaTexturePath();
+  portalTexturePath_ = resolvePortalTexturePath();
   lavaEmissiveTexturePath_ = resolveLavaEmissiveTexturePath();
   redstoneEmissiveTexturePath_ = resolveRedstoneEmissiveTexturePath();
   if (terrainAtlasPath_.empty()) {
@@ -478,6 +504,17 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kLiquidAnimationFrameCount,
       1,
       kLiquidAnimationFramesPerSecond);
+  const bool portalCreated = !portalTexturePath_.empty() && createTerrainMaterial(
+      kPortalTerrainMaterialClass,
+      false,
+      portalTexturePath_,
+      kPortalTerrainMaterialHash,
+      portalTexturePath_.c_str(),
+      kPortalEmissiveIntensity,
+      kPortalEmissiveColor,
+      kPortalAnimationFrameCount,
+      1,
+      kPortalAnimationFramesPerSecond);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
   }
@@ -507,6 +544,16 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!lavaCreated) {
     log("Lava terrain material unavailable; lava faces will be skipped");
+  }
+  if (portalTexturePath_.empty()) {
+    log("Portal texture asset not found; portals will fall back to cutout terrain");
+    terrainMaterialHandles_[kPortalTerrainMaterialClass] = terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  } else if (!portalCreated) {
+    log("Portal material unavailable; portals will fall back to cutout terrain");
+    terrainMaterialHandles_[kPortalTerrainMaterialClass] = terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  } else {
+    log("Portal emissive map loaded from " + portalTexturePath_.string());
+    log("Initialized portal material from " + portalTexturePath_.string());
   }
 
   if (fireTexturePath_.empty()) {
@@ -627,6 +674,7 @@ void RemixRenderer::destroyTerrainMaterials() {
   fireTexturePath_.clear();
   waterTexturePath_.clear();
   lavaTexturePath_.clear();
+  portalTexturePath_.clear();
   lavaEmissiveTexturePath_.clear();
   terrainEmissiveTexturePath_.clear();
   redstoneEmissiveTexturePath_.clear();

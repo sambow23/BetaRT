@@ -253,6 +253,10 @@ bool isRedstoneDustRenderType(int renderType) {
   return renderType == kRedstoneDustBlockRenderType;
 }
 
+bool isCropRenderType(int renderType) {
+  return renderType == kCropBlockRenderType;
+}
+
 bool isDoorRenderType(int renderType) {
   return renderType == kDoorBlockRenderType;
 }
@@ -285,8 +289,16 @@ bool isBedRenderType(int renderType) {
   return renderType == kBedBlockRenderType;
 }
 
+bool isRepeaterRenderType(int renderType) {
+  return renderType == kRepeaterBlockRenderType;
+}
+
 bool isRedstoneDustBlockId(int blockId) {
   return blockId == kRedstoneDustBlockId;
+}
+
+bool isCropBlockId(int blockId) {
+  return blockId == kCropsBlockId;
 }
 
 bool isCactusBlockId(int blockId) {
@@ -319,6 +331,10 @@ bool isLeverBlockId(int blockId) {
 
 bool isButtonBlockId(int blockId) {
   return blockId == kStoneButtonBlockId;
+}
+
+bool isRepeaterBlockId(int blockId) {
+  return blockId == kRepeaterIdleBlockId || blockId == kRepeaterPoweredBlockId;
 }
 
 bool isRedstoneConnectionCell(const ChunkBlockCell& cell, int direction) {
@@ -355,6 +371,7 @@ bool isSupportedPass0RenderType(int renderType) {
     case kFireBlockRenderType:
     case kTorchBlockRenderType:
     case kRedstoneDustBlockRenderType:
+    case kCropBlockRenderType:
     case kDoorBlockRenderType:
     case kLadderBlockRenderType:
     case kRailBlockRenderType:
@@ -363,6 +380,7 @@ bool isSupportedPass0RenderType(int renderType) {
     case kLeverOrButtonBlockRenderType:
     case kCactusBlockRenderType:
     case kBedBlockRenderType:
+    case kRepeaterBlockRenderType:
       return true;
     default:
       return false;
@@ -383,21 +401,23 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass) {
   }
   if (renderPass == 1) {
     return (renderType == kLiquidBlockRenderType && isWaterBlock(blockId))
-        || (renderType == kCubeBlockRenderType && blockId == kIceBlockId);
+        || (renderType == kCubeBlockRenderType && (blockId == kIceBlockId || blockId == kNetherPortalBlockId));
   }
   return false;
 }
 
 bool usesCutoutMaterialForBlock(int blockId, int renderType) {
   if (isCrossedQuadRenderType(renderType)
-  || isFireRenderType(renderType)
+      || isFireRenderType(renderType)
       || isTorchRenderType(renderType)
       || isRedstoneDustRenderType(renderType)
+      || isCropRenderType(renderType)
       || isCactusRenderType(renderType)
       || isDoorRenderType(renderType)
       || isBedRenderType(renderType)
       || isLadderRenderType(renderType)
-      || isRailRenderType(renderType)) {
+      || isRailRenderType(renderType)
+      || isRepeaterRenderType(renderType)) {
     return true;
   }
 
@@ -405,6 +425,7 @@ bool usesCutoutMaterialForBlock(int blockId, int renderType) {
     case 18:
     case 20:
     case 52:
+    case kNetherPortalBlockId:
     case kTrapdoorBlockId:
       return true;
     default:
@@ -418,6 +439,9 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
   }
   if (isLavaBlock(blockId)) {
     return kLavaTerrainMaterialClass;
+  }
+  if (blockId == kNetherPortalBlockId) {
+    return kPortalTerrainMaterialClass;
   }
   if (blockId == kRedstoneDustBlockId && renderType == kRedstoneDustBlockRenderType && blockMetadata > 0) {
     return kPoweredRedstoneTerrainMaterialClass;
@@ -1407,6 +1431,122 @@ void appendCrossedQuadGeometry(
       vertices,
       indices);
 }
+
+    void appendCropGeometry(
+      const ChunkBlockCell& cell,
+      float localX,
+      float localY,
+      float localZ,
+      std::vector<remixapi_HardcodedVertex>& vertices,
+      std::vector<std::uint32_t>& indices) {
+      const int terrainTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+      const float tileMinU = static_cast<float>((terrainTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+      const float tileMinV = static_cast<float>(terrainTileIndex & 0xF0) / kAtlasSizePixels;
+      const float tileMaxU = (static_cast<float>((terrainTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+      const float tileMaxV = (static_cast<float>(terrainTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+      const std::uint32_t vertexColor = packVertexColor(cell.blockColor);
+
+      const float baseY = localY - 0.0625f;
+      const float centerX = localX + 0.5f;
+      const float centerZ = localZ + 0.5f;
+
+      appendCrossedQuadSheet(
+        centerX - 0.25f,
+        baseY + 1.0f,
+        centerZ - 0.5f,
+        tileMinU,
+        tileMinV,
+        centerX - 0.25f,
+        baseY,
+        centerZ - 0.5f,
+        tileMinU,
+        tileMaxV,
+        centerX - 0.25f,
+        baseY,
+        centerZ + 0.5f,
+        tileMaxU,
+        tileMaxV,
+        centerX - 0.25f,
+        baseY + 1.0f,
+        centerZ + 0.5f,
+        tileMaxU,
+        tileMinV,
+        vertexColor,
+        vertices,
+        indices);
+      appendCrossedQuadSheet(
+        centerX + 0.25f,
+        baseY + 1.0f,
+        centerZ + 0.5f,
+        tileMinU,
+        tileMinV,
+        centerX + 0.25f,
+        baseY,
+        centerZ + 0.5f,
+        tileMinU,
+        tileMaxV,
+        centerX + 0.25f,
+        baseY,
+        centerZ - 0.5f,
+        tileMaxU,
+        tileMaxV,
+        centerX + 0.25f,
+        baseY + 1.0f,
+        centerZ - 0.5f,
+        tileMaxU,
+        tileMinV,
+        vertexColor,
+        vertices,
+        indices);
+      appendCrossedQuadSheet(
+        centerX - 0.5f,
+        baseY + 1.0f,
+        centerZ - 0.25f,
+        tileMinU,
+        tileMinV,
+        centerX - 0.5f,
+        baseY,
+        centerZ - 0.25f,
+        tileMinU,
+        tileMaxV,
+        centerX + 0.5f,
+        baseY,
+        centerZ - 0.25f,
+        tileMaxU,
+        tileMaxV,
+        centerX + 0.5f,
+        baseY + 1.0f,
+        centerZ - 0.25f,
+        tileMaxU,
+        tileMinV,
+        vertexColor,
+        vertices,
+        indices);
+      appendCrossedQuadSheet(
+        centerX + 0.5f,
+        baseY + 1.0f,
+        centerZ + 0.25f,
+        tileMinU,
+        tileMinV,
+        centerX + 0.5f,
+        baseY,
+        centerZ + 0.25f,
+        tileMinU,
+        tileMaxV,
+        centerX - 0.5f,
+        baseY,
+        centerZ + 0.25f,
+        tileMaxU,
+        tileMaxV,
+        centerX - 0.5f,
+        baseY + 1.0f,
+        centerZ + 0.25f,
+        tileMaxU,
+        tileMinV,
+        vertexColor,
+        vertices,
+        indices);
+    }
 
 void appendBoundsFaceGeometry(
     int faceIndex,
@@ -2435,6 +2575,238 @@ void appendLadderGeometry(
         vertices,
         indices);
   }
+
+}
+
+void appendPortalGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const float minX = localX + cell.bounds[0];
+  const float minY = localY + cell.bounds[1];
+  const float minZ = localZ + cell.bounds[2];
+  const float maxX = localX + cell.bounds[3];
+  const float maxY = localY + cell.bounds[4];
+  const float maxZ = localZ + cell.bounds[5];
+  const float xThickness = cell.bounds[3] - cell.bounds[0];
+  const float zThickness = cell.bounds[5] - cell.bounds[2];
+
+  if (xThickness <= zThickness) {
+    const float portalX = (minX + maxX) * 0.5f;
+    appendCrossedQuadSheet(
+        portalX,
+        maxY,
+        maxZ,
+        0.0f,
+        0.0f,
+        portalX,
+        minY,
+        maxZ,
+        0.0f,
+        1.0f,
+        portalX,
+        minY,
+        minZ,
+        1.0f,
+        1.0f,
+        portalX,
+        maxY,
+        minZ,
+        1.0f,
+        0.0f,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+    return;
+  }
+
+  const float portalZ = (minZ + maxZ) * 0.5f;
+  appendCrossedQuadSheet(
+      maxX,
+      maxY,
+      portalZ,
+      0.0f,
+      0.0f,
+      maxX,
+      minY,
+      portalZ,
+      0.0f,
+      1.0f,
+      minX,
+      minY,
+      portalZ,
+      1.0f,
+      1.0f,
+      minX,
+      maxY,
+      portalZ,
+      1.0f,
+      0.0f,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+}
+
+void appendRepeaterGeometry(
+    const ChunkBlockCell& cell,
+    float localX,
+    float localY,
+    float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  appendBoxGeometry(
+      localX + cell.bounds[0],
+      localY + cell.bounds[1],
+      localZ + cell.bounds[2],
+      localX + cell.bounds[3],
+      localY + cell.bounds[4],
+      localZ + cell.bounds[5],
+      cell.terrainTiles,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+
+  const std::int16_t torchTile = cell.terrainTiles[0];
+  const std::array<std::int16_t, 6> torchTiles = {
+      torchTile,
+      torchTile,
+      torchTile,
+      torchTile,
+      torchTile,
+      torchTile,
+  };
+  const auto appendTorchPost = [&](float offsetX, float offsetZ) {
+    const float centerX = localX + 0.5f + offsetX;
+    const float centerZ = localZ + 0.5f + offsetZ;
+    appendBoxGeometry(
+        centerX - 0.0625f,
+        localY + 0.125f,
+        centerZ - 0.0625f,
+        centerX + 0.0625f,
+        localY + 0.625f,
+        centerZ + 0.0625f,
+        torchTiles,
+        kDefaultVertexColor,
+        vertices,
+        indices);
+  };
+
+  static constexpr float kRepeaterTorchOffsets[4] = {-0.0625f, 0.0625f, 0.1875f, 0.3125f};
+  const int facing = cell.blockMetadata & 3;
+  const int delay = (cell.blockMetadata >> 2) & 3;
+
+  float firstOffsetX = 0.0f;
+  float firstOffsetZ = 0.0f;
+  float secondOffsetX = 0.0f;
+  float secondOffsetZ = 0.0f;
+  switch (facing) {
+    case 0:
+      secondOffsetZ = -0.3125f;
+      firstOffsetZ = kRepeaterTorchOffsets[delay];
+      break;
+    case 2:
+      secondOffsetZ = 0.3125f;
+      firstOffsetZ = -kRepeaterTorchOffsets[delay];
+      break;
+    case 3:
+      secondOffsetX = -0.3125f;
+      firstOffsetX = kRepeaterTorchOffsets[delay];
+      break;
+    case 1:
+    default:
+      secondOffsetX = 0.3125f;
+      firstOffsetX = -kRepeaterTorchOffsets[delay];
+      break;
+  }
+
+  appendTorchPost(firstOffsetX, firstOffsetZ);
+  appendTorchPost(secondOffsetX, secondOffsetZ);
+
+  const int topTileIndex = normalizeTerrainTileIndex(cell.terrainTiles[1]);
+  const float tileMinU = static_cast<float>((topTileIndex & 0x0F) * 16) / kAtlasSizePixels;
+  const float tileMinV = static_cast<float>(topTileIndex & 0xF0) / kAtlasSizePixels;
+  const float tileMaxU = (static_cast<float>((topTileIndex & 0x0F) * 16) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+  const float tileMaxV = (static_cast<float>(topTileIndex & 0xF0) + kAtlasTileSizePixels - kAtlasUvInsetPixels) / kAtlasSizePixels;
+
+  const float minX = localX;
+  const float maxX = localX + 1.0f;
+  const float minZ = localZ;
+  const float maxZ = localZ + 1.0f;
+  const float topY = localY + 0.125f + 0.0005f;
+
+  float x0 = minX;
+  float z0 = minZ;
+  float x1 = minX;
+  float z1 = maxZ;
+  float x2 = maxX;
+  float z2 = maxZ;
+  float x3 = maxX;
+  float z3 = minZ;
+  switch (facing & 3) {
+    case 1:
+      x0 = maxX;
+      z0 = minZ;
+      x1 = minX;
+      z1 = minZ;
+      x2 = minX;
+      z2 = maxZ;
+      x3 = maxX;
+      z3 = maxZ;
+      break;
+    case 2:
+      x0 = maxX;
+      z0 = maxZ;
+      x1 = maxX;
+      z1 = minZ;
+      x2 = minX;
+      z2 = minZ;
+      x3 = minX;
+      z3 = maxZ;
+      break;
+    case 3:
+      x0 = minX;
+      z0 = maxZ;
+      x1 = maxX;
+      z1 = maxZ;
+      x2 = maxX;
+      z2 = minZ;
+      x3 = minX;
+      z3 = minZ;
+      break;
+    default:
+      break;
+  }
+
+  appendCloudQuad(
+      x0,
+      topY,
+      z0,
+      tileMinU,
+      tileMinV,
+      x1,
+      topY,
+      z1,
+      tileMinU,
+      tileMaxV,
+      x2,
+      topY,
+      z2,
+      tileMaxU,
+      tileMaxV,
+      x3,
+      topY,
+      z3,
+      tileMaxU,
+      tileMinV,
+      0.0f,
+      1.0f,
+      0.0f,
+      kDefaultVertexColor,
+      vertices,
+      indices);
 }
 
 void appendRailGeometry(

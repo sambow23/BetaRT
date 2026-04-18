@@ -12,11 +12,14 @@ public final class MinecraftRenderHooks {
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int LAVA_STILL_BLOCK_ID = 10;
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
+    private static final int NETHER_PORTAL_BLOCK_ID = 90;
     private static final int DOOR_BLOCK_RENDER_TYPE = 7;
+    private static final int CROP_BLOCK_RENDER_TYPE = 6;
     private static final int LEVER_OR_BUTTON_BLOCK_RENDER_TYPE = 12;
     private static final int CACTUS_BLOCK_RENDER_TYPE = 13;
     private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
     private static final int BED_BLOCK_RENDER_TYPE = 14;
+    private static final int REPEATER_BLOCK_RENDER_TYPE = 15;
 
     private static volatile boolean initialized;
     private static boolean chunkBuildCaptureActive;
@@ -473,6 +476,7 @@ public final class MinecraftRenderHooks {
                     || renderType == 2
                     || renderType == 3
                     || renderType == 5
+                    || renderType == CROP_BLOCK_RENDER_TYPE
                     || renderType == DOOR_BLOCK_RENDER_TYPE
                     || renderType == 8
                     || renderType == 9
@@ -480,12 +484,13 @@ public final class MinecraftRenderHooks {
                     || renderType == LEVER_OR_BUTTON_BLOCK_RENDER_TYPE
                     || renderType == CACTUS_BLOCK_RENDER_TYPE
                     || renderType == BED_BLOCK_RENDER_TYPE
+                    || renderType == REPEATER_BLOCK_RENDER_TYPE
                     || renderType == 11)
                     || (renderType == 4 && (blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID));
         }
         if (activeChunkRenderPass == 1) {
             return (renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID))
-                    || (renderType == 0 && blockId == ICE_BLOCK_ID);
+                    || (renderType == 0 && (blockId == ICE_BLOCK_ID || blockId == NETHER_PORTAL_BLOCK_ID));
         }
         return false;
     }

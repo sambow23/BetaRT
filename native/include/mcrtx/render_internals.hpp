@@ -28,17 +28,19 @@ namespace detail {
 constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 constexpr int kChunkDimension = 16;
 constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
-constexpr std::size_t kTerrainMaterialClassCount = 5;
+constexpr std::size_t kTerrainMaterialClassCount = 6;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
 constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kLavaTerrainMaterialClass = 3;
 constexpr std::uint8_t kPoweredRedstoneTerrainMaterialClass = 4;
+constexpr std::uint8_t kPortalTerrainMaterialClass = 5;
 constexpr std::uint8_t kCubeBlockRenderType = 0;
 constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
 constexpr std::uint8_t kTorchBlockRenderType = 2;
 constexpr std::uint8_t kFireBlockRenderType = 3;
 constexpr std::uint8_t kRedstoneDustBlockRenderType = 5;
+constexpr std::uint8_t kCropBlockRenderType = 6;
 constexpr std::uint8_t kDoorBlockRenderType = 7;
 constexpr std::uint8_t kLadderBlockRenderType = 8;
 constexpr std::uint8_t kRailBlockRenderType = 9;
@@ -47,6 +49,7 @@ constexpr std::uint8_t kFenceBlockRenderType = 11;
 constexpr std::uint8_t kLeverOrButtonBlockRenderType = 12;
 constexpr std::uint8_t kCactusBlockRenderType = 13;
 constexpr std::uint8_t kBedBlockRenderType = 14;
+constexpr std::uint8_t kRepeaterBlockRenderType = 15;
 constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
@@ -55,6 +58,7 @@ constexpr std::uint8_t kSingleSlabBlockId = 44;
 constexpr std::uint8_t kBedBlockId = 26;
 constexpr std::uint8_t kTallGrassBlockId = 31;
 constexpr std::uint8_t kTorchBlockId = 50;
+constexpr std::uint8_t kCropsBlockId = 59;
 constexpr std::uint8_t kWoodStairsBlockId = 53;
 constexpr std::uint8_t kRedstoneDustBlockId = 55;
 constexpr std::uint8_t kWoodDoorBlockId = 64;
@@ -73,6 +77,7 @@ constexpr std::uint8_t kIceBlockId = 79;
 constexpr std::uint8_t kCactusBlockId = 81;
 constexpr std::uint8_t kRailBlockId = 66;
 constexpr std::uint8_t kFenceBlockId = 85;
+constexpr std::uint8_t kNetherPortalBlockId = 90;
 constexpr std::uint8_t kRepeaterIdleBlockId = 93;
 constexpr std::uint8_t kRepeaterPoweredBlockId = 94;
 constexpr std::uint8_t kTrapdoorBlockId = 96;
@@ -99,10 +104,14 @@ constexpr std::uint32_t kFireAnimationFrameCount = 16;
 constexpr ULONGLONG kFireAnimationFrameIntervalMilliseconds = 50;
 constexpr std::uint8_t kLiquidAnimationFrameCount = 32;
 constexpr std::uint8_t kLiquidAnimationFramesPerSecond = 20;
+constexpr std::uint8_t kPortalAnimationFrameCount = 32;
+constexpr std::uint8_t kPortalAnimationFramesPerSecond = 20;
 constexpr float kFireEmissiveIntensity = 1.35f;
 inline constexpr remixapi_Float3D kFireEmissiveColor = {1.0f, 1.0f, 1.0f};
 constexpr float kLavaEmissiveIntensity = 1.1f;
 inline constexpr remixapi_Float3D kLavaEmissiveColor = {1.0f, 1.0f, 1.0f};
+constexpr float kPortalEmissiveIntensity = 0.85f;
+inline constexpr remixapi_Float3D kPortalEmissiveColor = {1.0f, 1.0f, 1.0f};
 constexpr float kTerrainEmissiveIntensity = 5.0f;
 inline constexpr remixapi_Float3D kTerrainEmissiveColor = {1.0f, 1.0f, 1.0f};
 constexpr float kFaceOverlayBias = 0.001f;
@@ -111,6 +120,7 @@ constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
 constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
 constexpr std::uint64_t kLavaTerrainMaterialHash = 0x4D435254584C4156ull;
 constexpr std::uint64_t kPoweredRedstoneTerrainMaterialHash = 0x4D43525458524453ull;
+constexpr std::uint64_t kPortalTerrainMaterialHash = 0x4D4352545850544Cull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
@@ -224,6 +234,7 @@ bool isCrossedQuadRenderType(int renderType);
 bool isFireRenderType(int renderType);
 bool isTorchRenderType(int renderType);
 bool isRedstoneDustRenderType(int renderType);
+bool isCropRenderType(int renderType);
 bool isDoorRenderType(int renderType);
 bool isLadderRenderType(int renderType);
 bool isRailRenderType(int renderType);
@@ -232,7 +243,9 @@ bool isFenceRenderType(int renderType);
 bool isLeverOrButtonRenderType(int renderType);
 bool isCactusRenderType(int renderType);
 bool isBedRenderType(int renderType);
+bool isRepeaterRenderType(int renderType);
 bool isRedstoneDustBlockId(int blockId);
+bool isCropBlockId(int blockId);
 bool isCactusBlockId(int blockId);
 bool isBedBlockId(int blockId);
 bool isSingleSlabBlockId(int blockId);
@@ -241,6 +254,7 @@ bool isDoorBlockId(int blockId);
 bool isRailBlockId(int blockId);
 bool isLeverBlockId(int blockId);
 bool isButtonBlockId(int blockId);
+bool isRepeaterBlockId(int blockId);
 bool isRedstoneConnectionCell(const ChunkBlockCell& cell, int direction);
 bool isSupportedPass0RenderType(int renderType);
 bool shouldCaptureBlock(int blockId, int renderType);
@@ -401,6 +415,12 @@ void appendCrossedQuadGeometry(
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);
 
+void appendCropGeometry(
+    const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
 void appendSlabGeometry(
     const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
@@ -421,6 +441,12 @@ void appendDoorGeometry(
     std::vector<std::uint32_t>& indices);
 
 void appendBedGeometry(
+    const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendRepeaterGeometry(
     const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,
@@ -451,6 +477,12 @@ void appendTorchGeometry(
     std::vector<std::uint32_t>& indices);
 
 void appendLadderGeometry(
+    const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendPortalGeometry(
     const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,

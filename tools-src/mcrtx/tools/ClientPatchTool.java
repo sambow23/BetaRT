@@ -38,6 +38,7 @@ public final class ClientPatchTool {
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
     private static final String MINECART_RENDERER_CLASS = "tb";
+    private static final String PAINTING_RENDERER_CLASS = "dy";
     private static final String SIGN_RENDERER_CLASS = "po";
     private static final String FONT_RENDERER_CLASS = "sj";
 
@@ -86,6 +87,8 @@ public final class ClientPatchTool {
                     content = patchN(content);
                 } else if (entryName.equals(MINECART_RENDERER_CLASS + ".class")) {
                     content = patchTb(content);
+                } else if (entryName.equals(PAINTING_RENDERER_CLASS + ".class")) {
+                    content = patchDy(content);
                 } else if (entryName.equals(SIGN_RENDERER_CLASS + ".class")) {
                     content = patchPo(content);
                 } else if (entryName.equals(FONT_RENDERER_CLASS + ".class")) {
@@ -230,6 +233,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lyl;DDDFF)V")) {
                 patchMinecartRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchDy(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lqv;DDDFF)V")) {
+                patchPaintingRender(method);
             }
         }
         return writeClass(classNode);
@@ -485,6 +498,18 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchPaintingRender(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.owner.equals(PAINTING_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lqv;IIII)V")) {
+                method.instructions.insertBefore(node, paintingRenderCall());
+                return;
+            }
+        }
+    }
+
     private static void patchSignRender(MethodNode method) {
         boolean insertedStart = false;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
@@ -639,6 +664,13 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onSignRenderStart", "(Lyk;)V", false));
+        return instructions;
+    }
+
+    private static InsnList paintingRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onPaintingRender", "(Lqv;)V", false));
         return instructions;
     }
 

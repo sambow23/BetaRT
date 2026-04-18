@@ -1021,6 +1021,92 @@ function Replace-TerrainLiquidTiles {
     }
 }
 
+function New-PortalAtlas {
+    param(
+        [string]$PortalPngPath
+    )
+
+    $portalAtlasBitmap = $null
+    $graphics = $null
+
+    try {
+        $frameCount = 32
+        $tileSize = 16
+        $atlasWidth = $frameCount * $tileSize
+        $portalAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $graphics = [System.Drawing.Graphics]::FromImage($portalAtlasBitmap)
+        $graphics.InterpolationMode = [System.Drawing.Drawing2D.InterpolationMode]::NearestNeighbor
+        $graphics.PixelOffsetMode = [System.Drawing.Drawing2D.PixelOffsetMode]::Half
+        $graphics.CompositingMode = [System.Drawing.Drawing2D.CompositingMode]::SourceCopy
+        $graphics.Clear([System.Drawing.Color]::FromArgb(0, 0, 0, 0))
+
+        $random = [System.Random]::new(100)
+
+        for ($frameIndex = 0; $frameIndex -lt $frameCount; $frameIndex++) {
+            $frameOffsetX = $frameIndex * $tileSize
+            for ($pixelX = 0; $pixelX -lt $tileSize; $pixelX++) {
+                for ($pixelY = 0; $pixelY -lt $tileSize; $pixelY++) {
+                    $portalSample = 0.0
+                    for ($layerIndex = 0; $layerIndex -lt 2; $layerIndex++) {
+                        $layerOffset = $layerIndex * ($tileSize / 2.0)
+                        $sampleX = (($pixelX - $layerOffset) / $tileSize) * 2.0
+                        $sampleY = (($pixelY - $layerOffset) / $tileSize) * 2.0
+                        if ($sampleX -lt -1.0) {
+                            $sampleX += 2.0
+                        }
+                        if ($sampleX -ge 1.0) {
+                            $sampleX -= 2.0
+                        }
+                        if ($sampleY -lt -1.0) {
+                            $sampleY += 2.0
+                        }
+                        if ($sampleY -ge 1.0) {
+                            $sampleY -= 2.0
+                        }
+
+                        $radius = $sampleX * $sampleX + $sampleY * $sampleY
+                        $phase = [Math]::Atan2($sampleY, $sampleX)
+                        $phase += ((($frameIndex / [double]$frameCount) * [Math]::PI * 2.0) - ($radius * 10.0) + ($layerIndex * 2.0)) * (($layerIndex * 2.0) - 1.0)
+                        $wave = ([Math]::Sin($phase) + 1.0) / 2.0
+                        $portalSample += ($wave / ($radius + 1.0)) * 0.5
+                    }
+
+                    $portalSample += $random.NextDouble() * 0.1
+                    $red = [Math]::Min(255, [Math]::Max(0, [int]([Math]::Round(($portalSample * $portalSample * 200.0) + 55.0))))
+                    $greenStrength = $portalSample * $portalSample
+                    $greenStrength *= $greenStrength
+                    $green = [Math]::Min(255, [Math]::Max(0, [int]([Math]::Round($greenStrength * 255.0))))
+                    $blue = [Math]::Min(255, [Math]::Max(0, [int]([Math]::Round(($portalSample * 100.0) + 155.0))))
+                    $alpha = [Math]::Min(255, [Math]::Max(0, [int]([Math]::Round(($portalSample * 100.0) + 155.0))))
+                    $portalAtlasBitmap.SetPixel(
+                        $frameOffsetX + $pixelX,
+                        $pixelY,
+                        [System.Drawing.Color]::FromArgb($alpha, $red, $green, $blue))
+                }
+            }
+        }
+
+        $graphics.Dispose()
+        $graphics = $null
+
+        $temporaryPortalPath = "$PortalPngPath.tmp"
+        $portalAtlasBitmap.Save($temporaryPortalPath, [System.Drawing.Imaging.ImageFormat]::Png)
+
+        $portalAtlasBitmap.Dispose()
+        $portalAtlasBitmap = $null
+
+        Copy-Item -Force $temporaryPortalPath $PortalPngPath
+        Remove-Item -Force $temporaryPortalPath
+    } finally {
+        if ($null -ne $graphics) {
+            $graphics.Dispose()
+        }
+        if ($null -ne $portalAtlasBitmap) {
+            $portalAtlasBitmap.Dispose()
+        }
+    }
+}
+
 function New-RedstoneEmissiveAtlas {
     param(
         [string]$TerrainPngPath,
@@ -1261,10 +1347,12 @@ Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -Desti
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
 Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
+New-PortalAtlas -PortalPngPath (Join-Path $assetsDir "portal.png")
 New-RedstoneEmissiveAtlas -TerrainPngPath (Join-Path $assetsDir "terrain.png") -RedstoneEmissivePngPath (Join-Path $assetsDir "redstone_emissive.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "redstone_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "redstone_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "portal.png") -DestinationDdsPath (Join-Path $assetsDir "portal.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationDdsPath (Join-Path $assetsDir "water.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "lava_emissive.dds")
@@ -1274,6 +1362,7 @@ Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -Destinat
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "clouds.png") -DestinationDdsPath (Join-Path $assetsDir "clouds.dds")
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('art/') -DestinationRoot $assetsDir -ConvertToDds
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('item/') -DestinationRoot $assetsDir -ConvertToDds
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('font/') -DestinationRoot $assetsDir -ConvertToDds
 
@@ -1293,6 +1382,8 @@ Write-Host "Generated redstone emissive atlas: $(Join-Path $assetsDir 'redstone_
 Write-Host "Converted redstone emissive atlas DDS: $(Join-Path $assetsDir 'redstone_emissive.dds')"
 Write-Host "Generated fire animation atlas: $(Join-Path $assetsDir 'fire.png')"
 Write-Host "Converted fire animation atlas DDS: $(Join-Path $assetsDir 'fire.dds')"
+Write-Host "Generated portal animation atlas: $(Join-Path $assetsDir 'portal.png')"
+Write-Host "Converted portal animation atlas DDS: $(Join-Path $assetsDir 'portal.dds')"
 Write-Host "Generated water animation atlas: $(Join-Path $assetsDir 'water.png')"
 Write-Host "Converted water animation atlas DDS: $(Join-Path $assetsDir 'water.dds')"
 Write-Host "Generated lava animation atlas: $(Join-Path $assetsDir 'lava.png')"
@@ -1306,5 +1397,6 @@ Write-Host "Converted GUI item atlas DDS: $(Join-Path $assetsDir 'gui\items.dds'
 Write-Host "Extracted cloud texture: $(Join-Path $assetsDir 'clouds.png')"
 Write-Host "Converted cloud texture DDS: $(Join-Path $assetsDir 'clouds.dds')"
 Write-Host "Extracted entity texture directories under: $(Join-Path $assetsDir 'entities')"
+Write-Host "Extracted art texture directories under: $(Join-Path $assetsDir 'art')"
 Write-Host "Extracted item texture directories under: $(Join-Path $assetsDir 'item')"
 Write-Host "Extracted font texture directories under: $(Join-Path $assetsDir 'font')"

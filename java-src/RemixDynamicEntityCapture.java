@@ -17,6 +17,7 @@ public final class RemixDynamicEntityCapture {
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final String FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/firstperson_shadow/";
     private static final String FONT_TEXTURE_PATH = "/font/default.png";
+    private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
@@ -88,6 +89,32 @@ public final class RemixDynamicEntityCapture {
     public static void onSignRenderEnd() {
         signRenderActive = false;
         onLivingEntityRenderEnd();
+    }
+
+    public static void onPaintingRender(qv painting) {
+        if (!MinecraftRenderHooks.isInitialized() || painting == null || painting.e == null) {
+            return;
+        }
+        if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+
+        try {
+            MODEL_VIEW_BUFFER.clear();
+            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+            float[] modelView = new float[16];
+            MODEL_VIEW_BUFFER.get(modelView);
+            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+
+            MinecraftRenderHooks.beginDynamicEntity(painting.aD);
+            MinecraftRenderHooks.setDynamicEntityTexture(PAINTING_TEXTURE_PATH);
+            submitDynamicBoneTransform(0, modelToWorld);
+            capturePaintingGeometry(painting, 0);
+        } finally {
+            MinecraftRenderHooks.endDynamicEntity();
+        }
     }
 
     public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
@@ -454,6 +481,112 @@ public final class RemixDynamicEntityCapture {
     private static int applyFontShadow(int colorRgba) {
         int alpha = colorRgba & 0xFF000000;
         return ((colorRgba & 0x00FCFCFC) >> 2) | alpha;
+    }
+
+    private static void capturePaintingGeometry(qv painting, int boneIndex) {
+        iq motive = painting.e;
+        float startX = -motive.B / 2.0f;
+        float startY = -motive.C / 2.0f;
+        float frontZ = -0.5f;
+        float backZ = 0.5f;
+
+        for (int tileX = 0; tileX < motive.B / 16; tileX++) {
+            for (int tileY = 0; tileY < motive.C / 16; tileY++) {
+                float maxX = startX + (tileX + 1) * 16.0f;
+                float minX = startX + tileX * 16.0f;
+                float maxY = startY + (tileY + 1) * 16.0f;
+                float minY = startY + tileY * 16.0f;
+                int segmentColor = paintingSegmentColor(painting, (maxX + minX) * 0.5f, (maxY + minY) * 0.5f);
+
+                float frontMinU = (motive.D + motive.B - tileX * 16.0f) / 256.0f;
+                float frontMaxU = (motive.D + motive.B - (tileX + 1) * 16.0f) / 256.0f;
+                float frontMinV = (motive.E + motive.C - tileY * 16.0f) / 256.0f;
+                float frontMaxV = (motive.E + motive.C - (tileY + 1) * 16.0f) / 256.0f;
+                float backMinU = 0.75f;
+                float backMaxU = 0.8125f;
+                float backMinV = 0.0f;
+                float backMaxV = 0.0625f;
+                float edgeMinU = 0.751953125f;
+                float edgeMaxU = 0.751953125f;
+                float edgeMinV = 0.0f;
+                float edgeMaxV = 0.0625f;
+                float sideMinU = 0.001953125f;
+                float sideMaxU = 0.001953125f;
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        maxX, minY, frontZ, frontMaxU, frontMinV,
+                        minX, minY, frontZ, frontMinU, frontMinV,
+                        minX, maxY, frontZ, frontMinU, frontMaxV,
+                        maxX, maxY, frontZ, frontMaxU, frontMaxV,
+                        segmentColor,
+                        boneIndex);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        maxX, maxY, backZ, backMinU, backMinV,
+                        minX, maxY, backZ, backMaxU, backMinV,
+                        minX, minY, backZ, backMaxU, backMaxV,
+                        maxX, minY, backZ, backMinU, backMaxV,
+                        segmentColor,
+                        boneIndex);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        maxX, maxY, frontZ, backMinU, sideMinU,
+                        minX, maxY, frontZ, backMaxU, sideMinU,
+                        minX, maxY, backZ, backMaxU, sideMaxU,
+                        maxX, maxY, backZ, backMinU, sideMaxU,
+                        segmentColor,
+                        boneIndex);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        maxX, minY, backZ, backMinU, sideMinU,
+                        minX, minY, backZ, backMaxU, sideMinU,
+                        minX, minY, frontZ, backMaxU, sideMaxU,
+                        maxX, minY, frontZ, backMinU, sideMaxU,
+                        segmentColor,
+                        boneIndex);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        maxX, maxY, backZ, edgeMaxU, edgeMinV,
+                        maxX, minY, backZ, edgeMaxU, edgeMaxV,
+                        maxX, minY, frontZ, edgeMinU, edgeMaxV,
+                        maxX, maxY, frontZ, edgeMinU, edgeMinV,
+                        segmentColor,
+                        boneIndex);
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        minX, maxY, frontZ, edgeMaxU, edgeMinV,
+                        minX, minY, frontZ, edgeMaxU, edgeMaxV,
+                        minX, minY, backZ, edgeMinU, edgeMaxV,
+                        minX, maxY, backZ, edgeMinU, edgeMinV,
+                        segmentColor,
+                        boneIndex);
+            }
+        }
+    }
+
+    private static int paintingSegmentColor(qv painting, float centerX, float centerY) {
+        if (painting.aI == null) {
+            return ColorMath.packColor(1.0f, 1.0f, 1.0f, 1.0f);
+        }
+
+        int sampleX = in.b(painting.aM);
+        int sampleY = in.b(painting.aN + centerY / 16.0f);
+        int sampleZ = in.b(painting.aO);
+        if (painting.a == 0) {
+            sampleX = in.b(painting.aM + centerX / 16.0f);
+        }
+        if (painting.a == 1) {
+            sampleZ = in.b(painting.aO - centerX / 16.0f);
+        }
+        if (painting.a == 2) {
+            sampleX = in.b(painting.aM - centerX / 16.0f);
+        }
+        if (painting.a == 3) {
+            sampleZ = in.b(painting.aO + centerX / 16.0f);
+        }
+
+        float brightness = painting.aI.c(sampleX, sampleY, sampleZ);
+        return ColorMath.packColor(brightness, brightness, brightness, 1.0f);
     }
 
     private static void ensureDynamicCaptureFrame() {

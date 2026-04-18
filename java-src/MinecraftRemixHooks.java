@@ -183,6 +183,10 @@ public final class MinecraftRemixHooks {
         RemixDynamicEntityCapture.onSignRenderEnd();
     }
 
+    public static void onPaintingRender(qv painting) {
+        RemixDynamicEntityCapture.onPaintingRender(painting);
+    }
+
     public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
         RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
     }
