@@ -1359,6 +1359,8 @@ Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava_emissive.png") -Dest
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
+Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/rain.png" -DestinationPath (Join-Path $assetsDir "rain.png")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "rain.png") -DestinationDdsPath (Join-Path $assetsDir "rain.dds")
 Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "clouds.png") -DestinationDdsPath (Join-Path $assetsDir "clouds.dds")
 Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
@@ -1394,6 +1396,8 @@ Write-Host "Extracted particles atlas: $(Join-Path $assetsDir 'particles.png')"
 Write-Host "Converted particles atlas DDS: $(Join-Path $assetsDir 'particles.dds')"
 Write-Host "Extracted GUI item atlas: $(Join-Path $assetsDir 'gui\items.png')"
 Write-Host "Converted GUI item atlas DDS: $(Join-Path $assetsDir 'gui\items.dds')"
+Write-Host "Extracted rain texture: $(Join-Path $assetsDir 'rain.png')"
+Write-Host "Converted rain texture DDS: $(Join-Path $assetsDir 'rain.dds')"
 Write-Host "Extracted cloud texture: $(Join-Path $assetsDir 'clouds.png')"
 Write-Host "Converted cloud texture DDS: $(Join-Path $assetsDir 'clouds.dds')"
 Write-Host "Extracted entity texture directories under: $(Join-Path $assetsDir 'entities')"

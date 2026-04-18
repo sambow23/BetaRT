@@ -222,6 +222,15 @@ public final class MinecraftRemixHooks {
             boolean hasTexture,
             boolean hasColor) {
         RemixDynamicEntityCapture.onFirstPersonTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
+        RemixParticleCapture.onTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
+    }
+
+    public static void onWeatherTextureBind(String texturePath) {
+        RemixParticleCapture.onWeatherTextureBind(texturePath);
+    }
+
+    public static void onWeatherRenderEnd() {
+        RemixParticleCapture.onWeatherRenderEnd();
     }
 
     public static boolean onChunkBuildBegin(
@@ -280,6 +289,7 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onFrameRenderStart() {
+        RemixParticleCapture.onFrameRenderStart();
         activeRenderMethodStartNanos = System.nanoTime();
     }
 

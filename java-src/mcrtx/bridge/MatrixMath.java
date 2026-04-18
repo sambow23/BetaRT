@@ -67,4 +67,12 @@ public final class MatrixMath {
         result[15] = 1.0f;
         return result;
     }
+
+    public static float[] transformPointColumnMajor(float[] matrix, float x, float y, float z) {
+        return new float[] {
+                matrix[0] * x + matrix[4] * y + matrix[8] * z + matrix[12],
+                matrix[1] * x + matrix[5] * y + matrix[9] * z + matrix[13],
+                matrix[2] * x + matrix[6] * y + matrix[10] * z + matrix[14]
+        };
+    }
 }

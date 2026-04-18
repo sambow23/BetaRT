@@ -20,6 +20,7 @@ import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.JumpInsnNode;
 import org.objectweb.asm.tree.LabelNode;
+import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
@@ -131,6 +132,8 @@ public final class ClientPatchTool {
                 patchPxFrame(method);
             } else if (method.name.equals("a") && method.desc.equals("(FJ)V")) {
                 patchPxRender(method);
+            } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
+                patchPxWeatherRender(method);
             }
         }
         return writeClass(classNode);
@@ -408,6 +411,35 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchPxWeatherRender(MethodNode method) {
+        boolean insertedWeatherBind = false;
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof LdcInsnNode ldcInsnNode && "/environment/rain.png".equals(ldcInsnNode.cst)) {
+                AbstractInsnNode insertionPoint = node;
+                while (insertionPoint != null && !isStaticCall(insertionPoint, "org/lwjgl/opengl/GL11", "glBindTexture", "(II)V")) {
+                    insertionPoint = insertionPoint.getNext();
+                }
+                if (insertionPoint != null) {
+                    method.instructions.insert(insertionPoint, weatherTextureBindCall("/environment/rain.png"));
+                    insertedWeatherBind = true;
+                }
+                break;
+            }
+        }
+
+        if (!insertedWeatherBind) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onWeatherRenderEnd", "()V"));
+            }
+            node = next;
+        }
+    }
+
     private static void patchDkChunkBuild(MethodNode method) {
         final int chunkBuildEnabledLocal = 21;
 
@@ -650,6 +682,18 @@ public final class ClientPatchTool {
     private static InsnList staticHelperCall(String name, String descriptor) {
         InsnList instructions = new InsnList();
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, name, descriptor, false));
+        return instructions;
+    }
+
+    private static InsnList weatherTextureBindCall(String texturePath) {
+        InsnList instructions = new InsnList();
+        instructions.add(new LdcInsnNode(texturePath));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onWeatherTextureBind",
+                "(Ljava/lang/String;)V",
+                false));
         return instructions;
     }
 

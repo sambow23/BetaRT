@@ -343,16 +343,21 @@ std::filesystem::path RemixRenderer::resolveParticleTexturePath(std::uint32_t te
 
   const bool useParticlesAtlas = textureKind == 0;
   const bool useItemAtlas = textureKind == 2;
-  if (!useParticlesAtlas && !useItemAtlas) {
+  const bool useWeatherRainTexture = textureKind == 4;
+  if (!useParticlesAtlas && !useItemAtlas && !useWeatherRainTexture) {
     return {};
   }
 
   const std::filesystem::path ddsPath = useParticlesAtlas
       ? std::filesystem::path(L"particles.dds")
-      : std::filesystem::path(L"gui") / L"items.dds";
+      : (useItemAtlas
+          ? std::filesystem::path(L"gui") / L"items.dds"
+          : std::filesystem::path(L"rain.dds"));
   const std::filesystem::path pngPath = useParticlesAtlas
       ? std::filesystem::path(L"particles.png")
-      : std::filesystem::path(L"gui") / L"items.png";
+      : (useItemAtlas
+          ? std::filesystem::path(L"gui") / L"items.png"
+          : std::filesystem::path(L"rain.png"));
 
   const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
   if (!moduleDirectory.empty()) {

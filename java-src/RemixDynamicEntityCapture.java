@@ -596,7 +596,6 @@ public final class RemixDynamicEntityCapture {
 
         MinecraftRenderHooks.beginDynamicEntityFrame();
         MinecraftRenderHooks.beginDestroyOverlayFrame();
-        MinecraftRenderHooks.beginParticleFrame();
         dynamicCaptureFrameActive = true;
     }
 
