@@ -70,7 +70,9 @@ game window.
 
 For development, set `MCRTX_WINDOW_MODE=dual` to create a separate Remix output
 window instead. Supported values are `single` or `overlay` for the default
-mode, and `dual`, `detached`, or `separate` for the development mode.
+mode, and `dual`, `detached`, or `separate` for the linked development mode.
+Use `MCRTX_WINDOW_MODE=standalone` for a detached window that skips Remix UI
+overlay capture and no longer mirrors the LWJGL client window on each present.
 
 The old `MCRTX_USE_SOURCE_WINDOW=1` escape hatch is now treated as a deprecated
 alias for `MCRTX_WINDOW_MODE=dual` so older local launch scripts do not try the
