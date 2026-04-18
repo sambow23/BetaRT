@@ -26,6 +26,7 @@ void RemixRenderer::updateCloudLayer(
     float cameraZ,
     float cloudHeight,
     float cloudScroll,
+  float,
     float colorR,
     float colorG,
     float colorB) {
@@ -56,6 +57,16 @@ void RemixRenderer::updateCloudLayer(
         + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
     rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
   }
+}
+
+void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere) {
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  updateAtmosphereConfigLocked(celestialAngle, forceDarkAtmosphere);
 }
 
 void RemixRenderer::clearCloudLayer() {

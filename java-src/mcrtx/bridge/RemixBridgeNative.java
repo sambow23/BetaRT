@@ -138,9 +138,14 @@ public final class RemixBridgeNative {
             float cameraZ,
             float cloudHeight,
             float cloudScroll,
+            float celestialAngle,
             float colorR,
             float colorG,
             float colorB);
+
+        public static native void nUpdateAtmosphereState(
+            float celestialAngle,
+            boolean forceDarkAtmosphere);
 
         public static native void nClearCloudLayer();
 

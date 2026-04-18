@@ -150,6 +150,7 @@ public final class MinecraftRenderHooks {
             float cameraZ,
             float cloudHeight,
             float cloudScroll,
+            float celestialAngle,
             float colorR,
             float colorG,
             float colorB) {
@@ -163,9 +164,17 @@ public final class MinecraftRenderHooks {
                 cameraZ,
                 cloudHeight,
                 cloudScroll,
+                celestialAngle,
                 colorR,
                 colorG,
                 colorB);
+    }
+
+    public static synchronized void updateAtmosphereState(float celestialAngle, boolean forceDarkAtmosphere) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nUpdateAtmosphereState(celestialAngle, forceDarkAtmosphere);
     }
 
     public static synchronized void clearCloudLayer() {

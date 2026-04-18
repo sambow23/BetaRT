@@ -299,9 +299,11 @@ public:
       float cameraZ,
       float cloudHeight,
       float cloudScroll,
+      float celestialAngle,
       float colorR,
       float colorG,
       float colorB);
+  void updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere);
   void clearCloudLayer();
   void beginDynamicEntityFrame();
   void beginDynamicEntity(int entityId);
@@ -415,6 +417,11 @@ private:
 
   bool loadRemix(const std::filesystem::path& remixDllPath);
   static std::filesystem::path resolveRemixDllPath();
+  bool setConfigVariableLocked(std::string_view key, const std::string& value, bool logChange, bool force = false);
+  bool setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force = false);
+  void applyRemixConfigPreStartupLocked();
+  void applyRemixConfigPostStartupLocked();
+  void updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere);
   bool createOutputWindow(HWND sourceHwnd);
   void destroyOutputWindow();
   void pumpOutputWindowMessages();
@@ -572,6 +579,8 @@ private:
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
+  std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};
+  bool warnedMissingSetConfigVariable_ {false};
   std::string lastError_;
 };
 

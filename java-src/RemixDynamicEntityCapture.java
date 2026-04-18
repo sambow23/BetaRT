@@ -565,28 +565,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     private static int paintingSegmentColor(qv painting, float centerX, float centerY) {
-        if (painting.aI == null) {
-            return ColorMath.packColor(1.0f, 1.0f, 1.0f, 1.0f);
-        }
-
-        int sampleX = in.b(painting.aM);
-        int sampleY = in.b(painting.aN + centerY / 16.0f);
-        int sampleZ = in.b(painting.aO);
-        if (painting.a == 0) {
-            sampleX = in.b(painting.aM + centerX / 16.0f);
-        }
-        if (painting.a == 1) {
-            sampleZ = in.b(painting.aO - centerX / 16.0f);
-        }
-        if (painting.a == 2) {
-            sampleX = in.b(painting.aM - centerX / 16.0f);
-        }
-        if (painting.a == 3) {
-            sampleZ = in.b(painting.aO + centerX / 16.0f);
-        }
-
-        float brightness = painting.aI.c(sampleX, sampleY, sampleZ);
-        return ColorMath.packColor(brightness, brightness, brightness, 1.0f);
+        return ColorMath.packColor(1.0f, 1.0f, 1.0f, 1.0f);
     }
 
     private static void ensureDynamicCaptureFrame() {

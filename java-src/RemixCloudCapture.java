@@ -9,6 +9,10 @@ public final class RemixCloudCapture {
             return;
         }
 
+        if (world != null && world.t != null) {
+            MinecraftRenderHooks.updateAtmosphereState(world.b(partialTicks), world.t instanceof wd);
+        }
+
         if (minecraft == null || world == null || world.t == null || world.t.c || minecraft.i == null) {
             MinecraftRenderHooks.clearCloudLayer();
             return;
@@ -24,6 +28,7 @@ public final class RemixCloudCapture {
         float cameraZ = (float) (entity.aL + (entity.aO - entity.aL) * (double) partialTicks);
         float cloudHeight = world.t.d() + 0.33f;
         float cloudScroll = ((float) cloudTick + partialTicks) * 0.03f;
+        float celestialAngle = world.b(partialTicks);
 
         MinecraftRenderHooks.updateCloudLayer(
                 fancy,
@@ -32,6 +37,7 @@ public final class RemixCloudCapture {
                 cameraZ,
                 cloudHeight,
                 cloudScroll,
+            celestialAngle,
                 colorR,
                 colorG,
                 colorB);

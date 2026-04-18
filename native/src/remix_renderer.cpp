@@ -22,6 +22,7 @@ namespace {
 
 constexpr std::uint64_t kPerfLogIntervalFrames = 60;
 constexpr auto kStandaloneAutonomousFrameInterval = std::chrono::milliseconds(16);
+constexpr double kPi = 3.14159265358979323846;
 
 std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count());
@@ -71,6 +72,12 @@ void appendCountSummary(
 std::string describeRequestedWindowMode() {
   const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
   return configuredWindowMode.empty() ? std::string("<default>") : configuredWindowMode;
+}
+
+std::string formatConfigFloat(float value, int precision) {
+  std::ostringstream stream;
+  stream << std::fixed << std::setprecision(precision) << value;
+  return stream.str();
 }
 
 }  // namespace
@@ -160,17 +167,7 @@ bool RemixRenderer::initialize(
   // override, every meters-aware subsystem (volumetrics froxel extent,
   // transmittance measurement distance, light volumetric radius falloff)
   // is off by 100x and produces no visible contribution.
-  if (remix_.SetConfigVariable != nullptr) {
-    const auto applyConfig = [this](const char* key, const char* value) {
-      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
-      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
-    };
-    // force these settings otherwise it's boil city
-    applyConfig("rtx.sceneScale", "0.01");
-    applyConfig("rtx.volumetrics.initialRISSampleCount", "32");
-  } else {
-    log("SetConfigVariable not available; cannot apply scene scale / volumetric tuning");
-  }
+  applyRemixConfigPreStartupLocked();
 
   if (!startup(presentationHwnd)) {
     resetLoadedRemix();
@@ -182,16 +179,7 @@ bool RemixRenderer::initialize(
   // Remix's initializer) forcibly overwrites these DI options via setDeferred,
   // clobbering anything we set before Startup. Re-apply after Startup so the
   // pending values land on top of the preset.
-  if (remix_.SetConfigVariable != nullptr) {
-    const auto applyConfig = [this](const char* key, const char* value) {
-      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
-      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
-    };
-    applyConfig("rtx.di.initialSampleCount", "32");
-    applyConfig("rtx.di.enableBestLightSampling", "True");
-    applyConfig("rtx.di.enableDenoiserConfidence", "True");
-    applyConfig("rtx.di.enableDenoiserGradient", "True");
-  }
+  applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
 
@@ -262,16 +250,7 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
     return false;
   }
 
-  if (remix_.SetConfigVariable != nullptr) {
-    const auto applyConfig = [this](const char* key, const char* value) {
-      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
-      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
-    };
-    applyConfig("rtx.sceneScale", "0.01");
-    applyConfig("rtx.volumetrics.initialRISSampleCount", "32");
-  } else {
-    log("SetConfigVariable not available; cannot apply scene scale / volumetric tuning");
-  }
+  applyRemixConfigPreStartupLocked();
 
   if (!startup(presentationHwnd)) {
     resetLoadedRemix();
@@ -279,16 +258,7 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
     return false;
   }
 
-  if (remix_.SetConfigVariable != nullptr) {
-    const auto applyConfig = [this](const char* key, const char* value) {
-      const remixapi_ErrorCode result = remix_.SetConfigVariable(key, value);
-      log(std::string("SetConfigVariable ") + key + "=" + value + " -> " + errorCodeToString(result));
-    };
-    applyConfig("rtx.di.initialSampleCount", "32");
-    applyConfig("rtx.di.enableBestLightSampling", "True");
-    applyConfig("rtx.di.enableDenoiserConfidence", "True");
-    applyConfig("rtx.di.enableDenoiserGradient", "True");
-  }
+  applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
   {
@@ -452,7 +422,70 @@ void RemixRenderer::shutdownLocked() {
   particleQuadCount_ = 0;
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
   lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
+  appliedRemixConfigValues_.clear();
+  warnedMissingSetConfigVariable_ = false;
   lastError_.clear();
+}
+
+bool RemixRenderer::setConfigVariableLocked(std::string_view key, const std::string& value, bool logChange, bool force) {
+  if (remix_.SetConfigVariable == nullptr) {
+    if (!warnedMissingSetConfigVariable_) {
+      warnedMissingSetConfigVariable_ = true;
+      log("SetConfigVariable not available; runtime Remix config updates are disabled");
+    }
+    return false;
+  }
+
+  std::string keyString(key);
+  if (!force) {
+    const auto existing = appliedRemixConfigValues_.find(keyString);
+    if (existing != appliedRemixConfigValues_.end() && existing->second == value) {
+      return true;
+    }
+  }
+
+  const remixapi_ErrorCode result = remix_.SetConfigVariable(keyString.c_str(), value.c_str());
+  if (logChange || result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    log(std::string("SetConfigVariable ") + keyString + "=" + value + " -> " + errorCodeToString(result));
+  }
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    return false;
+  }
+
+  appliedRemixConfigValues_[std::move(keyString)] = value;
+  return true;
+}
+
+bool RemixRenderer::setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force) {
+  return setConfigVariableLocked(key, formatConfigFloat(value, precision), logChange, force);
+}
+
+void RemixRenderer::applyRemixConfigPreStartupLocked() {
+  setConfigVariableLocked("rtx.sceneScale", "0.01", true);
+  setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "32", true);
+}
+
+void RemixRenderer::applyRemixConfigPostStartupLocked() {
+  setConfigVariableLocked("rtx.skyMode", "1", true, true);
+  setConfigVariableLocked("rtx.di.initialSampleCount", "32", true, true);
+  setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
+  setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "True", true, true);
+  setConfigVariableLocked("rtx.di.enableDenoiserGradient", "True", true, true);
+}
+
+void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {
+  if (forceDarkAtmosphere) {
+    setConfigFloatLocked("rtx.atmosphere.sunElevation", -30.0f, 2, false);
+    return;
+  }
+
+  const float wrappedAngle = celestialAngle - std::floor(celestialAngle);
+  const double rotationRadians = static_cast<double>(wrappedAngle) * 2.0 * kPi;
+  const double elevationRadians = std::asin(std::clamp(std::cos(rotationRadians), -1.0, 1.0));
+  const float elevationDegrees = static_cast<float>(elevationRadians * 180.0 / kPi);
+  const float sunRotationDegrees = std::sin(rotationRadians) < 0.0 ? 180.0f : 0.0f;
+  setConfigFloatLocked("rtx.atmosphere.sunElevation", elevationDegrees, 2, false);
+  setConfigFloatLocked("rtx.atmosphere.sunRotation", sunRotationDegrees, 2, false);
 }
 
 void RemixRenderer::resize(std::uint32_t width, std::uint32_t height) {

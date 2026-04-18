@@ -72,6 +72,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCloudLayer(
     jfloat cameraZ,
     jfloat cloudHeight,
     jfloat cloudScroll,
+    jfloat celestialAngle,
     jfloat colorR,
     jfloat colorG,
     jfloat colorB) {
@@ -82,9 +83,15 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCloudLayer(
       cameraZ,
       cloudHeight,
       cloudScroll,
+      celestialAngle,
       colorR,
       colorG,
       colorB);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateAtmosphereState(
+    JNIEnv*, jclass, jfloat celestialAngle, jboolean forceDarkAtmosphere) {
+  RemixRenderer::instance().updateAtmosphereState(celestialAngle, forceDarkAtmosphere == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIEnv*, jclass) {
