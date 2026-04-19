@@ -304,6 +304,14 @@ public:
       float colorG,
       float colorB);
   void updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere);
+  void updateFogState(
+      std::uint32_t fogMode,
+      float colorR,
+      float colorG,
+      float colorB,
+      float fogScale,
+      float fogEnd,
+      float fogDensity);
   void clearCloudLayer();
   void beginDynamicEntityFrame();
   void beginDynamicEntity(int entityId);
@@ -581,6 +589,7 @@ private:
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};
   bool warnedMissingSetConfigVariable_ {false};
+  bool warnedMissingSetFogState_ {false};
   std::string lastError_;
 };
 

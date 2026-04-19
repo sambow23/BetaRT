@@ -155,6 +155,10 @@ public final class MinecraftRemixHooks {
         RemixCloudCapture.onCloudRender(minecraft, world, cloudTick, partialTicks, fancy);
     }
 
+    public static void onFogState(ls entity, boolean thickFog, int renderLayer, boolean forceStartAtCamera, float viewDistance, float colorR, float colorG, float colorB) {
+        RemixFogCapture.onFogState(entity, thickFog, renderLayer, forceStartAtCamera, viewDistance, colorR, colorG, colorB);
+    }
+
     public static void onLivingEntityFrameBegin() {
         RemixDynamicEntityCapture.onLivingEntityFrameBegin();
     }

@@ -177,6 +177,20 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nUpdateAtmosphereState(celestialAngle, forceDarkAtmosphere);
     }
 
+    public static synchronized void updateFogState(
+            int fogMode,
+            float colorR,
+            float colorG,
+            float colorB,
+            float fogScale,
+            float fogEnd,
+            float fogDensity) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nUpdateFogState(fogMode, colorR, colorG, colorB, fogScale, fogEnd, fogDensity);
+    }
+
     public static synchronized void clearCloudLayer() {
         if (!initialized) {
             return;

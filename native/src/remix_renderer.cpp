@@ -424,6 +424,7 @@ void RemixRenderer::shutdownLocked() {
   lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
   appliedRemixConfigValues_.clear();
   warnedMissingSetConfigVariable_ = false;
+  warnedMissingSetFogState_ = false;
   lastError_.clear();
 }
 
@@ -486,6 +487,41 @@ void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forc
   const float sunRotationDegrees = std::sin(rotationRadians) < 0.0 ? 180.0f : 0.0f;
   setConfigFloatLocked("rtx.atmosphere.sunElevation", elevationDegrees, 2, false);
   setConfigFloatLocked("rtx.atmosphere.sunRotation", sunRotationDegrees, 2, false);
+}
+
+void RemixRenderer::updateFogState(
+    std::uint32_t fogMode,
+    float colorR,
+    float colorG,
+    float colorB,
+    float fogScale,
+    float fogEnd,
+    float fogDensity) {
+  std::scoped_lock lock(mutex_);
+  if (!initialized_) {
+    return;
+  }
+
+  if (remix_.SetFogState == nullptr) {
+    if (!warnedMissingSetFogState_) {
+      warnedMissingSetFogState_ = true;
+      log("SetFogState not available; runtime depth-fog updates are disabled");
+    }
+    return;
+  }
+
+  remixapi_FogInfo fogInfo {};
+  fogInfo.sType = REMIXAPI_STRUCT_TYPE_FOG_INFO;
+  fogInfo.mode = fogMode;
+  fogInfo.color = {colorR, colorG, colorB};
+  fogInfo.scale = fogScale;
+  fogInfo.end = fogEnd;
+  fogInfo.density = fogDensity;
+
+  const remixapi_ErrorCode result = remix_.SetFogState(&fogInfo);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("SetFogState failed: " + errorCodeToString(result));
+  }
 }
 
 void RemixRenderer::resize(std::uint32_t width, std::uint32_t height) {

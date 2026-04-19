@@ -94,6 +94,25 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateAtmosphereStat
   RemixRenderer::instance().updateAtmosphereState(celestialAngle, forceDarkAtmosphere == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateFogState(
+    JNIEnv*, jclass,
+    jint fogMode,
+    jfloat colorR,
+    jfloat colorG,
+    jfloat colorB,
+    jfloat fogScale,
+    jfloat fogEnd,
+    jfloat fogDensity) {
+  RemixRenderer::instance().updateFogState(
+      static_cast<std::uint32_t>(fogMode),
+      colorR,
+      colorG,
+      colorB,
+      fogScale,
+      fogEnd,
+      fogDensity);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIEnv*, jclass) {
   RemixRenderer::instance().clearCloudLayer();
 }

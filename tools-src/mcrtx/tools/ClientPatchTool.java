@@ -132,6 +132,8 @@ public final class ClientPatchTool {
                 patchPxFrame(method);
             } else if (method.name.equals("a") && method.desc.equals("(FJ)V")) {
                 patchPxRender(method);
+            } else if (method.name.equals("a") && method.desc.equals("(IF)V")) {
+                patchPxFogSetup(method);
             } else if (method.name.equals("c") && method.desc.equals("(F)V")) {
                 patchPxWeatherRender(method);
             }
@@ -440,6 +442,16 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchPxFogSetup(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, fogStateCaptureCall());
+            }
+            node = next;
+        }
+    }
+
     private static void patchDkChunkBuild(MethodNode method) {
         final int chunkBuildEnabledLocal = 21;
 
@@ -675,6 +687,36 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onRemixUiTick",
                 "(Lnet/minecraft/client/Minecraft;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList fogStateCaptureCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "i", "Lls;"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "D", "Z"));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "j", "Lnet/minecraft/client/Minecraft;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "f", "Lfd;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "fd", "t", "Lxa;"));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "xa", "c", "Z"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "k", "F"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "g", "F"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "h", "F"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, "px", "i", "F"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onFogState",
+                "(Lls;ZIZFFFF)V",
                 false));
         return instructions;
     }

@@ -147,6 +147,15 @@ public final class RemixBridgeNative {
             float celestialAngle,
             boolean forceDarkAtmosphere);
 
+        public static native void nUpdateFogState(
+            int fogMode,
+            float colorR,
+            float colorG,
+            float colorB,
+            float fogScale,
+            float fogEnd,
+            float fogDensity);
+
         public static native void nClearCloudLayer();
 
             public static native void nBeginDynamicEntityFrame();
