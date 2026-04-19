@@ -123,7 +123,7 @@ void RemixRenderer::captureBlock(
   activeChunkBlocks_.push_back(block);
 }
 
-void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh) {
+void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh, bool allowNeighborRefresh) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild");
   std::scoped_lock lock(mutex_);
   const auto buildStart = std::chrono::steady_clock::now();
@@ -155,19 +155,26 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
   if (emittedGeometry && !activeChunkBlocks_.empty()) {
     ChunkMeshData& meshData = chunkMeshes_[chunkKey];
     const auto rebuildStart = std::chrono::steady_clock::now();
-    if (!rebuildChunkMesh(chunkKey, activeChunkBlocks_, meshData)) {
-      activeChunkBlocks_.clear();
-      chunkBuildActive_ = false;
-      activeChunkBuild_ = {};
-      return;
+    {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.rebuildChunkMesh");
+      if (!rebuildChunkMesh(chunkKey, activeChunkBlocks_, meshData)) {
+        activeChunkBlocks_.clear();
+        chunkBuildActive_ = false;
+        activeChunkBuild_ = {};
+        return;
+      }
     }
     rebuildNanos = toNanoseconds(std::chrono::steady_clock::now() - rebuildStart);
     rebuiltChunkMesh = true;
     const auto neighborRefreshStart = std::chrono::steady_clock::now();
-    if (deferNeighborRefresh) {
-      scheduleNeighbors();
-    } else {
-      refreshNeighborChunkMeshes(chunkKey);
+    if (allowNeighborRefresh) {
+      if (deferNeighborRefresh) {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.deferNeighborRefresh");
+        scheduleNeighbors();
+      } else {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.refreshNeighborRefresh");
+        refreshNeighborChunkMeshes(chunkKey);
+      }
     }
     neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
   } else {
@@ -176,10 +183,14 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
       destroyChunkMesh(chunkIt->second);
       chunkMeshes_.erase(chunkIt);
       const auto neighborRefreshStart = std::chrono::steady_clock::now();
-      if (deferNeighborRefresh) {
-        scheduleNeighbors();
-      } else {
-        refreshNeighborChunkMeshes(chunkKey);
+      if (allowNeighborRefresh) {
+        if (deferNeighborRefresh) {
+          MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.deferNeighborRefresh");
+          scheduleNeighbors();
+        } else {
+          MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.refreshNeighborRefresh");
+          refreshNeighborChunkMeshes(chunkKey);
+        }
       }
       neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
     }
@@ -928,21 +939,22 @@ void RemixRenderer::flushChunkNeighborRefreshes() {
     return;
   }
 
-  for (const ChunkKey& neighborKey : pendingNeighborRefresh_) {
-    // Skip neighbors that were themselves rebuilt this flush -- their mesh is
-    // already up to date and we don't want to rebuild the same chunk twice.
-    if (recentlyRebuiltChunks_.find(neighborKey) != recentlyRebuiltChunks_.end()) {
-      continue;
-    }
-    const auto neighborIt = chunkMeshes_.find(neighborKey);
-    if (neighborIt == chunkMeshes_.end()) {
-      continue;
-    }
-    if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
-      continue;
-    }
-    if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
-      break;
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::flushChunkNeighborRefreshes.iterateNeighbors");
+    for (const ChunkKey& neighborKey : pendingNeighborRefresh_) {
+      if (recentlyRebuiltChunks_.find(neighborKey) != recentlyRebuiltChunks_.end()) {
+        continue;
+      }
+      const auto neighborIt = chunkMeshes_.find(neighborKey);
+      if (neighborIt == chunkMeshes_.end()) {
+        continue;
+      }
+      if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
+        continue;
+      }
+      if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
+        break;
+      }
     }
   }
 
@@ -952,23 +964,26 @@ void RemixRenderer::flushChunkNeighborRefreshes() {
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::refreshNeighborChunkMeshes");
-  for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
-    ChunkKey neighborKey = chunkKey;
-    neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;
-    neighborKey.originY += kNeighborOffsets[faceIndex][1] * kChunkDimension;
-    neighborKey.originZ += kNeighborOffsets[faceIndex][2] * kChunkDimension;
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::refreshNeighborChunkMeshes.iterateNeighbors");
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+      ChunkKey neighborKey = chunkKey;
+      neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;
+      neighborKey.originY += kNeighborOffsets[faceIndex][1] * kChunkDimension;
+      neighborKey.originZ += kNeighborOffsets[faceIndex][2] * kChunkDimension;
 
-    const auto neighborIt = chunkMeshes_.find(neighborKey);
-    if (neighborIt == chunkMeshes_.end()) {
-      continue;
-    }
+      const auto neighborIt = chunkMeshes_.find(neighborKey);
+      if (neighborIt == chunkMeshes_.end()) {
+        continue;
+      }
 
-    if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
-      continue;
-    }
+      if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
+        continue;
+      }
 
-    if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
-      return;
+      if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
+        return;
+      }
     }
   }
 }

@@ -476,10 +476,14 @@ public final class MinecraftRenderHooks {
     }
 
     public static void endChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh) {
+        endChunkBuild(emittedGeometry, deferNeighborRefresh, true);
+    }
+
+    public static void endChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh, boolean allowNeighborRefresh) {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
-        RemixBridgeNative.nEndChunkBuild(capturedChunkBlocks > 0, deferNeighborRefresh);
+        RemixBridgeNative.nEndChunkBuild(capturedChunkBlocks > 0, deferNeighborRefresh, allowNeighborRefresh);
         chunkBuildCaptureActive = false;
         activeChunkRenderPass = 0;
         capturedChunkBlocks = 0;

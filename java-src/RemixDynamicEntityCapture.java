@@ -1,5 +1,6 @@
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
+import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import java.nio.FloatBuffer;
 import net.minecraft.client.Minecraft;
@@ -46,7 +47,10 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityFrameBegin() {
+        long beginNanos = System.nanoTime();
         ensureDynamicCaptureFrame();
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onLivingEntityFrameBegin.ensureFrame",
+                System.nanoTime() - beginNanos);
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
@@ -102,16 +106,27 @@ public final class RemixDynamicEntityCapture {
         ensureDynamicCaptureFrame();
 
         try {
+            long renderStartNanos = System.nanoTime();
             MODEL_VIEW_BUFFER.clear();
             GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
             float[] modelView = new float[16];
             MODEL_VIEW_BUFFER.get(modelView);
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            long stateReadEndNanos = System.nanoTime();
 
             MinecraftRenderHooks.beginDynamicEntity(painting.aD);
             MinecraftRenderHooks.setDynamicEntityTexture(PAINTING_TEXTURE_PATH);
             submitDynamicBoneTransform(0, modelToWorld);
+            long setupEndNanos = System.nanoTime();
             capturePaintingGeometry(painting, 0);
+            long captureEndNanos = System.nanoTime();
+
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPaintingRender.readState",
+                    stateReadEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPaintingRender.setupEntity",
+                    setupEndNanos - stateReadEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPaintingRender.captureGeometry",
+                    captureEndNanos - setupEndNanos);
         } finally {
             MinecraftRenderHooks.endDynamicEntity();
         }
@@ -208,10 +223,13 @@ public final class RemixDynamicEntityCapture {
             return;
         }
 
+        long renderStartNanos = System.nanoTime();
+
         bw renderer = th.a.a(minecraft.h);
         if (!(renderer instanceof ds)) {
             return;
         }
+        long lookupRendererEndNanos = System.nanoTime();
 
         ensureDynamicCaptureFrame();
         dynamicEntityActive = true;
@@ -250,17 +268,27 @@ public final class RemixDynamicEntityCapture {
             float[] overlayInverse = MatrixMath.invertAffineColumnMajor(overlayModelView);
             System.arraycopy(overlayInverse, 0, firstPersonShadowOverlayInverse, 0, firstPersonShadowOverlayInverse.length);
             GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
+            long setupEndNanos = System.nanoTime();
+            long shadowRenderEndNanos;
             try {
                 GL11.glColorMask(false, false, false, false);
                 GL11.glDepthMask(false);
                 GL11.glColor3f(brightness, brightness, brightness);
                 ((ds) renderer).a(player, renderX, renderY, renderZ, interpolatedYaw, partialTicks);
+                shadowRenderEndNanos = System.nanoTime();
             } finally {
                 th.b = previousRenderOriginX;
                 th.c = previousRenderOriginY;
                 th.d = previousRenderOriginZ;
                 GL11.glPopAttrib();
             }
+
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonShadowPlayerRender.lookupRenderer",
+                    lookupRendererEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonShadowPlayerRender.setupCapture",
+                    setupEndNanos - lookupRendererEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonShadowPlayerRender.renderShadow",
+                    shadowRenderEndNanos - setupEndNanos);
         } catch (RuntimeException exception) {
             disableFirstPersonShadowCapture(exception);
             return;
@@ -325,6 +353,7 @@ public final class RemixDynamicEntityCapture {
             return;
         }
         try {
+            long renderStartNanos = System.nanoTime();
             MODEL_VIEW_BUFFER.clear();
             GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
             float[] modelView = new float[16];
@@ -334,6 +363,7 @@ public final class RemixDynamicEntityCapture {
             GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
             float[] color = new float[4];
             COLOR_BUFFER.get(color);
+            long stateReadEndNanos = System.nanoTime();
 
             float[] modelToWorld;
             if (firstPersonShadowCaptureActive) {
@@ -349,6 +379,7 @@ public final class RemixDynamicEntityCapture {
                 return;
             }
             submitDynamicBoneTransform(boneIndex, modelToWorld);
+            long setupEndNanos = System.nanoTime();
 
             for (tz polygon : polygons) {
                 if (polygon == null || polygon.a == null || polygon.a.length != 4) {
@@ -377,6 +408,14 @@ public final class RemixDynamicEntityCapture {
                         colorRgba,
                         boneIndex);
             }
+            long quadEmitEndNanos = System.nanoTime();
+
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onModelPartRender.readState",
+                    stateReadEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onModelPartRender.setupTransform",
+                    setupEndNanos - stateReadEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onModelPartRender.emitQuads",
+                    quadEmitEndNanos - setupEndNanos);
         } catch (RuntimeException exception) {
             handleHookFailure(exception);
         }
@@ -406,6 +445,7 @@ public final class RemixDynamicEntityCapture {
         }
 
         try {
+            long renderStartNanos = System.nanoTime();
             MODEL_VIEW_BUFFER.clear();
             GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
             float[] modelView = new float[16];
@@ -415,6 +455,7 @@ public final class RemixDynamicEntityCapture {
             GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
             float[] currentColor = new float[4];
             COLOR_BUFFER.get(currentColor);
+            long stateReadEndNanos = System.nanoTime();
 
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             int fallbackColorRgba = ColorMath.sanitizePackedColor(ColorMath.packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
@@ -423,6 +464,7 @@ public final class RemixDynamicEntityCapture {
                 return;
             }
             submitDynamicBoneTransform(boneIndex, modelToWorld);
+            long setupEndNanos = System.nanoTime();
 
             for (int vertexIndex = 0; vertexIndex + 5 < vertexCount; vertexIndex += 6) {
                 int quadColor = hasColor ? ColorMath.sanitizePackedColor(ColorMath.unpackTessellatorColor(rawVertexData, vertexIndex * 8 + 5)) : fallbackColorRgba;
@@ -448,6 +490,14 @@ public final class RemixDynamicEntityCapture {
                         quadColor,
                         boneIndex);
             }
+            long quadEmitEndNanos = System.nanoTime();
+
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonTessellatorDraw.readState",
+                    stateReadEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonTessellatorDraw.setupTransform",
+                    setupEndNanos - stateReadEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFirstPersonTessellatorDraw.emitQuads",
+                    quadEmitEndNanos - setupEndNanos);
         } catch (RuntimeException exception) {
             handleHookFailure(exception);
         }
@@ -573,9 +623,12 @@ public final class RemixDynamicEntityCapture {
             return;
         }
 
+        long beginFrameStartNanos = System.nanoTime();
         MinecraftRenderHooks.beginDynamicEntityFrame();
         MinecraftRenderHooks.beginDestroyOverlayFrame();
         dynamicCaptureFrameActive = true;
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.dynamicEntity.ensureFrame.beginFrame",
+                System.nanoTime() - beginFrameStartNanos);
     }
 
     private static String normalizeDynamicTexturePath(String primaryTexture, String fallbackTexture) {

@@ -1,3 +1,4 @@
+import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MinecraftRenderHooks;
 
 public final class RemixCloudCapture {
@@ -9,12 +10,19 @@ public final class RemixCloudCapture {
             return;
         }
 
+        long renderStartNanos = System.nanoTime();
+
         if (world != null && world.t != null) {
             MinecraftRenderHooks.updateAtmosphereState(world.b(partialTicks), world.t instanceof wd);
         }
+        long atmosphereEndNanos = System.nanoTime();
 
         if (minecraft == null || world == null || world.t == null || world.t.c || minecraft.i == null) {
             MinecraftRenderHooks.clearCloudLayer();
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onCloudRender.atmosphereState",
+                    atmosphereEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onCloudRender.clearLayer",
+                    System.nanoTime() - atmosphereEndNanos);
             return;
         }
 
@@ -41,5 +49,11 @@ public final class RemixCloudCapture {
                 colorR,
                 colorG,
                 colorB);
+        long submitLayerEndNanos = System.nanoTime();
+
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onCloudRender.atmosphereState",
+            atmosphereEndNanos - renderStartNanos);
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onCloudRender.submitLayer",
+            submitLayerEndNanos - atmosphereEndNanos);
     }
 }

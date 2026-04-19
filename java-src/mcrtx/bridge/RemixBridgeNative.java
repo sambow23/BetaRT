@@ -239,7 +239,7 @@ public final class RemixBridgeNative {
             float liquidHeight3,
             float liquidFlowAngle);
 
-    public static native void nEndChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh);
+    public static native void nEndChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh, boolean allowNeighborRefresh);
 
     public static native void nFlushChunkNeighborRefreshes();
 

@@ -75,7 +75,6 @@ public final class MinecraftRemixHooks {
             resetRemixUiTracking();
             resetPerfTracking();
             UiOverlayCapture.reset();
-            RemixChunkCapture.stopWorker();
             MinecraftRenderHooks.shutdown();
         } finally {
             HookProfiler.endHook("hook.onShutdown", __perf);
@@ -132,6 +131,8 @@ public final class MinecraftRemixHooks {
             long frameStartNanos = System.nanoTime();
             long renderMethodStartNanos = activeRenderMethodStartNanos;
             long uiRenderBeginNanos = activeUiRenderBeginNanos;
+            RemixChunkCapture.flushPendingChunkRecaptures();
+            long flushEndNanos = System.nanoTime();
             if (!loggedPresent) {
                 loggedPresent = true;
                 System.out.println("[mcrtx] onPresent");
@@ -152,8 +153,10 @@ public final class MinecraftRemixHooks {
 
             // onPresent sub-site breakdown. Uses the raw timestamps captured
             // above so there's no extra instrumentation overhead.
+                HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.chunkFlush",
+                    flushEndNanos - frameStartNanos);
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.profilerFlush",
-                    profilerFlushEndNanos - frameStartNanos);
+                    profilerFlushEndNanos - flushEndNanos);
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.present",
                     presentEndNanos - profilerFlushEndNanos);
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.post",
@@ -175,7 +178,7 @@ public final class MinecraftRemixHooks {
                     frameEndNanos - frameStartNanos,
                 renderMethodNanos,
                 prePresentNanos,
-                    0L,
+                    flushEndNanos - frameStartNanos,
                     presentEndNanos - profilerFlushEndNanos,
                     frameEndNanos - presentEndNanos,
                     RemixChunkCapture.lastFlushDurationNanos(),

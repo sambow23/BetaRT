@@ -326,10 +326,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(
-    JNIEnv*, jclass, jboolean emittedGeometry, jboolean deferNeighborRefresh) {
+    JNIEnv*, jclass, jboolean emittedGeometry, jboolean deferNeighborRefresh, jboolean allowNeighborRefresh) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEndChunkBuild");
   RemixRenderer::instance().endChunkBuild(
-      emittedGeometry == JNI_TRUE, deferNeighborRefresh == JNI_TRUE);
+      emittedGeometry == JNI_TRUE,
+      deferNeighborRefresh == JNI_TRUE,
+      allowNeighborRefresh == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nFlushChunkNeighborRefreshes(

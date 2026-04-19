@@ -1,5 +1,6 @@
 import java.nio.FloatBuffer;
 import mcrtx.bridge.CameraPose;
+import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
 import org.lwjgl.BufferUtils;
@@ -110,12 +111,15 @@ public final class RemixCameraState {
         if (!MinecraftRenderHooks.isInitialized()) {
             return;
         }
+        long captureStartNanos = System.nanoTime();
         VIEW_BUFFER.clear();
         GL11.glGetFloat(GL_MODELVIEW_MATRIX, VIEW_BUFFER);
+        long readModelViewEndNanos = System.nanoTime();
         float[] view = new float[16];
         VIEW_BUFFER.get(view);
 
         float[] inverse = MatrixMath.invertAffineColumnMajor(view);
+        long invertViewEndNanos = System.nanoTime();
         inverse[12] += cameraPositionX;
         inverse[13] += cameraPositionY;
         inverse[14] += cameraPositionZ;
@@ -155,6 +159,14 @@ public final class RemixCameraState {
         cameraPose.nearPlane = nearPlane;
         cameraPose.farPlane = farPlane;
         MinecraftRenderHooks.updateCamera(cameraPose);
+        long submitCameraEndNanos = System.nanoTime();
+
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFrameViewCaptured.readModelView",
+            readModelViewEndNanos - captureStartNanos);
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFrameViewCaptured.invertView",
+            invertViewEndNanos - readModelViewEndNanos);
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onFrameViewCaptured.submitCamera",
+            submitCameraEndNanos - invertViewEndNanos);
     }
 
     static float[] buildInverseViewMatrix() {

@@ -403,7 +403,7 @@ public:
       float liquidHeight2,
       float liquidHeight3,
       float liquidFlowAngle);
-  void endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh = false);
+  void endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh = false, bool allowNeighborRefresh = true);
   void flushChunkNeighborRefreshes();
       bool drawScreenOverlay(
         const void* pixelData,
