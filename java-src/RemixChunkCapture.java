@@ -3,8 +3,7 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
-import java.util.Iterator;
-import java.util.LinkedHashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 public final class RemixChunkCapture {
@@ -21,6 +20,7 @@ public final class RemixChunkCapture {
     private static final int BACKLOG_CRITICAL_QUEUE_DEPTH = 1024;
     private static final int BACKLOG_RECOVERY_MIN_BUDGET = 4;
     private static final int BACKLOG_CRITICAL_MIN_BUDGET = 6;
+    private static final int DIRTY_REGION_FULL_SCAN_BLOCK_THRESHOLD = 2048;
     private static final double NEIGHBOR_REFRESH_RECOVERY_DISTANCE_SQ = 96.0 * 96.0;
     private static final double NEIGHBOR_REFRESH_CRITICAL_DISTANCE_SQ = 64.0 * 64.0;
     private static final long TARGET_RECAPTURE_FLUSH_NANOS = 4_500_000L;
@@ -30,7 +30,7 @@ public final class RemixChunkCapture {
     private static final int LAVA_STILL_BLOCK_ID = 10;
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final RemixWorldListener WORLD_LISTENER = new RemixWorldListener();
-    private static final LinkedHashSet<DirtyChunkSection> PENDING_RECAPTURE_SECTIONS = new LinkedHashSet<DirtyChunkSection>();
+    private static final LinkedHashMap<DirtyChunkSection, DirtyChunkSection> PENDING_RECAPTURE_SECTIONS = new LinkedHashMap<DirtyChunkSection, DirtyChunkSection>();
 
     private static boolean loggedChunkBuild;
     private static boolean loggedWorldListenerAttach;
@@ -44,10 +44,31 @@ public final class RemixChunkCapture {
     private RemixChunkCapture() {
     }
 
+    private static DirtyChunkSection newDirtySectionForRegion(
+            int originX,
+            int originY,
+            int originZ,
+            int minX,
+            int minY,
+            int minZ,
+            int maxX,
+            int maxY,
+            int maxZ) {
+        return new DirtyChunkSection(originX, originY, originZ, minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
     private static void clearPendingRecaptureForSection(int originX, int originY, int originZ) {
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             PENDING_RECAPTURE_SECTIONS.remove(new DirtyChunkSection(originX, originY, originZ));
         }
+    }
+
+    private static boolean shouldUseFullSectionScan(DirtyChunkSection section) {
+        return section.coversWholeSection() || section.dirtyBlockVolume() >= DIRTY_REGION_FULL_SCAN_BLOCK_THRESHOLD;
+    }
+
+    private static int effectiveSectionScanBlockCount(DirtyChunkSection section, boolean fullSectionScan) {
+        return fullSectionScan ? CHUNK_DIMENSION * CHUNK_DIMENSION * CHUNK_DIMENSION : section.dirtyBlockVolume();
     }
 
     public static fd attachedWorld() {
@@ -293,29 +314,48 @@ public final class RemixChunkCapture {
 
     private static boolean recaptureChunkSectionPass(
             fd world,
-            int originX,
-            int originY,
-            int originZ,
+            DirtyChunkSection section,
             int renderPass,
-            boolean allowNeighborRefresh) {
+            boolean allowNeighborRefresh,
+            boolean fullSectionScan) {
         if (world == null || !MinecraftRenderHooks.isInitialized() || MinecraftRenderHooks.isChunkBuildCaptureActive()) {
             return false;
         }
 
+        int scanMinX = fullSectionScan ? section.originX : section.dirtyMinX;
+        int scanMinY = fullSectionScan ? section.originY : section.dirtyMinY;
+        int scanMinZ = fullSectionScan ? section.originZ : section.dirtyMinZ;
+        int scanMaxX = fullSectionScan ? section.originX + CHUNK_DIMENSION - 1 : section.dirtyMaxX;
+        int scanMaxY = fullSectionScan ? section.originY + CHUNK_DIMENSION - 1 : section.dirtyMaxY;
+        int scanMaxZ = fullSectionScan ? section.originZ + CHUNK_DIMENSION - 1 : section.dirtyMaxZ;
+
         long passStartNanos = System.nanoTime();
         boolean emittedGeometry = false;
-        if (!MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, CHUNK_DIMENSION, CHUNK_DIMENSION, CHUNK_DIMENSION, renderPass)) {
+        if (!MinecraftRenderHooks.beginChunkBuild(
+                section.originX,
+                section.originY,
+                section.originZ,
+                CHUNK_DIMENSION,
+                CHUNK_DIMENSION,
+                CHUNK_DIMENSION,
+                renderPass,
+                scanMinX,
+                scanMinY,
+                scanMinZ,
+                scanMaxX,
+                scanMaxY,
+                scanMaxZ)) {
             return false;
         }
         long beginBuildEndNanos = System.nanoTime();
         int capturedBlocks = 0;
 
-        for (int blockY = originY; blockY < originY + CHUNK_DIMENSION; ++blockY) {
+        for (int blockY = scanMinY; blockY <= scanMaxY; ++blockY) {
             if (blockY < 0 || blockY >= 128) {
                 continue;
             }
-            for (int blockZ = originZ; blockZ < originZ + CHUNK_DIMENSION; ++blockZ) {
-                for (int blockX = originX; blockX < originX + CHUNK_DIMENSION; ++blockX) {
+            for (int blockZ = scanMinZ; blockZ <= scanMaxZ; ++blockZ) {
+                for (int blockX = scanMinX; blockX <= scanMaxX; ++blockX) {
                     int blockId = world.a(blockX, blockY, blockZ);
                     if (blockId <= 0 || blockId >= uu.m.length) {
                         continue;
@@ -357,12 +397,13 @@ public final class RemixChunkCapture {
         return true;
     }
 
-        private static boolean recaptureChunkSection(fd world, int originX, int originY, int originZ, boolean allowNeighborRefresh) {
-            if (!recaptureChunkSectionPass(world, originX, originY, originZ, 0, allowNeighborRefresh)) {
+        private static boolean recaptureChunkSection(fd world, DirtyChunkSection section, boolean allowNeighborRefresh) {
+            boolean fullSectionScan = shouldUseFullSectionScan(section);
+            if (!recaptureChunkSectionPass(world, section, 0, allowNeighborRefresh, fullSectionScan)) {
             return false;
         }
 
-            return recaptureChunkSectionPass(world, originX, originY, originZ, 1, allowNeighborRefresh);
+            return recaptureChunkSectionPass(world, section, 1, allowNeighborRefresh, fullSectionScan);
     }
 
     static void queueRecaptureRegion(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
@@ -389,7 +430,16 @@ public final class RemixChunkCapture {
         for (int originY = originMinY; originY <= originMaxY; originY += CHUNK_DIMENSION) {
             for (int originZ = originMinZ; originZ <= originMaxZ; originZ += CHUNK_DIMENSION) {
                 for (int originX = originMinX; originX <= originMaxX; originX += CHUNK_DIMENSION) {
-                    candidateSections.add(new DirtyChunkSection(originX, originY, originZ));
+                    candidateSections.add(newDirtySectionForRegion(
+                            originX,
+                            originY,
+                            originZ,
+                            minX,
+                            minY,
+                            minZ,
+                            maxX,
+                            maxY,
+                            maxZ));
                 }
             }
         }
@@ -413,9 +463,18 @@ public final class RemixChunkCapture {
         int sectionsDeduped = 0;
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             for (DirtyChunkSection section : candidateSections) {
-                if (PENDING_RECAPTURE_SECTIONS.add(section)) {
+                DirtyChunkSection existing = PENDING_RECAPTURE_SECTIONS.get(section);
+                if (existing == null) {
+                    PENDING_RECAPTURE_SECTIONS.put(section, section);
                     sectionsAdded += 1;
                 } else {
+                    existing.mergeDirtyRegion(
+                            section.dirtyMinX,
+                            section.dirtyMinY,
+                            section.dirtyMinZ,
+                            section.dirtyMaxX,
+                            section.dirtyMaxY,
+                            section.dirtyMaxZ);
                     sectionsDeduped += 1;
                 }
             }
@@ -556,7 +615,7 @@ public final class RemixChunkCapture {
             if (PENDING_RECAPTURE_SECTIONS.isEmpty() || budget <= 0) {
                 return queuedSections;
             }
-            queuedSections.addAll(PENDING_RECAPTURE_SECTIONS);
+            queuedSections.addAll(PENDING_RECAPTURE_SECTIONS.values());
         }
 
         if (queuedSections.size() <= budget) {
@@ -627,28 +686,46 @@ public final class RemixChunkCapture {
         long selectSectionsEndNanos = System.nanoTime();
         int sectionsWithNeighborRefresh = 0;
         int sectionsWithoutNeighborRefresh = 0;
+        int sectionsFullScan = 0;
+        int sectionsPartialScan = 0;
+        int sectionScanBlocks = 0;
 
-        for (DirtyChunkSection section : sectionsToRecapture) {
+        for (DirtyChunkSection selectedSection : sectionsToRecapture) {
             if (MinecraftRenderHooks.isChunkBuildCaptureActive()) {
                 break;
             }
 
+            DirtyChunkSection section;
+            synchronized (PENDING_RECAPTURE_SECTIONS) {
+                section = PENDING_RECAPTURE_SECTIONS.remove(selectedSection);
+            }
+            if (section == null) {
+                continue;
+            }
+
             long sectionStartNanos = System.nanoTime();
             boolean allowNeighborRefresh = shouldScheduleNeighborRefresh(section, queueDepthBefore);
-            if (!recaptureChunkSection(attachedWorld, section.originX, section.originY, section.originZ, allowNeighborRefresh)) {
+            boolean fullSectionScan = shouldUseFullSectionScan(section);
+            if (!recaptureChunkSection(attachedWorld, section, allowNeighborRefresh)) {
+                synchronized (PENDING_RECAPTURE_SECTIONS) {
+                    PENDING_RECAPTURE_SECTIONS.put(section, section);
+                }
                 break;
             }
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.chunkRecapture.section",
                     System.nanoTime() - sectionStartNanos);
 
+            if (fullSectionScan) {
+                sectionsFullScan += 1;
+            } else {
+                sectionsPartialScan += 1;
+            }
+            sectionScanBlocks += effectiveSectionScanBlockCount(section, fullSectionScan);
+
             if (allowNeighborRefresh) {
                 sectionsWithNeighborRefresh += 1;
             } else {
                 sectionsWithoutNeighborRefresh += 1;
-            }
-
-            synchronized (PENDING_RECAPTURE_SECTIONS) {
-                PENDING_RECAPTURE_SECTIONS.remove(section);
             }
             ++sectionsRecaptured;
         }
@@ -670,6 +747,9 @@ public final class RemixChunkCapture {
     HookProfiler.recordCount("chunkRecapture.sectionBudget", sectionsBudget);
         HookProfiler.recordCount("chunkRecapture.sectionsSelected", sectionsToRecapture.size());
         HookProfiler.recordCount("chunkRecapture.sectionsFlushed", sectionsRecaptured);
+        HookProfiler.recordCount("chunkRecapture.sectionsFullScan", sectionsFullScan);
+        HookProfiler.recordCount("chunkRecapture.sectionsPartialScan", sectionsPartialScan);
+        HookProfiler.recordCount("chunkRecapture.sectionScanBlocks", sectionScanBlocks);
         HookProfiler.recordCount("chunkRecapture.sectionsNeighborRefreshed", sectionsWithNeighborRefresh);
         HookProfiler.recordCount("chunkRecapture.sectionsNeighborDeferred", sectionsWithoutNeighborRefresh);
         HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.chunkRecapture.flush.selectSections",

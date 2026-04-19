@@ -33,6 +33,8 @@ struct CameraState {
 struct ChunkBuildState {
   int origin[3] {0, 0, 0};
   int size[3] {0, 0, 0};
+  int dirtyMin[3] {0, 0, 0};
+  int dirtyMax[3] {0, 0, 0};
   int renderPass {0};
   std::uint64_t blockCount {0};
   std::array<std::uint32_t, 256> blockIdCounts {};
@@ -376,7 +378,20 @@ public:
       std::uint32_t colorRgba,
       std::uint32_t textureKind);
   void clearWorldScene();
-  bool beginChunkBuild(int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass);
+  bool beginChunkBuild(
+      int originX,
+      int originY,
+      int originZ,
+      int sizeX,
+      int sizeY,
+      int sizeZ,
+      int dirtyMinX,
+      int dirtyMinY,
+      int dirtyMinZ,
+      int dirtyMaxX,
+      int dirtyMaxY,
+      int dirtyMaxZ,
+      int renderPass);
   void captureBlock(
       int blockX,
       int blockY,
@@ -457,7 +472,10 @@ private:
       float colorG,
       float colorB);
   DynamicEntityMeshData* findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState);
-  bool rebuildChunkMesh(const ChunkKey& chunkKey, const std::vector<CapturedBlockInstance>& blocks, ChunkMeshData& meshData);
+  bool rebuildChunkMesh(
+      const ChunkBuildState& chunkBuild,
+      const std::vector<CapturedBlockInstance>& blocks,
+      ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
   bool rebuildFireMesh();
   bool rebuildDestroyOverlayMesh();

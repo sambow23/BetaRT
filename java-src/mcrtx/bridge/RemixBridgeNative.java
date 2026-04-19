@@ -210,6 +210,12 @@ public final class RemixBridgeNative {
             int sizeX,
             int sizeY,
             int sizeZ,
+            int dirtyMinX,
+            int dirtyMinY,
+            int dirtyMinZ,
+            int dirtyMaxX,
+            int dirtyMaxY,
+            int dirtyMaxZ,
             int renderPass);
 
     public static native void nCaptureBlock(

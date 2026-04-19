@@ -270,10 +270,24 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     JNIEnv*, jclass,
     jint originX, jint originY, jint originZ,
     jint sizeX, jint sizeY, jint sizeZ,
+    jint dirtyMinX, jint dirtyMinY, jint dirtyMinZ,
+    jint dirtyMaxX, jint dirtyMaxY, jint dirtyMaxZ,
     jint renderPass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginChunkBuild");
   const bool ok = RemixRenderer::instance().beginChunkBuild(
-      originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+      originX,
+      originY,
+      originZ,
+      sizeX,
+      sizeY,
+      sizeZ,
+      dirtyMinX,
+      dirtyMinY,
+      dirtyMinZ,
+      dirtyMaxX,
+      dirtyMaxY,
+      dirtyMaxZ,
+      renderPass);
   return static_cast<jboolean>(fromJniBoolean(ok));
 }
 

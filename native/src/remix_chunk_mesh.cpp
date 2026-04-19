@@ -30,7 +30,19 @@ std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
 }  // namespace
 
 bool RemixRenderer::beginChunkBuild(
-    int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass) {
+  int originX,
+  int originY,
+  int originZ,
+  int sizeX,
+  int sizeY,
+  int sizeZ,
+  int dirtyMinX,
+  int dirtyMinY,
+  int dirtyMinZ,
+  int dirtyMaxX,
+  int dirtyMaxY,
+  int dirtyMaxZ,
+  int renderPass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginChunkBuild");
   std::scoped_lock lock(mutex_);
 
@@ -50,6 +62,12 @@ bool RemixRenderer::beginChunkBuild(
   activeChunkBuild_.size[0] = sizeX;
   activeChunkBuild_.size[1] = sizeY;
   activeChunkBuild_.size[2] = sizeZ;
+  activeChunkBuild_.dirtyMin[0] = dirtyMinX;
+  activeChunkBuild_.dirtyMin[1] = dirtyMinY;
+  activeChunkBuild_.dirtyMin[2] = dirtyMinZ;
+  activeChunkBuild_.dirtyMax[0] = dirtyMaxX;
+  activeChunkBuild_.dirtyMax[1] = dirtyMaxY;
+  activeChunkBuild_.dirtyMax[2] = dirtyMaxZ;
   activeChunkBuild_.renderPass = renderPass;
   activeChunkBlocks_.clear();
   return true;
@@ -133,6 +151,12 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
   }
 
   const ChunkKey chunkKey = makeChunkKey(activeChunkBuild_);
+  const bool partialChunkBuild = activeChunkBuild_.dirtyMin[0] != activeChunkBuild_.origin[0]
+      || activeChunkBuild_.dirtyMin[1] != activeChunkBuild_.origin[1]
+      || activeChunkBuild_.dirtyMin[2] != activeChunkBuild_.origin[2]
+      || activeChunkBuild_.dirtyMax[0] != activeChunkBuild_.origin[0] + activeChunkBuild_.size[0] - 1
+      || activeChunkBuild_.dirtyMax[1] != activeChunkBuild_.origin[1] + activeChunkBuild_.size[1] - 1
+      || activeChunkBuild_.dirtyMax[2] != activeChunkBuild_.origin[2] + activeChunkBuild_.size[2] - 1;
 
   // When deferring, enqueue neighbor keys into a set so multiple sibling
   // rebuilds in the same flush collapse into one refresh per unique neighbor.
@@ -152,17 +176,22 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
   std::uint64_t rebuildNanos = 0;
   std::uint64_t neighborRefreshNanos = 0;
   bool rebuiltChunkMesh = false;
-  if (emittedGeometry && !activeChunkBlocks_.empty()) {
-    ChunkMeshData& meshData = chunkMeshes_[chunkKey];
+  if ((emittedGeometry && !activeChunkBlocks_.empty()) || partialChunkBuild) {
+    auto [chunkIt, inserted] = chunkMeshes_.try_emplace(chunkKey);
+    (void)inserted;
+    ChunkMeshData& meshData = chunkIt->second;
     const auto rebuildStart = std::chrono::steady_clock::now();
     {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.rebuildChunkMesh");
-      if (!rebuildChunkMesh(chunkKey, activeChunkBlocks_, meshData)) {
+      if (!rebuildChunkMesh(activeChunkBuild_, activeChunkBlocks_, meshData)) {
         activeChunkBlocks_.clear();
         chunkBuildActive_ = false;
         activeChunkBuild_ = {};
         return;
       }
+    }
+    if (!meshData.hasOccupancy && meshData.meshHandle == nullptr && meshData.blockCount == 0) {
+      chunkMeshes_.erase(chunkIt);
     }
     rebuildNanos = toNanoseconds(std::chrono::steady_clock::now() - rebuildStart);
     rebuiltChunkMesh = true;
@@ -237,11 +266,19 @@ void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
 }
 
 bool RemixRenderer::rebuildChunkMesh(
-    const ChunkKey& chunkKey,
+    const ChunkBuildState& chunkBuild,
     const std::vector<CapturedBlockInstance>& blocks,
     ChunkMeshData& meshData) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMesh");
-  if (blocks.empty()) {
+  const ChunkKey chunkKey = makeChunkKey(chunkBuild);
+  const bool partialChunkBuild = chunkBuild.dirtyMin[0] != chunkBuild.origin[0]
+      || chunkBuild.dirtyMin[1] != chunkBuild.origin[1]
+      || chunkBuild.dirtyMin[2] != chunkBuild.origin[2]
+      || chunkBuild.dirtyMax[0] != chunkBuild.origin[0] + chunkBuild.size[0] - 1
+      || chunkBuild.dirtyMax[1] != chunkBuild.origin[1] + chunkBuild.size[1] - 1
+      || chunkBuild.dirtyMax[2] != chunkBuild.origin[2] + chunkBuild.size[2] - 1;
+
+  if (blocks.empty() && !partialChunkBuild) {
     destroyChunkMesh(meshData);
     meshData.geometryFingerprint = 0;
     meshData.meshFingerprint = 0;
@@ -254,9 +291,28 @@ bool RemixRenderer::rebuildChunkMesh(
 
   std::array<std::uint8_t, kBlocksPerChunk> occupancy {};
   std::array<ChunkBlockCell, kBlocksPerChunk> cells {};
-  std::vector<std::uint16_t> fireCellIndices;
-  fireCellIndices.reserve(16);
-  std::size_t occupiedBlocks = 0;
+  if (partialChunkBuild && meshData.hasOccupancy) {
+    occupancy = meshData.occupancy;
+    cells = meshData.cells;
+
+    const int dirtyMinLocalX = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMin[0] - chunkKey.originX));
+    const int dirtyMinLocalY = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMin[1] - chunkKey.originY));
+    const int dirtyMinLocalZ = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMin[2] - chunkKey.originZ));
+    const int dirtyMaxLocalX = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMax[0] - chunkKey.originX));
+    const int dirtyMaxLocalY = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMax[1] - chunkKey.originY));
+    const int dirtyMaxLocalZ = std::max(0, std::min(kChunkDimension - 1, chunkBuild.dirtyMax[2] - chunkKey.originZ));
+
+    for (int localY = dirtyMinLocalY; localY <= dirtyMaxLocalY; ++localY) {
+      for (int localZ = dirtyMinLocalZ; localZ <= dirtyMaxLocalZ; ++localZ) {
+        for (int localX = dirtyMinLocalX; localX <= dirtyMaxLocalX; ++localX) {
+          const int occupancyIndex = blockIndex(localX, localY, localZ);
+          occupancy[occupancyIndex] = 0;
+          cells[occupancyIndex] = ChunkBlockCell {};
+        }
+      }
+    }
+  }
+
   for (const CapturedBlockInstance& block : blocks) {
     const int localX = block.position[0] - chunkKey.originX;
     const int localY = block.position[1] - chunkKey.originY;
@@ -267,10 +323,7 @@ bool RemixRenderer::rebuildChunkMesh(
       continue;
     }
     const int occupancyIndex = blockIndex(localX, localY, localZ);
-    if (occupancy[occupancyIndex] == 0) {
-      occupancy[occupancyIndex] = 1;
-      ++occupiedBlocks;
-    }
+    occupancy[occupancyIndex] = 1;
     cells[occupancyIndex].terrainTiles = block.terrainTiles;
     cells[occupancyIndex].materialClass = block.materialClass < kTerrainMaterialClassCount
         ? block.materialClass
@@ -283,7 +336,17 @@ bool RemixRenderer::rebuildChunkMesh(
     cells[occupancyIndex].liquidHeights = block.liquidHeights;
     cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
     cells[occupancyIndex].blockColor = block.blockColor;
-    if (isFireRenderType(block.renderType)) {
+  }
+
+  std::vector<std::uint16_t> fireCellIndices;
+  fireCellIndices.reserve(16);
+  std::size_t occupiedBlocks = 0;
+  for (int occupancyIndex = 0; occupancyIndex < kBlocksPerChunk; ++occupancyIndex) {
+    if (occupancy[occupancyIndex] == 0) {
+      continue;
+    }
+    ++occupiedBlocks;
+    if (isFireRenderType(cells[occupancyIndex].renderType)) {
       fireCellIndices.push_back(static_cast<std::uint16_t>(occupancyIndex));
     }
   }

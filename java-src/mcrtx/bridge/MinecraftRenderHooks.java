@@ -400,6 +400,36 @@ public final class MinecraftRenderHooks {
             int sizeY,
             int sizeZ,
             int renderPass) {
+        return beginChunkBuild(
+                originX,
+                originY,
+                originZ,
+                sizeX,
+                sizeY,
+                sizeZ,
+                renderPass,
+                originX,
+                originY,
+                originZ,
+                originX + sizeX - 1,
+                originY + sizeY - 1,
+                originZ + sizeZ - 1);
+    }
+
+    public static boolean beginChunkBuild(
+            int originX,
+            int originY,
+            int originZ,
+            int sizeX,
+            int sizeY,
+            int sizeZ,
+            int renderPass,
+            int dirtyMinX,
+            int dirtyMinY,
+            int dirtyMinZ,
+            int dirtyMaxX,
+            int dirtyMaxY,
+            int dirtyMaxZ) {
         if (!initialized) {
             chunkBuildCaptureActive = false;
             activeChunkRenderPass = 0;
@@ -407,7 +437,20 @@ public final class MinecraftRenderHooks {
             return false;
         }
 
-        boolean active = RemixBridgeNative.nBeginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        boolean active = RemixBridgeNative.nBeginChunkBuild(
+                originX,
+                originY,
+                originZ,
+                sizeX,
+                sizeY,
+                sizeZ,
+                dirtyMinX,
+                dirtyMinY,
+                dirtyMinZ,
+                dirtyMaxX,
+                dirtyMaxY,
+                dirtyMaxZ,
+                renderPass);
         chunkBuildCaptureActive = active;
         activeChunkRenderPass = active ? renderPass : 0;
         capturedChunkBlocks = 0;
