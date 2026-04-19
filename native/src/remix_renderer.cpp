@@ -313,12 +313,16 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
     }
 
     {
+      const auto lockRequestedAt = std::chrono::steady_clock::now();
       std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
       if (!lock.owns_lock()) {
         Sleep(1);
         continue;
       }
-      presentOk = presentLocked(lock, perfSummary);
+      presentOk = presentLocked(
+          lock,
+          perfSummary,
+          toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt));
     }
     nextStandaloneRenderAt = std::chrono::steady_clock::now() + kStandaloneAutonomousFrameInterval;
     if (!perfSummary.empty()) {
@@ -694,7 +698,9 @@ void RemixRenderer::updateCamera(const CameraState& camera) {
 
 bool RemixRenderer::present() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::present");
+  const auto lockRequestedAt = std::chrono::steady_clock::now();
   std::unique_lock<std::mutex> lock(mutex_);
+  const auto lockAcquiredAt = std::chrono::steady_clock::now();
 
   if (standaloneOutputWindow_) {
     if (!initialized_) {
@@ -707,7 +713,10 @@ bool RemixRenderer::present() {
   }
 
   std::string perfSummary;
-  const bool ok = presentLocked(lock, perfSummary);
+  const bool ok = presentLocked(
+      lock,
+      perfSummary,
+      toNanoseconds(lockAcquiredAt - lockRequestedAt));
   lock.unlock();
   if (!perfSummary.empty()) {
     log(perfSummary);
@@ -841,10 +850,11 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   return true;
 }
 
-bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::string& perfSummary) {
+bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
+                                  std::string& perfSummary,
+                                  std::uint64_t lockWaitNanoseconds) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::presentLocked");
   const auto lockAcquiredAt = std::chrono::steady_clock::now();
-  const auto lockRequestedAt = lockAcquiredAt;
 
   if (!initialized_) {
     setError("present called before initialize");
@@ -967,15 +977,18 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::strin
   ++presentedFrames_;
 
   const auto frameEnd = std::chrono::steady_clock::now();
+  const auto cameraSubmitNanoseconds = toNanoseconds(cameraSubmitEnd - cameraSubmitStart);
+  const auto geometrySubmitNanoseconds = toNanoseconds(geometrySubmitEnd - geometrySubmitStart);
+  const auto uiSyncNanoseconds = toNanoseconds(frameEnd - uiSyncStart);
   perfWindow_.frames += 1;
-  perfWindow_.presentLockWait.add(toNanoseconds(lockAcquiredAt - lockRequestedAt));
+  perfWindow_.presentLockWait.add(lockWaitNanoseconds);
   lockHoldNanoseconds += toNanoseconds(frameEnd - secondLockAcquiredAt);
   perfWindow_.presentLockHold.add(lockHoldNanoseconds);
   perfWindow_.outputWindowWork.add(toNanoseconds(outputWindowEnd - outputWindowStart));
-  perfWindow_.cameraSubmit.add(toNanoseconds(cameraSubmitEnd - cameraSubmitStart));
-  perfWindow_.geometrySubmit.add(toNanoseconds(geometrySubmitEnd - geometrySubmitStart));
+  perfWindow_.cameraSubmit.add(cameraSubmitNanoseconds);
+  perfWindow_.geometrySubmit.add(geometrySubmitNanoseconds);
   perfWindow_.remixPresent.add(toNanoseconds(remixPresentEnd - remixPresentStart));
-  perfWindow_.uiStateSync.add(toNanoseconds(frameEnd - uiSyncStart));
+  perfWindow_.uiStateSync.add(uiSyncNanoseconds);
   perfWindow_.frameCaptureBlockCalls.add(perfCaptureBlockCallsThisFrame_);
   perfWindow_.frameCachedChunkMeshes.add(perfCachedChunkMeshesThisFrame_);
   perfWindow_.frameChunkBuilds.add(perfChunkBuildsThisFrame_);
@@ -985,6 +998,14 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::strin
   perfWindow_.frameChunkBuildWork.add(perfChunkBuildWorkNanosThisFrame_);
   perfWindow_.frameChunkMeshRebuildWork.add(perfChunkMeshRebuildNanosThisFrame_);
   perfWindow_.frameNeighborRefreshWork.add(perfNeighborRefreshNanosThisFrame_);
+    ::mcrtx::perf::recordDuration(
+      ::mcrtx::perf::Side::Native, "presentLocked.lockWait", lockWaitNanoseconds);
+    ::mcrtx::perf::recordDuration(
+      ::mcrtx::perf::Side::Native, "presentLocked.lockHold", lockHoldNanoseconds);
+    ::mcrtx::perf::recordDuration(
+      ::mcrtx::perf::Side::Native, "presentLocked.cameraSubmit", cameraSubmitNanoseconds);
+    ::mcrtx::perf::recordDuration(
+      ::mcrtx::perf::Side::Native, "presentLocked.geometrySubmit", geometrySubmitNanoseconds);
 
   NativePerfWindow summaryWindow {};
   const bool shouldLogSummary = perfWindow_.frames >= kPerfLogIntervalFrames;

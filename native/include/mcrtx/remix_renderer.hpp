@@ -494,7 +494,9 @@ private:
   bool startStandaloneWorker(std::filesystem::path remixDllPath);
   bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
   void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
-  bool presentLocked(std::unique_lock<std::mutex>& lock, std::string& perfSummary);
+  bool presentLocked(std::unique_lock<std::mutex>& lock,
+                     std::string& perfSummary,
+                     std::uint64_t lockWaitNanoseconds);
   void resetPerFramePerfCounters() noexcept;
   void shutdownLocked();
   void setError(std::string message);

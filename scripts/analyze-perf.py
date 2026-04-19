@@ -116,7 +116,11 @@ def print_aggregate_summary(df: pd.DataFrame, top: int) -> None:
             for parent, parent_ms in parent_totals.sort_values(ascending=False).items():
                 child_ms = child_totals.get(parent, 0.0)
                 delta = parent_ms - child_ms
-                print(f"  {parent:<40} parent={parent_ms:10.2f} ms  children={child_ms:10.2f} ms  delta={delta:+9.2f} ms")
+                overhead_pct = (100.0 * delta / parent_ms) if parent_ms else 0.0
+                print(
+                    f"  {parent:<40} parent={parent_ms:10.2f} ms  children={child_ms:10.2f} ms  "
+                    f"delta={delta:+9.2f} ms  overhead={overhead_pct:6.1f}%"
+                )
 
     if not count_df.empty:
         counts = count_df.groupby(["side", "site"]).agg(

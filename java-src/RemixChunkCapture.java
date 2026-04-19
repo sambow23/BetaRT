@@ -11,8 +11,12 @@ public final class RemixChunkCapture {
     private static final int CHUNK_DIMENSION = 16;
     private static final int MIN_RECAPTURE_SECTIONS_PER_PRESENT = 2;
     private static final int MAX_RECAPTURE_SECTIONS_PER_PRESENT = 8;
+    private static final int BACKLOG_ADMISSION_PRESSURE_QUEUE_DEPTH = 128;
+    private static final int BACKLOG_ADMISSION_PRESSURE_LIMIT = 8;
     private static final int BACKLOG_ADMISSION_RECOVERY_LIMIT = 4;
     private static final int BACKLOG_ADMISSION_CRITICAL_LIMIT = 2;
+    private static final int OVERSIZED_REGION_SECTION_COUNT = 16;
+    private static final int OVERSIZED_REGION_ADMISSION_LIMIT = 12;
     private static final int BACKLOG_RECOVERY_QUEUE_DEPTH = 256;
     private static final int BACKLOG_CRITICAL_QUEUE_DEPTH = 1024;
     private static final int BACKLOG_RECOVERY_MIN_BUDGET = 4;
@@ -433,13 +437,21 @@ public final class RemixChunkCapture {
         if (requestedSections <= 0) {
             return 0;
         }
+
+        int admissionLimit = requestedSections;
+        if (requestedSections >= OVERSIZED_REGION_SECTION_COUNT) {
+            admissionLimit = Math.min(admissionLimit, OVERSIZED_REGION_ADMISSION_LIMIT);
+        }
         if (queueDepthBefore >= BACKLOG_CRITICAL_QUEUE_DEPTH) {
-            return Math.min(requestedSections, BACKLOG_ADMISSION_CRITICAL_LIMIT);
+            return Math.min(admissionLimit, BACKLOG_ADMISSION_CRITICAL_LIMIT);
         }
         if (queueDepthBefore >= BACKLOG_RECOVERY_QUEUE_DEPTH) {
-            return Math.min(requestedSections, BACKLOG_ADMISSION_RECOVERY_LIMIT);
+            return Math.min(admissionLimit, BACKLOG_ADMISSION_RECOVERY_LIMIT);
         }
-        return requestedSections;
+        if (queueDepthBefore >= BACKLOG_ADMISSION_PRESSURE_QUEUE_DEPTH) {
+            return Math.min(admissionLimit, BACKLOG_ADMISSION_PRESSURE_LIMIT);
+        }
+        return admissionLimit;
     }
 
     private static void sortSectionsByCameraDistance(List<DirtyChunkSection> sections) {
