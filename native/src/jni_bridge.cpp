@@ -1,6 +1,8 @@
 #include "mcrtx/remix_renderer.hpp"
+#include "mcrtx/perf_log.hpp"
 
 #include <jni.h>
+#include <string>
 
 namespace {
 
@@ -17,6 +19,7 @@ extern "C" {
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nInitialize(
     JNIEnv*, jclass, jlong hwnd, jint width, jint height) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nInitialize");
   auto& renderer = RemixRenderer::instance();
   const bool ok = renderer.initialize(
       reinterpret_cast<HWND>(static_cast<intptr_t>(hwnd)),
@@ -26,11 +29,14 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nInitialize(
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nShutdown(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nShutdown");
   RemixRenderer::instance().shutdown();
+  ::mcrtx::perf::shutdown();
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nResize(
     JNIEnv*, jclass, jint width, jint height) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nResize");
   RemixRenderer::instance().resize(static_cast<std::uint32_t>(width), static_cast<std::uint32_t>(height));
 }
 
@@ -44,6 +50,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCamera(
     jfloat aspect,
     jfloat nearPlane,
     jfloat farPlane) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUpdateCamera");
   CameraState camera;
   camera.position[0] = px;
   camera.position[1] = py;
@@ -76,6 +83,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCloudLayer(
     jfloat colorR,
     jfloat colorG,
     jfloat colorB) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUpdateCloudLayer");
   RemixRenderer::instance().updateCloudLayer(
       fancy == JNI_TRUE,
       cameraX,
@@ -91,6 +99,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCloudLayer(
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateAtmosphereState(
     JNIEnv*, jclass, jfloat celestialAngle, jboolean forceDarkAtmosphere) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUpdateAtmosphereState");
   RemixRenderer::instance().updateAtmosphereState(celestialAngle, forceDarkAtmosphere == JNI_TRUE);
 }
 
@@ -103,6 +112,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateFogState(
     jfloat fogScale,
     jfloat fogEnd,
     jfloat fogDensity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUpdateFogState");
   RemixRenderer::instance().updateFogState(
       static_cast<std::uint32_t>(fogMode),
       colorR,
@@ -114,20 +124,24 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateFogState(
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nClearCloudLayer");
   RemixRenderer::instance().clearCloudLayer();
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntityFrame(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDynamicEntityFrame");
   RemixRenderer::instance().beginDynamicEntityFrame();
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntity(
     JNIEnv*, jclass, jint entityId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDynamicEntity");
   RemixRenderer::instance().beginDynamicEntity(entityId);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityTexture(
     JNIEnv* env, jclass, jstring texturePath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDynamicEntityTexture");
   if (texturePath == nullptr) {
     return;
   }
@@ -147,6 +161,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBone
     jfloat m00, jfloat m01, jfloat m02, jfloat m03,
     jfloat m10, jfloat m11, jfloat m12, jfloat m13,
     jfloat m20, jfloat m21, jfloat m22, jfloat m23) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDynamicEntityBoneTransform");
   if (boneIndex < 0) {
     return;
   }
@@ -175,6 +190,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntity
     jfloat x3, jfloat y3, jfloat z3, jfloat u3, jfloat v3,
     jint colorRgba,
     jint boneIndex) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureDynamicEntityQuad");
   if (boneIndex < 0) {
     return;
   }
@@ -189,10 +205,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntity
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndDynamicEntity(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEndDynamicEntity");
   RemixRenderer::instance().endDynamicEntity();
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDestroyOverlayFrame(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDestroyOverlayFrame");
   RemixRenderer::instance().beginDestroyOverlayFrame();
 }
 
@@ -205,6 +223,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDestroyOverla
     jint blockMetadata,
     jint renderType,
     jint destroyStage) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureDestroyOverlay");
   RemixRenderer::instance().captureDestroyOverlay(
       blockX,
       blockY,
@@ -216,6 +235,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDestroyOverla
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginParticleFrame(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginParticleFrame");
   RemixRenderer::instance().beginParticleFrame();
 }
 
@@ -227,6 +247,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureParticleQuad(
     jfloat x3, jfloat y3, jfloat z3, jfloat u3, jfloat v3,
     jint colorRgba,
     jint textureKind) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureParticleQuad");
   if (textureKind < 0) {
     return;
   }
@@ -241,6 +262,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureParticleQuad(
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearWorldScene(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nClearWorldScene");
   RemixRenderer::instance().clearWorldScene();
 }
 
@@ -249,6 +271,7 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     jint originX, jint originY, jint originZ,
     jint sizeX, jint sizeY, jint sizeZ,
     jint renderPass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginChunkBuild");
   const bool ok = RemixRenderer::instance().beginChunkBuild(
       originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
   return static_cast<jboolean>(fromJniBoolean(ok));
@@ -273,6 +296,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
   jfloat liquidHeight2,
   jfloat liquidHeight3,
   jfloat liquidFlowAngle) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureBlock");
   RemixRenderer::instance().captureBlock(
       blockX,
       blockY,
@@ -302,8 +326,16 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlock(
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndChunkBuild(
-    JNIEnv*, jclass, jboolean emittedGeometry) {
-  RemixRenderer::instance().endChunkBuild(emittedGeometry == JNI_TRUE);
+    JNIEnv*, jclass, jboolean emittedGeometry, jboolean deferNeighborRefresh) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEndChunkBuild");
+  RemixRenderer::instance().endChunkBuild(
+      emittedGeometry == JNI_TRUE, deferNeighborRefresh == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nFlushChunkNeighborRefreshes(
+    JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nFlushChunkNeighborRefreshes");
+  RemixRenderer::instance().flushChunkNeighborRefreshes();
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nDrawScreenOverlay(
@@ -314,6 +346,7 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nDrawScreenOverla
     jint height,
     jint format,
     jfloat opacity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nDrawScreenOverlay");
   if (pixelBuffer == nullptr) {
     return static_cast<jboolean>(fromJniBoolean(false));
   }
@@ -333,26 +366,109 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nDrawScreenOverla
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearScreenOverlay(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nClearScreenOverlay");
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().clearScreenOverlay()));
 }
 
 JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetUiState(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetUiState");
   return static_cast<jint>(RemixRenderer::instance().getUiState());
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetUiState(
     JNIEnv*, jclass, jint state) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetUiState");
   return static_cast<jboolean>(fromJniBoolean(
       RemixRenderer::instance().setUiState(static_cast<remixapi_UIState>(state))));
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPresent(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nPresent");
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().present()));
 }
 
 JNIEXPORT jstring JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetLastError(JNIEnv* env, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetLastError");
   const auto message = RemixRenderer::instance().lastError();
   return env->NewStringUTF(message.c_str());
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRecordJavaSample(
+    JNIEnv* env, jclass, jint side, jstring site, jlong nanoseconds) {
+  if (site == nullptr) {
+    return;
+  }
+  const char* utfChars = env->GetStringUTFChars(site, nullptr);
+  if (utfChars == nullptr) {
+    return;
+  }
+  const ::mcrtx::perf::Side sideEnum = (side == 0)
+      ? ::mcrtx::perf::Side::Hook
+      : ::mcrtx::perf::Side::Call;
+  ::mcrtx::perf::recordDuration(sideEnum, utfChars, static_cast<std::uint64_t>(nanoseconds));
+  env->ReleaseStringUTFChars(site, utfChars);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nFlushJavaFrame(JNIEnv*, jclass) {
+  // Currently a no-op — Java samples are recorded synchronously by
+  // nRecordJavaSample. Kept as a JNI entry point so the Java helper can call
+  // it on frame boundaries without needing ABI changes if batching is added
+  // later.
+}
+
+JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRegisterPerfSite(
+    JNIEnv* env, jclass, jint side, jstring site) {
+  if (site == nullptr) return -1;
+  const char* utfChars = env->GetStringUTFChars(site, nullptr);
+  if (utfChars == nullptr) return -1;
+  ::mcrtx::perf::Side sideEnum;
+  switch (side) {
+    case 0: sideEnum = ::mcrtx::perf::Side::Hook; break;
+    case 1: sideEnum = ::mcrtx::perf::Side::Call; break;
+    case 2: sideEnum = ::mcrtx::perf::Side::Jni; break;
+    case 3: sideEnum = ::mcrtx::perf::Side::Native; break;
+    case 4: sideEnum = ::mcrtx::perf::Side::Remix; break;
+    default: sideEnum = ::mcrtx::perf::Side::Hook; break;
+  }
+  const int id = ::mcrtx::perf::registerSite(sideEnum, utfChars);
+  env->ReleaseStringUTFChars(site, utfChars);
+  return static_cast<jint>(id);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRecordJavaSampleBatch(
+    JNIEnv* env, jclass, jintArray ids, jlongArray nanos, jint count) {
+  if (ids == nullptr || nanos == nullptr || count <= 0) return;
+  void* idsPtr = env->GetPrimitiveArrayCritical(ids, nullptr);
+  if (idsPtr == nullptr) return;
+  void* nanosPtr = env->GetPrimitiveArrayCritical(nanos, nullptr);
+  if (nanosPtr == nullptr) {
+    env->ReleasePrimitiveArrayCritical(ids, idsPtr, JNI_ABORT);
+    return;
+  }
+  static_assert(sizeof(jlong) == sizeof(std::uint64_t),
+                "jlong must be 64-bit for the perf batch fast path");
+  ::mcrtx::perf::recordDurationsBatch(
+      reinterpret_cast<const int*>(idsPtr),
+      reinterpret_cast<const std::uint64_t*>(nanosPtr),
+      static_cast<std::size_t>(count));
+  env->ReleasePrimitiveArrayCritical(nanos, nanosPtr, JNI_ABORT);
+  env->ReleasePrimitiveArrayCritical(ids, idsPtr, JNI_ABORT);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRecordJavaCount(
+    JNIEnv* env, jclass, jint side, jstring site, jlong count) {
+  if (site == nullptr) {
+    return;
+  }
+  const char* utfChars = env->GetStringUTFChars(site, nullptr);
+  if (utfChars == nullptr) {
+    return;
+  }
+  const ::mcrtx::perf::Side sideEnum = (side == 0)
+      ? ::mcrtx::perf::Side::Hook
+      : ::mcrtx::perf::Side::Call;
+  ::mcrtx::perf::recordCount(sideEnum, utfChars, static_cast<std::uint64_t>(count));
+  env->ReleaseStringUTFChars(site, utfChars);
 }
 
 }  // extern "C"

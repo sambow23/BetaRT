@@ -1,3 +1,4 @@
+import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
@@ -42,6 +43,7 @@ public final class MinecraftRemixHooks {
     private static long perfTotalSectionsRecaptured;
     private static int perfMaxSectionsRecaptured;
     private static long activeRenderMethodStartNanos;
+    private static long activeUiRenderBeginNanos;
 
     static {
         System.out.println("[mcrtx] MinecraftRemixHooks loaded");
@@ -51,172 +53,348 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onDisplayCreated(int width, int height) {
-        if (!loggedDisplayCreate) {
-            loggedDisplayCreate = true;
-            System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
+        long __perf = HookProfiler.begin();
+        try {
+            if (!loggedDisplayCreate) {
+                loggedDisplayCreate = true;
+                System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
+            }
+            resetRemixUiTracking();
+            resetPerfTracking();
+            UiOverlayCapture.reset();
+            MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
+        } finally {
+            HookProfiler.endHook("hook.onDisplayCreated", __perf);
         }
-        resetRemixUiTracking();
-        resetPerfTracking();
-        UiOverlayCapture.reset();
-        MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
     }
 
     public static void onShutdown() {
-        System.out.println("[mcrtx] onShutdown");
-        resetRemixUiTracking();
-        resetPerfTracking();
-        UiOverlayCapture.reset();
-        MinecraftRenderHooks.shutdown();
+        long __perf = HookProfiler.begin();
+        try {
+            System.out.println("[mcrtx] onShutdown");
+            resetRemixUiTracking();
+            resetPerfTracking();
+            UiOverlayCapture.reset();
+            RemixChunkCapture.stopWorker();
+            MinecraftRenderHooks.shutdown();
+        } finally {
+            HookProfiler.endHook("hook.onShutdown", __perf);
+            HookProfiler.flushAll();
+        }
     }
 
     public static void onDisplayReset(int width, int height) {
-        if (!loggedDisplayReset) {
-            loggedDisplayReset = true;
-            System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
+        long __perf = HookProfiler.begin();
+        try {
+            if (!loggedDisplayReset) {
+                loggedDisplayReset = true;
+                System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
+            }
+            resetRemixUiTracking();
+            resetPerfTracking();
+            UiOverlayCapture.reset();
+            MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
+        } finally {
+            HookProfiler.endHook("hook.onDisplayReset", __perf);
         }
-        resetRemixUiTracking();
-        resetPerfTracking();
-        UiOverlayCapture.reset();
-        MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
     }
 
     public static void onResize(int width, int height) {
-        MinecraftRenderHooks.resize(width, height);
+        long __perf = HookProfiler.begin();
+        try {
+            MinecraftRenderHooks.resize(width, height);
+        } finally {
+            HookProfiler.endHook("hook.onResize", __perf);
+        }
     }
 
     public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane, boolean thirdPersonActive) {
-        RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane, thirdPersonActive);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane, thirdPersonActive);
+        } finally {
+            HookProfiler.endHook("hook.onCamera", __perf);
+        }
     }
 
     public static void onFrameViewCaptured() {
-        RemixCameraState.captureFrameView();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixCameraState.captureFrameView();
+        } finally {
+            HookProfiler.endHook("hook.onFrameViewCaptured", __perf);
+        }
     }
 
     public static void onPresent() {
-        long frameStartNanos = System.nanoTime();
-        long renderMethodStartNanos = activeRenderMethodStartNanos;
-        RemixChunkCapture.flushPendingChunkRecaptures();
-        long flushEndNanos = System.nanoTime();
-        if (!loggedPresent) {
-            loggedPresent = true;
-            System.out.println("[mcrtx] onPresent");
+        long __perf = HookProfiler.begin();
+        try {
+            long frameStartNanos = System.nanoTime();
+            long renderMethodStartNanos = activeRenderMethodStartNanos;
+            long uiRenderBeginNanos = activeUiRenderBeginNanos;
+            if (!loggedPresent) {
+                loggedPresent = true;
+                System.out.println("[mcrtx] onPresent");
+            }
+            // Drain pending Java profiler samples so they land in the same
+            // native flush window as the remix.Present that follows.
+            HookProfiler.flushAll();
+            long profilerFlushEndNanos = System.nanoTime();
+            MinecraftRenderHooks.present();
+            long presentEndNanos = System.nanoTime();
+            RemixDynamicEntityCapture.onFramePresented();
+            RemixCameraState.onFramePresented();
+            long frameEndNanos = System.nanoTime();
+            long prePresentNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameStartNanos - renderMethodStartNanos) : 0L;
+            long renderMethodNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameEndNanos - renderMethodStartNanos) : 0L;
+            activeRenderMethodStartNanos = 0L;
+            activeUiRenderBeginNanos = 0L;
+
+            // onPresent sub-site breakdown. Uses the raw timestamps captured
+            // above so there's no extra instrumentation overhead.
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.profilerFlush",
+                    profilerFlushEndNanos - frameStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.present",
+                    presentEndNanos - profilerFlushEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.post",
+                    frameEndNanos - presentEndNanos);
+            if (renderMethodStartNanos > 0L) {
+                // renderMethod is the parent of onPresent; its prePresent phase
+                // covers the portion before onPresent fires.
+                HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.renderMethod", renderMethodNanos);
+                HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.renderMethod.prePresent", prePresentNanos);
+                if (uiRenderBeginNanos > 0L && uiRenderBeginNanos >= renderMethodStartNanos) {
+                    long preUiNanos = Math.max(0L, uiRenderBeginNanos - renderMethodStartNanos);
+                    long uiPhaseNanos = Math.max(0L, frameStartNanos - uiRenderBeginNanos);
+                    HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.renderMethod.preUi", preUiNanos);
+                    HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.renderMethod.uiPhase", uiPhaseNanos);
+                }
+            }
+
+            recordPresentPerf(
+                    frameEndNanos - frameStartNanos,
+                renderMethodNanos,
+                prePresentNanos,
+                    0L,
+                    presentEndNanos - profilerFlushEndNanos,
+                    frameEndNanos - presentEndNanos,
+                    RemixChunkCapture.lastFlushDurationNanos(),
+                    RemixChunkCapture.lastPendingQueueDepthBeforeFlush(),
+                    RemixChunkCapture.lastPendingQueueDepthAfterFlush(),
+                    RemixChunkCapture.lastSectionsRecaptured());
+        } finally {
+            HookProfiler.endHook("hook.onPresent", __perf);
         }
-        MinecraftRenderHooks.present();
-        long presentEndNanos = System.nanoTime();
-        RemixDynamicEntityCapture.onFramePresented();
-        RemixCameraState.onFramePresented();
-        long frameEndNanos = System.nanoTime();
-        long prePresentNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameStartNanos - renderMethodStartNanos) : 0L;
-        long renderMethodNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameEndNanos - renderMethodStartNanos) : 0L;
-        activeRenderMethodStartNanos = 0L;
-        recordPresentPerf(
-                frameEndNanos - frameStartNanos,
-            renderMethodNanos,
-            prePresentNanos,
-                flushEndNanos - frameStartNanos,
-                presentEndNanos - flushEndNanos,
-                frameEndNanos - presentEndNanos,
-                RemixChunkCapture.lastFlushDurationNanos(),
-                RemixChunkCapture.lastPendingQueueDepthBeforeFlush(),
-                RemixChunkCapture.lastPendingQueueDepthAfterFlush(),
-                RemixChunkCapture.lastSectionsRecaptured());
     }
 
     public static void onUiRenderBegin(int width, int height) {
-        if (STANDALONE_WINDOW_MODE) {
-            return;
+        long __perf = HookProfiler.begin();
+        try {
+            // Capture the UI phase start so onPresent can split renderMethod
+            // into a pre-UI scene phase and a UI phase.
+            activeUiRenderBeginNanos = System.nanoTime();
+            if (STANDALONE_WINDOW_MODE) {
+                return;
+            }
+            UiOverlayCapture.begin(width, height);
+        } finally {
+            HookProfiler.endHook("hook.onUiRenderBegin", __perf);
         }
-        UiOverlayCapture.begin(width, height);
     }
 
     public static void onUiRenderEnd() {
-        if (STANDALONE_WINDOW_MODE) {
-            return;
+        long __perf = HookProfiler.begin();
+        try {
+            if (STANDALONE_WINDOW_MODE) {
+                return;
+            }
+            UiOverlayCapture.end();
+        } finally {
+            HookProfiler.endHook("hook.onUiRenderEnd", __perf);
         }
-        UiOverlayCapture.end();
     }
 
     public static void onRemixUiTick(net.minecraft.client.Minecraft minecraft) {
-        if (STANDALONE_WINDOW_MODE) {
-            return;
+        long __perf = HookProfiler.begin();
+        try {
+            if (STANDALONE_WINDOW_MODE) {
+                return;
+            }
+            syncRemixUiInput(minecraft, true);
+        } finally {
+            HookProfiler.endHook("hook.onRemixUiTick", __perf);
         }
-        syncRemixUiInput(minecraft, true);
     }
 
     public static boolean isWindowInteractionActive() {
-        return Display.isActive() || (!STANDALONE_WINDOW_MODE && remixUiOpen);
+        long __perf = HookProfiler.begin();
+        try {
+            return Display.isActive() || (!STANDALONE_WINDOW_MODE && remixUiOpen);
+        } finally {
+            HookProfiler.endHook("hook.isWindowInteractionActive", __perf);
+        }
     }
 
     public static void onWorldChanged(fd world) {
-        RemixChunkCapture.onWorldChanged(world);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixChunkCapture.onWorldChanged(world);
+        } finally {
+            HookProfiler.endHook("hook.onWorldChanged", __perf);
+        }
     }
 
     public static void onCloudRender(net.minecraft.client.Minecraft minecraft, fd world, int cloudTick, float partialTicks, boolean fancy) {
-        RemixCloudCapture.onCloudRender(minecraft, world, cloudTick, partialTicks, fancy);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixCloudCapture.onCloudRender(minecraft, world, cloudTick, partialTicks, fancy);
+        } finally {
+            HookProfiler.endHook("hook.onCloudRender", __perf);
+        }
     }
 
     public static void onFogState(ls entity, boolean thickFog, int renderLayer, boolean forceStartAtCamera, float viewDistance, float colorR, float colorG, float colorB) {
-        RemixFogCapture.onFogState(entity, thickFog, renderLayer, forceStartAtCamera, viewDistance, colorR, colorG, colorB);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixFogCapture.onFogState(entity, thickFog, renderLayer, forceStartAtCamera, viewDistance, colorR, colorG, colorB);
+        } finally {
+            HookProfiler.endHook("hook.onFogState", __perf);
+        }
     }
 
     public static void onLivingEntityFrameBegin() {
-        RemixDynamicEntityCapture.onLivingEntityFrameBegin();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onLivingEntityFrameBegin();
+        } finally {
+            HookProfiler.endHook("hook.onLivingEntityFrameBegin", __perf);
+        }
     }
 
     public static void onDestroyOverlayRender(int blockX, int blockY, int blockZ, float destroyProgress) {
-        RemixDestroyOverlayCapture.onDestroyOverlayRender(blockX, blockY, blockZ, destroyProgress);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDestroyOverlayCapture.onDestroyOverlayRender(blockX, blockY, blockZ, destroyProgress);
+        } finally {
+            HookProfiler.endHook("hook.onDestroyOverlayRender", __perf);
+        }
     }
 
     public static void onParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
-        RemixParticleCapture.onParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixParticleCapture.onParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+        } finally {
+            HookProfiler.endHook("hook.onParticleRender", __perf);
+        }
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
-        RemixDynamicEntityCapture.onLivingEntityRenderStart(entity);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onLivingEntityRenderStart(entity);
+        } finally {
+            HookProfiler.endHook("hook.onLivingEntityRenderStart", __perf);
+        }
     }
 
     public static void onLivingEntityRenderEnd() {
-        RemixDynamicEntityCapture.onLivingEntityRenderEnd();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onLivingEntityRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onLivingEntityRenderEnd", __perf);
+        }
     }
 
     public static void onSignRenderStart(yk sign) {
-        RemixDynamicEntityCapture.onSignRenderStart(sign);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onSignRenderStart(sign);
+        } finally {
+            HookProfiler.endHook("hook.onSignRenderStart", __perf);
+        }
     }
 
     public static void onSignRenderEnd() {
-        RemixDynamicEntityCapture.onSignRenderEnd();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onSignRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onSignRenderEnd", __perf);
+        }
     }
 
     public static void onPaintingRender(qv painting) {
-        RemixDynamicEntityCapture.onPaintingRender(painting);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onPaintingRender(painting);
+        } finally {
+            HookProfiler.endHook("hook.onPaintingRender", __perf);
+        }
     }
 
     public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
-        RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
+        } finally {
+            HookProfiler.endHook("hook.onSignTextRender", __perf);
+        }
     }
 
     public static void onFirstPersonRenderStart() {
-        RemixDynamicEntityCapture.onFirstPersonRenderStart();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onFirstPersonRenderStart();
+        } finally {
+            HookProfiler.endHook("hook.onFirstPersonRenderStart", __perf);
+        }
     }
 
     public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
-        RemixDynamicEntityCapture.onFirstPersonShadowPlayerRender(minecraft, partialTicks);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onFirstPersonShadowPlayerRender(minecraft, partialTicks);
+        } finally {
+            HookProfiler.endHook("hook.onFirstPersonShadowPlayerRender", __perf);
+        }
     }
 
     public static void onFirstPersonRenderEnd() {
-        RemixDynamicEntityCapture.onFirstPersonRenderEnd();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onFirstPersonRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onFirstPersonRenderEnd", __perf);
+        }
     }
 
     public static void onFirstPersonItemRender(iz itemStack) {
-        RemixDynamicEntityCapture.onFirstPersonItemRender(itemStack);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onFirstPersonItemRender(itemStack);
+        } finally {
+            HookProfiler.endHook("hook.onFirstPersonItemRender", __perf);
+        }
     }
 
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
-        RemixDynamicEntityCapture.onEntityTextureBind(primaryTexture, fallbackTexture);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onEntityTextureBind(primaryTexture, fallbackTexture);
+        } finally {
+            HookProfiler.endHook("hook.onEntityTextureBind", __perf);
+        }
     }
 
     public static void onModelPartRender(tz[] polygons, float scale) {
-        RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
+        } finally {
+            HookProfiler.endHook("hook.onModelPartRender", __perf);
+        }
     }
 
     public static void onFirstPersonTessellatorDraw(
@@ -225,16 +403,31 @@ public final class MinecraftRemixHooks {
             int drawMode,
             boolean hasTexture,
             boolean hasColor) {
-        RemixDynamicEntityCapture.onFirstPersonTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
-        RemixParticleCapture.onTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onFirstPersonTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
+            RemixParticleCapture.onTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
+        } finally {
+            HookProfiler.endHook("hook.onFirstPersonTessellatorDraw", __perf);
+        }
     }
 
     public static void onWeatherTextureBind(String texturePath) {
-        RemixParticleCapture.onWeatherTextureBind(texturePath);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixParticleCapture.onWeatherTextureBind(texturePath);
+        } finally {
+            HookProfiler.endHook("hook.onWeatherTextureBind", __perf);
+        }
     }
 
     public static void onWeatherRenderEnd() {
-        RemixParticleCapture.onWeatherRenderEnd();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixParticleCapture.onWeatherRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onWeatherRenderEnd", __perf);
+        }
     }
 
     public static boolean onChunkBuildBegin(
@@ -245,7 +438,12 @@ public final class MinecraftRemixHooks {
             int sizeY,
             int sizeZ,
             int renderPass) {
-        return RemixChunkCapture.onChunkBuildBegin(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        long __perf = HookProfiler.begin();
+        try {
+            return RemixChunkCapture.onChunkBuildBegin(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        } finally {
+            HookProfiler.endHook("hook.onChunkBuildBegin", __perf);
+        }
     }
 
     public static void onChunkBlock(
@@ -256,11 +454,21 @@ public final class MinecraftRemixHooks {
             int blockId,
             int blockMetadata,
             int renderType) {
-        RemixChunkCapture.onChunkBlock(blockAccess, blockX, blockY, blockZ, blockId, blockMetadata, renderType);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixChunkCapture.onChunkBlock(blockAccess, blockX, blockY, blockZ, blockId, blockMetadata, renderType);
+        } finally {
+            HookProfiler.endHook("hook.onChunkBlock", __perf);
+        }
     }
 
     public static void onChunkBuildEnd(boolean emittedGeometry) {
-        RemixChunkCapture.onChunkBuildEnd(emittedGeometry);
+        long __perf = HookProfiler.begin();
+        try {
+            RemixChunkCapture.onChunkBuildEnd(emittedGeometry);
+        } finally {
+            HookProfiler.endHook("hook.onChunkBuildEnd", __perf);
+        }
     }
 
     private static void resetRemixUiTracking() {
@@ -293,8 +501,13 @@ public final class MinecraftRemixHooks {
     }
 
     public static void onFrameRenderStart() {
-        RemixParticleCapture.onFrameRenderStart();
-        activeRenderMethodStartNanos = System.nanoTime();
+        long __perf = HookProfiler.begin();
+        try {
+            RemixParticleCapture.onFrameRenderStart();
+            activeRenderMethodStartNanos = System.nanoTime();
+        } finally {
+            HookProfiler.endHook("hook.onFrameRenderStart", __perf);
+        }
     }
 
     private static void recordPresentPerf(

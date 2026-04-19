@@ -3,6 +3,7 @@
 
 #include "mcrtx/remix_renderer.hpp"
 #include "mcrtx/render_internals.hpp"
+#include "mcrtx/perf_log.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +31,7 @@ void RemixRenderer::updateCloudLayer(
     float colorR,
     float colorG,
     float colorB) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateCloudLayer");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -60,6 +62,7 @@ void RemixRenderer::updateCloudLayer(
 }
 
 void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateAtmosphereState");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -70,6 +73,7 @@ void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAt
 }
 
 void RemixRenderer::clearCloudLayer() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::clearCloudLayer");
   std::scoped_lock lock(mutex_);
   if (cloudMeshHandle_ != nullptr) {
     log("Clearing cloud mesh cache");
@@ -78,6 +82,7 @@ void RemixRenderer::clearCloudLayer() {
 }
 
 void RemixRenderer::beginDynamicEntityFrame() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDynamicEntityFrame");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -89,6 +94,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
 }
 
 void RemixRenderer::beginDynamicEntity(int entityId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDynamicEntity");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -103,6 +109,7 @@ void RemixRenderer::beginDynamicEntity(int entityId) {
 }
 
 void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityTexture");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !activeDynamicEntity_.active) {
@@ -113,6 +120,7 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
 }
 
 void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityBoneTransform");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !activeDynamicEntity_.active || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
@@ -148,6 +156,7 @@ void RemixRenderer::captureDynamicEntityQuad(
     float v3,
     std::uint32_t colorRgba,
     std::uint32_t boneIndex) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDynamicEntityQuad");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTexturePath.empty()) {
@@ -178,6 +187,7 @@ void RemixRenderer::captureDynamicEntityQuad(
 }
 
 void RemixRenderer::endDynamicEntity() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endDynamicEntity");
   std::scoped_lock lock(mutex_);
 
   if (!activeDynamicEntity_.active) {
@@ -204,6 +214,7 @@ void RemixRenderer::endDynamicEntity() {
 }
 
 void RemixRenderer::beginDestroyOverlayFrame() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDestroyOverlayFrame");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -221,6 +232,7 @@ void RemixRenderer::captureDestroyOverlay(
     int blockMetadata,
     int renderType,
     int destroyStage) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDestroyOverlay");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -239,6 +251,7 @@ void RemixRenderer::captureDestroyOverlay(
 }
 
 void RemixRenderer::beginParticleFrame() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginParticleFrame");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -271,6 +284,7 @@ void RemixRenderer::captureParticleQuad(
     float v3,
     std::uint32_t colorRgba,
     std::uint32_t textureKind) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureParticleQuad");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -296,6 +310,7 @@ void RemixRenderer::captureParticleQuad(
 }
 
 void RemixRenderer::clearWorldScene() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::clearWorldScene");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -334,6 +349,7 @@ void RemixRenderer::clearWorldScene() {
 }
 
 bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::createTorchLight");
   remixapi_LightInfoSphereEXT sphereInfo {};
   sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
   sphereInfo.position = {
@@ -356,9 +372,15 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
   remixapi_LightHandle lightHandle = nullptr;
   remixapi_ErrorCode result;
   if (remix_.CreateLightBatched != nullptr) {
-    result = remix_.CreateLightBatched(&lightInfo, &lightHandle);
+    result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.torch");
+      return remix_.CreateLightBatched(&lightInfo, &lightHandle);
+    }();
   } else {
-    result = remix_.CreateLight(&lightInfo, &lightHandle);
+    result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.torch");
+      return remix_.CreateLight(&lightInfo, &lightHandle);
+    }();
   }
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateLight failed: " + errorCodeToString(result));
@@ -370,6 +392,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
 }
 
 bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateTorchLight");
   const auto lightIt = torchLights_.find(placement.blockPosition);
   if (lightIt == torchLights_.end() || lightIt->second == nullptr) {
     return createTorchLight(placement);
@@ -395,7 +418,10 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
 
-  const remixapi_ErrorCode result = remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.torch");
+    return remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("UpdateLightDefinition failed: " + errorCodeToString(result));
     return false;
@@ -407,6 +433,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
 bool RemixRenderer::reconcileChunkTorchLights(
     ChunkMeshData& meshData,
     const std::vector<TorchLightPlacement>& desiredTorchLights) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileChunkTorchLights");
   if (remix_.CreateLight == nullptr) {
     destroyChunkTorchLights(meshData);
     return true;
@@ -447,6 +474,7 @@ bool RemixRenderer::rebuildCloudMesh(
     float colorR,
     float colorG,
     float colorB) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildCloudMesh");
   if (cloudMaterialHandle_ == nullptr) {
     destroyCloudMesh();
     return true;
@@ -483,7 +511,10 @@ bool RemixRenderer::rebuildCloudMesh(
   meshInfo.surfaces_count = 1;
 
   remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.cloud");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;
@@ -506,6 +537,7 @@ bool RemixRenderer::rebuildCloudMesh(
 }
 
 DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::findOrCreateDynamicEntityMesh");
   if (buildState.quads.empty()) {
     return nullptr;
   }
@@ -605,7 +637,10 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
   remixapi_MeshHandle meshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &meshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.entity");
+    return remix_.CreateMesh(&meshInfo, &meshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return nullptr;
@@ -625,27 +660,32 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
 }
 
 void RemixRenderer::destroyCloudMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyCloudMesh");
   destroyMeshHandle(cloudMeshHandle_);
   cloudMeshFancy_ = false;
   cloudQuadCount_ = 0;
 }
 
 void RemixRenderer::destroyFireMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyFireMesh");
   destroyMeshHandle(fireMeshHandle_);
   fireQuadCount_ = 0;
 }
 
 void RemixRenderer::destroyDestroyOverlayMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyDestroyOverlayMesh");
   destroyMeshHandle(destroyOverlayMeshHandle_);
   destroyOverlayCount_ = 0;
 }
 
 void RemixRenderer::destroyParticleMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyParticleMesh");
   destroyMeshHandle(particleMeshHandle_);
   particleQuadCount_ = 0;
 }
 
 void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyTorchLight");
   const auto lightIt = torchLights_.find(position);
   if (lightIt == torchLights_.end()) {
     return;
@@ -656,6 +696,7 @@ void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
 }
 
 void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkTorchLights");
   for (const TorchLightPlacement& placement : meshData.torchLights) {
     destroyTorchLight(placement.blockPosition);
   }
@@ -667,6 +708,7 @@ void RemixRenderer::clearDynamicEntityFrameInstances() {
 }
 
 void RemixRenderer::destroyDynamicEntityMeshes() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyDynamicEntityMeshes");
   clearDynamicEntityFrameInstances();
   for (auto& [geometryFingerprint, meshData] : dynamicEntityMeshes_) {
     (void)geometryFingerprint;
@@ -676,6 +718,7 @@ void RemixRenderer::destroyDynamicEntityMeshes() {
 }
 
 void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyDynamicEntityMesh");
   destroyMeshHandle(meshData.meshHandle);
   meshData.meshHash = 0;
   meshData.geometryFingerprint = 0;
@@ -684,6 +727,7 @@ void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
 }
 
 bool RemixRenderer::rebuildDestroyOverlayMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildDestroyOverlayMesh");
   if (destroyOverlayInstances_.empty()) {
     destroyDestroyOverlayMesh();
     return true;
@@ -1049,7 +1093,10 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   meshInfo.surfaces_count = 1;
 
   remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.destroy");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;
@@ -1062,8 +1109,8 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
 }
 
 bool RemixRenderer::rebuildFireMesh() {
-  if (fireMaterialHandle_ == nullptr) {
-    destroyFireMesh();
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildFireMesh");
+  if (fireMaterialHandle_ == nullptr) {    destroyFireMesh();
     return true;
   }
 
@@ -1167,7 +1214,10 @@ bool RemixRenderer::rebuildFireMesh() {
   meshInfo.surfaces_count = 1;
 
   remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.fire");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;
@@ -1182,6 +1232,7 @@ bool RemixRenderer::rebuildFireMesh() {
 }
 
 bool RemixRenderer::rebuildParticleMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildParticleMesh");
   if (particleQuads_.empty()) {
     destroyParticleMesh();
     return true;
@@ -1261,7 +1312,10 @@ bool RemixRenderer::rebuildParticleMesh() {
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
   remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.particle");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;

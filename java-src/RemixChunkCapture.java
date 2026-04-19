@@ -1,27 +1,45 @@
+import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MinecraftRenderHooks;
-import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.LinkedHashSet;
-import java.util.List;
+import java.util.concurrent.locks.ReentrantLock;
 
 public final class RemixChunkCapture {
     private static final int CHUNK_DIMENSION = 16;
-    private static final int MAX_RECAPTURE_SECTIONS_PER_PRESENT = 8;
+    private static final int MAX_RECAPTURE_SECTIONS_PER_TICK = 8;
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int LAVA_STILL_BLOCK_ID = 10;
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final RemixWorldListener WORLD_LISTENER = new RemixWorldListener();
     private static final LinkedHashSet<DirtyChunkSection> PENDING_RECAPTURE_SECTIONS = new LinkedHashSet<DirtyChunkSection>();
+
+    // Serializes vanilla chunk builds (render thread) with worker recaptures.
+    // Vanilla mutates singleton block bounds via uu.a(world, x, y, z) and the
+    // Java-side capture state (MinecraftRenderHooks.chunkBuildCaptureActive,
+    // capturedChunkBlocks) is not thread-safe. Worker acquires per section
+    // to let vanilla interleave between worker sections.
+    private static final ReentrantLock CHUNK_BUILD_LOCK = new ReentrantLock();
+
+    private static final Object WORKER_SIGNAL = new Object();
+    private static volatile Thread recaptureWorker;
+    private static volatile boolean workerRunning;
+    private static final boolean WORKER_ENABLED = isWorkerEnabled();
+
     private static boolean loggedChunkBuild;
     private static boolean loggedWorldListenerAttach;
-    private static fd attachedWorld;
+    private static volatile fd attachedWorld;
     private static int lastPendingQueueDepthBeforeFlush;
     private static int lastPendingQueueDepthAfterFlush;
     private static int lastSectionsRecaptured;
     private static long lastFlushDurationNanos;
 
     private RemixChunkCapture() {
+    }
+
+    private static boolean isWorkerEnabled() {
+        String value = System.getenv("MCRTX_CHUNK_RECAPTURE_WORKER");
+        return value == null || !(value.equals("0") || value.equalsIgnoreCase("false"));
     }
 
     private static void clearPendingRecaptureForSection(int originX, int originY, int originZ) {
@@ -55,6 +73,7 @@ public final class RemixChunkCapture {
                 loggedWorldListenerAttach = true;
                 System.out.println("[mcrtx] world listener attached");
             }
+            startWorkerIfNeeded();
         }
     }
 
@@ -73,7 +92,18 @@ public final class RemixChunkCapture {
 
         // A live vanilla rebuild for this section makes any queued recapture redundant.
         clearPendingRecaptureForSection(originX, originY, originZ);
-        return MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        // Serialize with the worker thread to avoid racing on shared block
+        // singleton bounds and MinecraftRenderHooks capture state.
+        CHUNK_BUILD_LOCK.lock();
+        boolean ok = false;
+        try {
+            ok = MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        } finally {
+            if (!ok) {
+                CHUNK_BUILD_LOCK.unlock();
+            }
+        }
+        return ok;
     }
 
     public static void onChunkBlock(
@@ -136,7 +166,15 @@ public final class RemixChunkCapture {
     }
 
     public static void onChunkBuildEnd(boolean emittedGeometry) {
-        MinecraftRenderHooks.endChunkBuild(emittedGeometry);
+        try {
+            // Normal per-frame chunk build: neighbors must refresh immediately so
+            // the chunk renders correctly this frame.
+            MinecraftRenderHooks.endChunkBuild(emittedGeometry, false);
+        } finally {
+            if (CHUNK_BUILD_LOCK.isHeldByCurrentThread()) {
+                CHUNK_BUILD_LOCK.unlock();
+            }
+        }
     }
 
     private static void captureWorldBlock(
@@ -313,7 +351,7 @@ public final class RemixChunkCapture {
             }
         }
 
-        MinecraftRenderHooks.endChunkBuild(emittedGeometry);
+        MinecraftRenderHooks.endChunkBuild(emittedGeometry, true);
         return true;
     }
 
@@ -353,67 +391,153 @@ public final class RemixChunkCapture {
                 }
             }
         }
+        signalWorker();
     }
 
-    public static void flushPendingChunkRecaptures() {
-        long flushStartNanos = System.nanoTime();
-        int queueDepthBefore = 0;
-        int sectionsRecaptured = 0;
-        if (attachedWorld == null || !MinecraftRenderHooks.isInitialized()) {
+    // ------------------------------------------------------------------
+    // Chunk recapture worker
+    //
+    // Runs on its own thread so the heavy "drain dirty sections -> capture
+    // blocks -> rebuild meshes" work doesn't add to the render thread's
+    // frame time. Synchronizes with vanilla chunk builds via
+    // CHUNK_BUILD_LOCK, taking the lock only around a single section at a
+    // time so vanilla can interleave.
+    // ------------------------------------------------------------------
+
+    static void startWorkerIfNeeded() {
+        if (!WORKER_ENABLED) {
+            return;
+        }
+        if (recaptureWorker != null && recaptureWorker.isAlive()) {
+            return;
+        }
+        workerRunning = true;
+        Thread thread = new Thread(new Runnable() {
+            @Override
+            public void run() {
+                runWorkerLoop();
+            }
+        }, "mcrtx-chunk-recapture");
+        thread.setDaemon(true);
+        recaptureWorker = thread;
+        thread.start();
+    }
+
+    static void stopWorker() {
+        workerRunning = false;
+        signalWorker();
+        Thread worker = recaptureWorker;
+        if (worker != null) {
+            try {
+                worker.join(1000L);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            }
+            recaptureWorker = null;
+        }
+    }
+
+    private static void signalWorker() {
+        synchronized (WORKER_SIGNAL) {
+            WORKER_SIGNAL.notifyAll();
+        }
+    }
+
+    private static void runWorkerLoop() {
+        while (workerRunning) {
+            try {
+                synchronized (WORKER_SIGNAL) {
+                    while (workerRunning && queueIsEmpty()) {
+                        WORKER_SIGNAL.wait(250L);
+                    }
+                }
+                if (!workerRunning) {
+                    break;
+                }
+                drainOnce();
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                break;
+            } catch (Throwable t) {
+                System.err.println("[mcrtx] chunk recapture worker error: " + t);
+                t.printStackTrace();
+            }
+        }
+    }
+
+    private static boolean queueIsEmpty() {
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            return PENDING_RECAPTURE_SECTIONS.isEmpty();
+        }
+    }
+
+    private static void drainOnce() {
+        long drainStartNanos = System.nanoTime();
+        int queueDepthBefore;
+        synchronized (PENDING_RECAPTURE_SECTIONS) {
+            queueDepthBefore = PENDING_RECAPTURE_SECTIONS.size();
+        }
+
+        fd world = attachedWorld;
+        if (world == null || !MinecraftRenderHooks.isInitialized()) {
             synchronized (PENDING_RECAPTURE_SECTIONS) {
-                lastPendingQueueDepthBeforeFlush = 0;
+                lastPendingQueueDepthBeforeFlush = queueDepthBefore;
                 lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
             }
             lastSectionsRecaptured = 0;
-            lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
+            lastFlushDurationNanos = System.nanoTime() - drainStartNanos;
+            HookProfiler.recordCount("chunkRecapture.queueDepth", queueDepthBefore);
+            HookProfiler.recordCount("chunkRecapture.sectionsFlushed", 0L);
             return;
         }
 
-        List<DirtyChunkSection> sectionsToRecapture = new ArrayList<DirtyChunkSection>(MAX_RECAPTURE_SECTIONS_PER_PRESENT);
-        synchronized (PENDING_RECAPTURE_SECTIONS) {
-            queueDepthBefore = PENDING_RECAPTURE_SECTIONS.size();
-            if (queueDepthBefore == 0) {
-                lastPendingQueueDepthBeforeFlush = 0;
-                lastPendingQueueDepthAfterFlush = 0;
-                lastSectionsRecaptured = 0;
-                lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
-                return;
+        int sectionsRecaptured = 0;
+        for (int i = 0; i < MAX_RECAPTURE_SECTIONS_PER_TICK && workerRunning; ++i) {
+            DirtyChunkSection section;
+            synchronized (PENDING_RECAPTURE_SECTIONS) {
+                Iterator<DirtyChunkSection> iterator = PENDING_RECAPTURE_SECTIONS.iterator();
+                if (!iterator.hasNext()) {
+                    break;
+                }
+                section = iterator.next();
+                iterator.remove();
             }
 
-            Iterator<DirtyChunkSection> iterator = PENDING_RECAPTURE_SECTIONS.iterator();
-            while (iterator.hasNext() && sectionsToRecapture.size() < MAX_RECAPTURE_SECTIONS_PER_PRESENT) {
-                sectionsToRecapture.add(iterator.next());
+            long sectionStartNanos = System.nanoTime();
+            CHUNK_BUILD_LOCK.lock();
+            try {
+                fd currentWorld = attachedWorld;
+                if (currentWorld == null || !MinecraftRenderHooks.isInitialized()) {
+                    break;
+                }
+                if (!recaptureChunkSection(currentWorld, section.originX, section.originY, section.originZ)) {
+                    // Recapture bailed out -- leave it dropped; will be
+                    // re-queued by the world listener if the section is
+                    // still dirty.
+                    break;
+                }
+            } finally {
+                CHUNK_BUILD_LOCK.unlock();
             }
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "chunkRecapture.workerSection",
+                    System.nanoTime() - sectionStartNanos);
+            ++sectionsRecaptured;
         }
 
-        for (DirtyChunkSection section : sectionsToRecapture) {
-            if (MinecraftRenderHooks.isChunkBuildCaptureActive()) {
-                return;
-            }
-
-            if (!recaptureChunkSection(attachedWorld, section.originX, section.originY, section.originZ)) {
-                synchronized (PENDING_RECAPTURE_SECTIONS) {
-                    lastPendingQueueDepthBeforeFlush = queueDepthBefore;
-                    lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
-                }
-                lastSectionsRecaptured = sectionsRecaptured;
-                lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
-                return;
-            }
-
-            synchronized (PENDING_RECAPTURE_SECTIONS) {
-                PENDING_RECAPTURE_SECTIONS.remove(section);
-            }
-            ++sectionsRecaptured;
+        if (sectionsRecaptured > 0) {
+            MinecraftRenderHooks.flushChunkNeighborRefreshes();
         }
 
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             lastPendingQueueDepthBeforeFlush = queueDepthBefore;
             lastPendingQueueDepthAfterFlush = PENDING_RECAPTURE_SECTIONS.size();
         }
-
         lastSectionsRecaptured = sectionsRecaptured;
-        lastFlushDurationNanos = System.nanoTime() - flushStartNanos;
+        lastFlushDurationNanos = System.nanoTime() - drainStartNanos;
+        HookProfiler.recordCount("chunkRecapture.queueDepth", queueDepthBefore);
+        HookProfiler.recordCount("chunkRecapture.sectionsFlushed", sectionsRecaptured);
+        HookProfiler.record(HookProfiler.SIDE_HOOK, "chunkRecapture.workerDrain",
+                lastFlushDurationNanos);
     }
 
     static void clearPendingRecaptures() {

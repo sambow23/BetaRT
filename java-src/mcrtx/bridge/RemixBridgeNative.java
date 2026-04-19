@@ -239,7 +239,9 @@ public final class RemixBridgeNative {
             float liquidHeight3,
             float liquidFlowAngle);
 
-    public static native void nEndChunkBuild(boolean emittedGeometry);
+    public static native void nEndChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh);
+
+    public static native void nFlushChunkNeighborRefreshes();
 
     public static native boolean nDrawScreenOverlay(
             ByteBuffer pixelData,
@@ -257,4 +259,14 @@ public final class RemixBridgeNative {
     public static native boolean nPresent();
 
     public static native String nGetLastError();
+
+    public static native void nRecordJavaSample(int side, String site, long nanoseconds);
+
+    public static native void nRecordJavaCount(int side, String site, long count);
+
+    public static native void nFlushJavaFrame();
+
+    public static native int nRegisterPerfSite(int side, String site);
+
+    public static native void nRecordJavaSampleBatch(int[] siteIds, long[] nanos, int count);
 }

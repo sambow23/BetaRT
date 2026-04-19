@@ -1296,6 +1296,7 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\mcrtx\bridge\ColorMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MatrixMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\HookProfiler.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\LwjglWindowHandleResolver.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftRenderHooks.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\UiOverlayCapture.java")

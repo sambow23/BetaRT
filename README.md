@@ -78,6 +78,37 @@ The old `MCRTX_USE_SOURCE_WINDOW=1` escape hatch is now treated as a deprecated
 alias for `MCRTX_WINDOW_MODE=dual` so older local launch scripts do not try the
 broken same-HWND presentation path.
 
+## Profiling
+
+Opt-in profiling instruments every Java hook, the JNI boundary, every
+`RemixRenderer::X` native method, and every `remix_.X` call the bridge issues.
+It is **off by default** (zero overhead in the hot path). Enable it with:
+
+```powershell
+$env:MCRTX_PERF = "1"
+```
+
+Aggregated stats are written to `mcrtx-perf.log` next to `mcrtx_jni.dll` (or
+to the path in `MCRTX_PERF_LOG`). One line is emitted per `(side, site)` tuple
+every 60 presented frames; the interval is configurable via
+`MCRTX_PERF_INTERVAL`. Each line reports sample count, average µs, and max µs
+since the last flush.
+
+Sides are:
+
+- `Hook` — Java hook entry points in `MinecraftRemixHooks` (wall time spent in
+  the hook, including all work it dispatches).
+- `Jni` — time spent inside each `Java_mcrtx_bridge_RemixBridgeNative_nX` C
+  function (marshalling + native work).
+- `Native` — `RemixRenderer::method` wall time.
+- `Remix` — individual `remix_.X` calls (labelled with subsystem suffixes such
+  as `DrawInstance.chunk`, `CreateMesh.cloud`, `SetupCamera.world`).
+- `Call` — reserved for Java-side wrappers around individual JNI sites.
+
+Set `MCRTX_PERF_TRACE=1` in addition to `MCRTX_PERF=1` to emit a per-call JSONL
+trace to `mcrtx-perf-trace.jsonl` (or `MCRTX_PERF_TRACE_LOG`). This is
+high-volume; use it only for targeted investigations.
+
 ## Quick deployment for testing
 
 For the local PrismLauncher `b1.7.3` instance, deploy the latest patched jar and

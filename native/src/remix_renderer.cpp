@@ -1,5 +1,6 @@
 #include "mcrtx/remix_renderer.hpp"
 #include "mcrtx/render_internals.hpp"
+#include "mcrtx/perf_log.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -109,6 +110,7 @@ bool RemixRenderer::initialize(
   std::uint32_t width,
   std::uint32_t height,
   std::filesystem::path remixDllPath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::initialize");
   std::unique_lock<std::mutex> lock(mutex_);
 
   if (initialized_) {
@@ -193,6 +195,7 @@ bool RemixRenderer::initialize(
 }
 
 void RemixRenderer::shutdown() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::shutdown");
   std::thread standaloneWorker;
   {
     std::unique_lock<std::mutex> lock(mutex_);
@@ -356,6 +359,7 @@ void RemixRenderer::shutdownLocked() {
   flushDeferredDestroyQueuesLocked();
   if (initialized_ && remix_.Shutdown) {
     if (!standaloneOutputWindow_ && remix_.DrawScreenOverlay != nullptr) {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawScreenOverlay.shutdownClear");
       remix_.DrawScreenOverlay(
           nullptr,
           0,
@@ -376,7 +380,10 @@ void RemixRenderer::shutdownLocked() {
       destroyTorchLight(torchLights_.begin()->first);
     }
     destroyTerrainMaterials();
-    remix_.Shutdown();
+    {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Shutdown");
+      remix_.Shutdown();
+    }
   }
   resetLoadedRemix();
   destroyOutputWindow();
@@ -497,6 +504,7 @@ void RemixRenderer::updateFogState(
     float fogScale,
     float fogEnd,
     float fogDensity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateFogState");
   std::scoped_lock lock(mutex_);
   if (!initialized_) {
     return;
@@ -518,13 +526,18 @@ void RemixRenderer::updateFogState(
   fogInfo.end = fogEnd;
   fogInfo.density = fogDensity;
 
-  const remixapi_ErrorCode result = remix_.SetFogState(&fogInfo);
+  remixapi_ErrorCode result;
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetFogState");
+    result = remix_.SetFogState(&fogInfo);
+  }
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("SetFogState failed: " + errorCodeToString(result));
   }
 }
 
 void RemixRenderer::resize(std::uint32_t width, std::uint32_t height) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::resize");
   std::scoped_lock lock(mutex_);
   width_ = width == 0 ? 1 : width;
   height_ = height == 0 ? 1 : height;
@@ -538,6 +551,7 @@ bool RemixRenderer::drawScreenOverlay(
     std::uint32_t height,
     remixapi_Format format,
     float opacity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::drawScreenOverlay");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -565,12 +579,15 @@ bool RemixRenderer::drawScreenOverlay(
     return false;
   }
 
-  const remixapi_ErrorCode result = remix_.DrawScreenOverlay(
-      pixelData,
-      width,
-      height,
-      format,
-      std::clamp(opacity, 0.0f, 1.0f));
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawScreenOverlay.draw");
+    return remix_.DrawScreenOverlay(
+        pixelData,
+        width,
+        height,
+        format,
+        std::clamp(opacity, 0.0f, 1.0f));
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("DrawScreenOverlay failed: " + errorCodeToString(result));
     return false;
@@ -580,6 +597,7 @@ bool RemixRenderer::drawScreenOverlay(
 }
 
 bool RemixRenderer::clearScreenOverlay() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::clearScreenOverlay");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -595,12 +613,15 @@ bool RemixRenderer::clearScreenOverlay() {
     return false;
   }
 
-  const remixapi_ErrorCode result = remix_.DrawScreenOverlay(
-      nullptr,
-      0,
-      0,
-      REMIXAPI_FORMAT_R8G8B8A8_UNORM,
-      0.0f);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawScreenOverlay.clear");
+    return remix_.DrawScreenOverlay(
+        nullptr,
+        0,
+        0,
+        REMIXAPI_FORMAT_R8G8B8A8_UNORM,
+        0.0f);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("DrawScreenOverlay clear failed: " + errorCodeToString(result));
     return false;
@@ -610,6 +631,7 @@ bool RemixRenderer::clearScreenOverlay() {
 }
 
 remixapi_UIState RemixRenderer::getUiState() const {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::getUiState");
   std::scoped_lock lock(mutex_);
 
   if (standaloneOutputWindow_) {
@@ -620,10 +642,12 @@ remixapi_UIState RemixRenderer::getUiState() const {
     return REMIXAPI_UI_STATE_NONE;
   }
 
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "GetUIState");
   return remix_.GetUIState();
 }
 
 bool RemixRenderer::setUiState(remixapi_UIState state) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setUiState");
   std::scoped_lock lock(mutex_);
 
   if (standaloneOutputWindow_) {
@@ -647,7 +671,11 @@ bool RemixRenderer::setUiState(remixapi_UIState state) {
     return false;
   }
 
-  const remixapi_ErrorCode result = remix_.SetUIState(state);
+  remixapi_ErrorCode result;
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetUIState");
+    result = remix_.SetUIState(state);
+  }
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("SetUIState failed: " + errorCodeToString(result));
     return false;
@@ -659,11 +687,13 @@ bool RemixRenderer::setUiState(remixapi_UIState state) {
 }
 
 void RemixRenderer::updateCamera(const CameraState& camera) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateCamera");
   std::scoped_lock lock(mutex_);
   camera_ = camera;
 }
 
 bool RemixRenderer::present() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::present");
   std::unique_lock<std::mutex> lock(mutex_);
 
   if (standaloneOutputWindow_) {
@@ -682,6 +712,7 @@ bool RemixRenderer::present() {
   if (!perfSummary.empty()) {
     log(perfSummary);
   }
+  ::mcrtx::perf::onFramePresented();
   return ok;
 }
 
@@ -693,6 +724,7 @@ void RemixRenderer::destroyMeshHandle(remixapi_MeshHandle& meshHandle) {
   if (renderSubmissionInFlight_) {
     deferredMeshDestroys_.push_back(meshHandle);
   } else if (remix_.DestroyMesh != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMesh");
     remix_.DestroyMesh(meshHandle);
   }
 
@@ -707,6 +739,7 @@ void RemixRenderer::destroyLightHandle(remixapi_LightHandle lightHandle) {
   if (renderSubmissionInFlight_) {
     deferredLightDestroys_.push_back(lightHandle);
   } else if (remix_.DestroyLight != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyLight");
     remix_.DestroyLight(lightHandle);
   }
 }
@@ -719,6 +752,7 @@ void RemixRenderer::flushDeferredDestroyQueuesLocked() {
   if (remix_.DestroyMesh != nullptr) {
     for (remixapi_MeshHandle meshHandle : deferredMeshDestroys_) {
       if (meshHandle != nullptr) {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMesh.deferred");
         remix_.DestroyMesh(meshHandle);
       }
     }
@@ -728,6 +762,7 @@ void RemixRenderer::flushDeferredDestroyQueuesLocked() {
   if (remix_.DestroyLight != nullptr) {
     for (remixapi_LightHandle lightHandle : deferredLightDestroys_) {
       if (lightHandle != nullptr) {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyLight.deferred");
         remix_.DestroyLight(lightHandle);
       }
     }
@@ -736,6 +771,7 @@ void RemixRenderer::flushDeferredDestroyQueuesLocked() {
 }
 
 bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::prepareFrameSnapshotLocked");
   if (!rebuildFireMesh()) {
     return false;
   }
@@ -806,6 +842,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 }
 
 bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::string& perfSummary) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::presentLocked");
   const auto lockAcquiredAt = std::chrono::steady_clock::now();
   const auto lockRequestedAt = lockAcquiredAt;
 
@@ -815,14 +852,20 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::strin
   }
 
   const auto outputWindowStart = std::chrono::steady_clock::now();
-  updateOutputWindowSize();
-  pumpOutputWindowMessages();
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.outputWindow");
+    updateOutputWindowSize();
+    pumpOutputWindowMessages();
+  }
   const auto outputWindowEnd = std::chrono::steady_clock::now();
 
   FrameRenderSnapshot snapshot;
   bool logNoCapturedScene = false;
-  if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
-    return false;
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.prepareSnapshot");
+    if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
+      return false;
+    }
   }
 
   std::uint64_t lockHoldNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockAcquiredAt);
@@ -847,7 +890,10 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::strin
   const auto geometrySubmitEnd = std::chrono::steady_clock::now();
 
   const auto remixPresentStart = std::chrono::steady_clock::now();
-  const remixapi_ErrorCode result = remix_.Present(nullptr);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Present");
+    return remix_.Present(nullptr);
+  }();
   const auto remixPresentEnd = std::chrono::steady_clock::now();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     lock.lock();
@@ -861,24 +907,28 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock, std::strin
   remixapi_UIState uiState {};
   bool hasUiState = false;
   if (remix_.GetUIState != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "GetUIState.presentSync");
     uiState = remix_.GetUIState();
     hasUiState = true;
   }
 
   lock.lock();
   const auto secondLockAcquiredAt = std::chrono::steady_clock::now();
-  renderSubmissionInFlight_ = false;
-  flushDeferredDestroyQueuesLocked();
-  if (hasUiState) {
-    syncOutputWindowInteractivity(uiState);
-  }
+  {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.postPresent");
+    renderSubmissionInFlight_ = false;
+    flushDeferredDestroyQueuesLocked();
+    if (hasUiState) {
+      syncOutputWindowInteractivity(uiState);
+    }
 
-  perfCachedChunkMeshesThisFrame_ = snapshot.cachedChunkMeshes;
-  perfSubmittedChunkMeshesThisFrame_ = snapshot.chunkMeshes.size();
-  perfSubmittedChunkBlocksThisFrame_ = snapshot.submittedChunkBlocks;
+    perfCachedChunkMeshesThisFrame_ = snapshot.cachedChunkMeshes;
+    perfSubmittedChunkMeshesThisFrame_ = snapshot.chunkMeshes.size();
+    perfSubmittedChunkBlocksThisFrame_ = snapshot.submittedChunkBlocks;
 
-  if (logNoCapturedScene) {
-    log("No captured scene meshes available yet");
+    if (logNoCapturedScene) {
+      log("No captured scene meshes available yet");
+    }
   }
 
   if (presentedFrames_ < 8
@@ -1000,6 +1050,7 @@ bool RemixRenderer::loadRemix(const std::filesystem::path& remixDllPath) {
 }
 
 bool RemixRenderer::startup(HWND hwnd) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::startup");
   remixapi_StartupInfo info {};
   info.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
   info.hwnd = hwnd;
@@ -1007,7 +1058,10 @@ bool RemixRenderer::startup(HWND hwnd) {
   info.forceNoVkSwapchain = FALSE;
   info.editorModeEnabled = FALSE;
 
-  const remixapi_ErrorCode result = remix_.Startup(&info);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Startup");
+    return remix_.Startup(&info);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("Startup failed: " + errorCodeToString(result));
     return false;
@@ -1016,6 +1070,7 @@ bool RemixRenderer::startup(HWND hwnd) {
 }
 
 bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::drawCapturedGeometry");
   for (const ChunkRenderInstance& chunkInstance : snapshot.chunkMeshes) {
     if (chunkInstance.meshHandle == nullptr) {
       continue;
@@ -1051,7 +1106,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
         static_cast<float>(chunkInstance.chunkKey.originZ));
     instanceInfo.doubleSided = chunkInstance.chunkKey.renderPass == 1 ? TRUE : FALSE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.chunk");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1088,7 +1146,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.entity");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1129,7 +1190,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
         snapshot.cloudTransformZ);
     instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.cloud");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1162,7 +1226,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.fire");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1188,7 +1255,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.overlay");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1221,7 +1291,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
     instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = remix_.DrawInstance(&instanceInfo);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.particle");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("DrawInstance failed: " + errorCodeToString(result));
       return false;
@@ -1246,7 +1319,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
       log(pathStream.str());
     }
     if (remix_.AutoInstancePersistentLights != nullptr) {
-      const remixapi_ErrorCode result = remix_.AutoInstancePersistentLights();
+      const remixapi_ErrorCode result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "AutoInstancePersistentLights");
+        return remix_.AutoInstancePersistentLights();
+      }();
       if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
         setError("AutoInstancePersistentLights failed: " + errorCodeToString(result));
         return false;
@@ -1257,7 +1333,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
           continue;
         }
 
-        const remixapi_ErrorCode result = remix_.DrawLightInstance(lightHandle);
+        const remixapi_ErrorCode result = [&]() {
+          MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawLightInstance");
+          return remix_.DrawLightInstance(lightHandle);
+        }();
         if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
           setError("DrawLightInstance failed: " + errorCodeToString(result));
           return false;
@@ -1269,6 +1348,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
 }
 
 bool RemixRenderer::submitCamera(const CameraState& camera) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::submitCamera");
   const float nearPlane = camera.nearPlane > 0.001f ? camera.nearPlane : 0.05f;
   const float farPlane = camera.farPlane > nearPlane ? camera.farPlane : (nearPlane + 1024.0f);
   const float aspect = camera.aspect > 0.001f ? camera.aspect : 1.0f;
@@ -1291,7 +1371,10 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
   info.pNext = &params;
   info.type = REMIXAPI_CAMERA_TYPE_WORLD;
 
-  remixapi_ErrorCode result = remix_.SetupCamera(&info);
+  remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetupCamera.world");
+    return remix_.SetupCamera(&info);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("SetupCamera(world) failed: " + errorCodeToString(result));
     return false;
@@ -1300,7 +1383,10 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
   params.nearPlane = viewModelNearPlane;
   params.farPlane = viewModelFarPlane;
   info.type = REMIXAPI_CAMERA_TYPE_VIEW_MODEL;
-  result = remix_.SetupCamera(&info);
+  result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetupCamera.viewmodel");
+    return remix_.SetupCamera(&info);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("SetupCamera(viewmodel) failed: " + errorCodeToString(result));
     return false;

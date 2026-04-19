@@ -169,23 +169,24 @@ public final class UiOverlayCapture {
         if (rowScratch == null || rowScratch.length != rowStride) {
             rowScratch = new byte[rowStride];
         }
+        final byte[] bottomScratch = new byte[rowStride];
 
+        // Bulk ByteBuffer transfers; per-byte get/put on a direct buffer is
+        // roughly 10x slower than a single bulk copy.
         for (int topRow = 0, bottomRow = captureHeight - 1; topRow < bottomRow; topRow += 1, bottomRow -= 1) {
             final int topOffset = topRow * rowStride;
             final int bottomOffset = bottomRow * rowStride;
 
-            for (int column = 0; column < rowStride; column += 1) {
-                rowScratch[column] = pixelBuffer.get(topOffset + column);
-            }
-
-            for (int column = 0; column < rowStride; column += 1) {
-                pixelBuffer.put(topOffset + column, pixelBuffer.get(bottomOffset + column));
-            }
-
-            for (int column = 0; column < rowStride; column += 1) {
-                pixelBuffer.put(bottomOffset + column, rowScratch[column]);
-            }
+            pixelBuffer.position(topOffset);
+            pixelBuffer.get(rowScratch, 0, rowStride);
+            pixelBuffer.position(bottomOffset);
+            pixelBuffer.get(bottomScratch, 0, rowStride);
+            pixelBuffer.position(topOffset);
+            pixelBuffer.put(bottomScratch, 0, rowStride);
+            pixelBuffer.position(bottomOffset);
+            pixelBuffer.put(rowScratch, 0, rowStride);
         }
+        pixelBuffer.rewind();
     }
 
     private static void destroyResources() {

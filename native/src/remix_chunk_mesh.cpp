@@ -3,6 +3,7 @@
 
 #include "mcrtx/remix_renderer.hpp"
 #include "mcrtx/render_internals.hpp"
+#include "mcrtx/perf_log.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -30,6 +31,7 @@ std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
 
 bool RemixRenderer::beginChunkBuild(
     int originX, int originY, int originZ, int sizeX, int sizeY, int sizeZ, int renderPass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginChunkBuild");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -79,6 +81,7 @@ void RemixRenderer::captureBlock(
   float liquidHeight2,
   float liquidHeight3,
   float liquidFlowAngle) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureBlock");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || !chunkBuildActive_) {
@@ -120,7 +123,8 @@ void RemixRenderer::captureBlock(
   activeChunkBlocks_.push_back(block);
 }
 
-void RemixRenderer::endChunkBuild(bool emittedGeometry) {
+void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild");
   std::scoped_lock lock(mutex_);
   const auto buildStart = std::chrono::steady_clock::now();
 
@@ -129,6 +133,22 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
   }
 
   const ChunkKey chunkKey = makeChunkKey(activeChunkBuild_);
+
+  // When deferring, enqueue neighbor keys into a set so multiple sibling
+  // rebuilds in the same flush collapse into one refresh per unique neighbor.
+  // Also mark the rebuilt chunk as "recently rebuilt" so a subsequent sibling
+  // doesn't schedule a redundant refresh of an already-fresh mesh.
+  const auto scheduleNeighbors = [this, &chunkKey]() {
+    recentlyRebuiltChunks_.insert(chunkKey);
+    for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+      ChunkKey neighborKey = chunkKey;
+      neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;
+      neighborKey.originY += kNeighborOffsets[faceIndex][1] * kChunkDimension;
+      neighborKey.originZ += kNeighborOffsets[faceIndex][2] * kChunkDimension;
+      pendingNeighborRefresh_.insert(neighborKey);
+    }
+  };
+
   std::uint64_t rebuildNanos = 0;
   std::uint64_t neighborRefreshNanos = 0;
   bool rebuiltChunkMesh = false;
@@ -144,7 +164,11 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
     rebuildNanos = toNanoseconds(std::chrono::steady_clock::now() - rebuildStart);
     rebuiltChunkMesh = true;
     const auto neighborRefreshStart = std::chrono::steady_clock::now();
-    refreshNeighborChunkMeshes(chunkKey);
+    if (deferNeighborRefresh) {
+      scheduleNeighbors();
+    } else {
+      refreshNeighborChunkMeshes(chunkKey);
+    }
     neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
   } else {
     auto chunkIt = chunkMeshes_.find(chunkKey);
@@ -152,7 +176,11 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
       destroyChunkMesh(chunkIt->second);
       chunkMeshes_.erase(chunkIt);
       const auto neighborRefreshStart = std::chrono::steady_clock::now();
-      refreshNeighborChunkMeshes(chunkKey);
+      if (deferNeighborRefresh) {
+        scheduleNeighbors();
+      } else {
+        refreshNeighborChunkMeshes(chunkKey);
+      }
       neighborRefreshNanos = toNanoseconds(std::chrono::steady_clock::now() - neighborRefreshStart);
     }
   }
@@ -192,6 +220,7 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry) {
 }
 
 void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkMeshHandle");
   destroyMeshHandle(meshData.meshHandle);
   meshData.meshHash = 0;
 }
@@ -200,6 +229,7 @@ bool RemixRenderer::rebuildChunkMesh(
     const ChunkKey& chunkKey,
     const std::vector<CapturedBlockInstance>& blocks,
     ChunkMeshData& meshData) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMesh");
   if (blocks.empty()) {
     destroyChunkMesh(meshData);
     meshData.geometryFingerprint = 0;
@@ -278,6 +308,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     const ChunkKey& chunkKey,
     ChunkMeshData& meshData,
     bool forceRebuild) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMeshFromData");
   (void)forceRebuild;
 
   if (!meshData.hasOccupancy || meshData.blockCount == 0) {
@@ -860,7 +891,10 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
 
   remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.chunk");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMesh failed: " + errorCodeToString(result));
     return false;
@@ -879,13 +913,45 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 }
 
 void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkMesh");
   destroyChunkMeshHandle(meshData);
   destroyChunkTorchLights(meshData);
   meshData.meshFingerprint = 0;
   meshData.fireCellIndices.clear();
 }
 
+void RemixRenderer::flushChunkNeighborRefreshes() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::flushChunkNeighborRefreshes");
+  std::scoped_lock lock(mutex_);
+  if (pendingNeighborRefresh_.empty()) {
+    recentlyRebuiltChunks_.clear();
+    return;
+  }
+
+  for (const ChunkKey& neighborKey : pendingNeighborRefresh_) {
+    // Skip neighbors that were themselves rebuilt this flush -- their mesh is
+    // already up to date and we don't want to rebuild the same chunk twice.
+    if (recentlyRebuiltChunks_.find(neighborKey) != recentlyRebuiltChunks_.end()) {
+      continue;
+    }
+    const auto neighborIt = chunkMeshes_.find(neighborKey);
+    if (neighborIt == chunkMeshes_.end()) {
+      continue;
+    }
+    if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
+      continue;
+    }
+    if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
+      break;
+    }
+  }
+
+  pendingNeighborRefresh_.clear();
+  recentlyRebuiltChunks_.clear();
+}
+
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::refreshNeighborChunkMeshes");
   for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
     ChunkKey neighborKey = chunkKey;
     neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;

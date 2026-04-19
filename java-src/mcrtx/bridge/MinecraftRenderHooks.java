@@ -475,14 +475,21 @@ public final class MinecraftRenderHooks {
                 liquidFlowAngle);
     }
 
-    public static void endChunkBuild(boolean emittedGeometry) {
+    public static void endChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh) {
         if (!initialized || !chunkBuildCaptureActive) {
             return;
         }
-        RemixBridgeNative.nEndChunkBuild(capturedChunkBlocks > 0);
+        RemixBridgeNative.nEndChunkBuild(capturedChunkBlocks > 0, deferNeighborRefresh);
         chunkBuildCaptureActive = false;
         activeChunkRenderPass = 0;
         capturedChunkBlocks = 0;
+    }
+
+    public static void flushChunkNeighborRefreshes() {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nFlushChunkNeighborRefreshes();
     }
 
     public static synchronized boolean isChunkBuildCaptureActive() {

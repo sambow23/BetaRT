@@ -10,6 +10,7 @@ add_library(mcrtx_jni SHARED
   src/remix_subsystem_meshes.cpp
   src/remix_window.cpp
   src/render_internals.cpp
+  src/perf_log.cpp
 )
 
 target_include_directories(mcrtx_jni

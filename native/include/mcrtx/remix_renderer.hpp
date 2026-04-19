@@ -10,6 +10,7 @@
 #include <string>
 #include <thread>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 #include <windows.h>
@@ -402,7 +403,8 @@ public:
       float liquidHeight2,
       float liquidHeight3,
       float liquidFlowAngle);
-  void endChunkBuild(bool emittedGeometry);
+  void endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh = false);
+  void flushChunkNeighborRefreshes();
       bool drawScreenOverlay(
         const void* pixelData,
         std::uint32_t width,
@@ -584,6 +586,8 @@ private:
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
+  std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};
+  std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};

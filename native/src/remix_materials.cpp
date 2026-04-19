@@ -3,6 +3,7 @@
 
 #include "mcrtx/remix_renderer.hpp"
 #include "mcrtx/render_internals.hpp"
+#include "mcrtx/perf_log.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -382,6 +383,7 @@ std::filesystem::path RemixRenderer::resolveParticleTexturePath(std::uint32_t te
 }
 
 bool RemixRenderer::initializeTerrainMaterials() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::initializeTerrainMaterials");
   destroyTerrainMaterials();
   terrainAtlasPath_ = resolveTerrainAtlasPath();
   terrainEmissiveTexturePath_ = resolveTerrainEmissiveTexturePath();
@@ -434,7 +436,10 @@ bool RemixRenderer::initializeTerrainMaterials() {
     materialInfo.wrapModeV = 1;
 
     remixapi_MaterialHandle materialHandle = nullptr;
-    const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.terrain");
+      return remix_.CreateMaterial(&materialInfo, &materialHandle);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("CreateMaterial failed: " + errorCodeToString(result));
       return false;
@@ -586,7 +591,10 @@ bool RemixRenderer::initializeTerrainMaterials() {
     fireMaterialInfo.wrapModeU = 1;
     fireMaterialInfo.wrapModeV = 1;
 
-    const remixapi_ErrorCode fireResult = remix_.CreateMaterial(&fireMaterialInfo, &fireMaterialHandle_);
+    const remixapi_ErrorCode fireResult = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.fire");
+      return remix_.CreateMaterial(&fireMaterialInfo, &fireMaterialHandle_);
+    }();
     if (fireResult != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("CreateMaterial failed: " + errorCodeToString(fireResult));
       fireMaterialHandle_ = nullptr;
@@ -621,7 +629,10 @@ bool RemixRenderer::initializeTerrainMaterials() {
   cloudMaterialInfo.wrapModeU = 1;
   cloudMaterialInfo.wrapModeV = 1;
 
-  const remixapi_ErrorCode cloudResult = remix_.CreateMaterial(&cloudMaterialInfo, &cloudMaterialHandle_);
+  const remixapi_ErrorCode cloudResult = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.cloud");
+    return remix_.CreateMaterial(&cloudMaterialInfo, &cloudMaterialHandle_);
+  }();
   if (cloudResult != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMaterial failed: " + errorCodeToString(cloudResult));
     log("Cloud material unavailable; cloud layer will be skipped");
@@ -633,6 +644,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
 }
 
 void RemixRenderer::destroyTerrainMaterials() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyTerrainMaterials");
   destroyCloudMesh();
   destroyDestroyOverlayMesh();
   destroyParticleMesh();
@@ -641,12 +653,14 @@ void RemixRenderer::destroyTerrainMaterials() {
   if (remix_.DestroyMaterial != nullptr) {
     for (auto& [texturePath, materialHandle] : dynamicEntityMaterialHandles_) {
       if (materialHandle != nullptr) {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.entity");
         remix_.DestroyMaterial(materialHandle);
       }
     }
     for (auto& [textureKind, materialHandle] : particleMaterialHandles_) {
       (void)textureKind;
       if (materialHandle != nullptr) {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.particle");
         remix_.DestroyMaterial(materialHandle);
       }
     }
@@ -655,11 +669,13 @@ void RemixRenderer::destroyTerrainMaterials() {
   particleMaterialHandles_.clear();
 
   if (remix_.DestroyMaterial != nullptr && fireMaterialHandle_ != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.fire");
     remix_.DestroyMaterial(fireMaterialHandle_);
     fireMaterialHandle_ = nullptr;
   }
 
   if (remix_.DestroyMaterial != nullptr && cloudMaterialHandle_ != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.cloud");
     remix_.DestroyMaterial(cloudMaterialHandle_);
     cloudMaterialHandle_ = nullptr;
   }
@@ -671,6 +687,7 @@ void RemixRenderer::destroyTerrainMaterials() {
 
   for (remixapi_MaterialHandle& materialHandle : terrainMaterialHandles_) {
     if (materialHandle != nullptr) {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.terrain");
       remix_.DestroyMaterial(materialHandle);
       materialHandle = nullptr;
     }
@@ -686,6 +703,7 @@ void RemixRenderer::destroyTerrainMaterials() {
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::acquireDynamicEntityMaterial");
   const auto existing = dynamicEntityMaterialHandles_.find(texturePath);
   if (existing != dynamicEntityMaterialHandles_.end()) {
     return existing->second;
@@ -718,7 +736,10 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   materialInfo.wrapModeV = 1;
 
   remixapi_MaterialHandle materialHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.entity");
+    return remix_.CreateMaterial(&materialInfo, &materialHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMaterial failed: " + errorCodeToString(result));
     return nullptr;
@@ -729,6 +750,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
 }
 
 remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t textureKind) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::acquireParticleMaterial");
   if (textureKind == 1 || textureKind == 3) {
     return terrainMaterialHandles_[kCutoutTerrainMaterialClass];
   }
@@ -765,7 +787,10 @@ remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t tex
   materialInfo.wrapModeV = 1;
 
   remixapi_MaterialHandle materialHandle = nullptr;
-  const remixapi_ErrorCode result = remix_.CreateMaterial(&materialInfo, &materialHandle);
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.particle");
+    return remix_.CreateMaterial(&materialInfo, &materialHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateMaterial failed: " + errorCodeToString(result));
     return nullptr;
