@@ -266,7 +266,6 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
 
 remixapi_Transform makeTranslationTransform(float x, float y, float z);
 std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence);
-std::uint64_t makeCloudMeshHash(std::uint64_t sequence);
 std::uint64_t makeDynamicEntityMeshKey(int entityId, std::uint64_t geometryFingerprint);
 std::uint64_t makeDynamicEntityMeshHash(std::uint64_t geometryFingerprint);
 std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence);

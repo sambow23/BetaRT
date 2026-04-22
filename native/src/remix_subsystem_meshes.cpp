@@ -496,9 +496,14 @@ bool RemixRenderer::rebuildCloudMesh(
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeCloudMeshHash(nextCloudMeshHash_++);
+  meshInfo.hash = fancy ? 0x4D43525458434C46ull : 0x4D43525458434C30ull;
   meshInfo.surfaces_values = &surface;
   meshInfo.surfaces_count = 1;
+
+  // Cloud geometry is rebuilt from live world-space phase math. Reuse a stable
+  // per-mode hash, but destroy the previous cloud mesh first so Remix never has
+  // two different live meshes with the same identity at once.
+  destroyCloudMesh();
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
@@ -510,7 +515,6 @@ bool RemixRenderer::rebuildCloudMesh(
     return false;
   }
 
-  destroyCloudMesh();
   cloudMeshHandle_ = newMeshHandle;
   cloudMeshFancy_ = fancy;
   cloudMeshPhaseX_ = 0;

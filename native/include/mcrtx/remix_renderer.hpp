@@ -586,7 +586,6 @@ private:
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
   remixapi_MeshHandle fireMeshHandle_ {nullptr};
   remixapi_MeshHandle destroyOverlayMeshHandle_ {nullptr};
-  std::uint64_t nextCloudMeshHash_ {1};
   std::uint64_t nextFireMeshHash_ {1};
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
   std::uint64_t nextParticleMeshHash_ {1};

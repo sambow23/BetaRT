@@ -436,7 +436,6 @@ void RemixRenderer::shutdownLocked() {
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   fireTexturePath_.clear();
-  nextCloudMeshHash_ = 1;
   nextFireMeshHash_ = 1;
   nextDestroyOverlayMeshHash_ = 1;
   nextParticleMeshHash_ = 1;
