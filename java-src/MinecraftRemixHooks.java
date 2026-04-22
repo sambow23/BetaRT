@@ -247,6 +247,15 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onChunkSectionUnload(int originX, int originY, int originZ) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixChunkCapture.onChunkSectionUnload(originX, originY, originZ);
+        } finally {
+            HookProfiler.endHook("hook.onChunkSectionUnload", __perf);
+        }
+    }
+
     public static void onCloudRender(net.minecraft.client.Minecraft minecraft, fd world, int cloudTick, float partialTicks, boolean fancy) {
         long __perf = HookProfiler.begin();
         try {

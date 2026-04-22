@@ -75,6 +75,11 @@ public final class RemixChunkCapture {
         return attachedWorld;
     }
 
+    public static void onChunkSectionUnload(int originX, int originY, int originZ) {
+        clearPendingRecaptureForSection(originX, originY, originZ);
+        MinecraftRenderHooks.unloadChunkSection(originX, originY, originZ);
+    }
+
     public static void onWorldChanged(fd world) {
         if (attachedWorld == world) {
             return;

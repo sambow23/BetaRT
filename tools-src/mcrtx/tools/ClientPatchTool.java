@@ -143,12 +143,39 @@ public final class ClientPatchTool {
 
     private static byte[] patchDk(byte[] content) {
         ClassNode classNode = readClass(content);
+        boolean patchedChunkBuild = false;
+        boolean patchedChunkUnload = false;
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("()V")) {
                 patchDkChunkBuild(method);
+                patchedChunkBuild = true;
+            } else if (method.name.equals("c") && method.desc.equals("()V")) {
+                patchDkChunkUnload(method);
+                patchedChunkUnload = true;
             }
         }
+        if (!patchedChunkUnload) {
+            throw new IllegalStateException(
+                "ClientPatchTool: could not find dk.c()V — chunk unload hook not injected");
+        }
         return writeClass(classNode);
+    }
+
+    private static void patchDkChunkUnload(MethodNode method) {
+        InsnList hook = new InsnList();
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "c", "I")); // originX
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "d", "I")); // originY
+        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "e", "I")); // originZ
+        hook.add(new MethodInsnNode(
+            Opcodes.INVOKESTATIC,
+            REMIX_HELPER_CLASS,
+            "onChunkSectionUnload",
+            "(III)V",
+            false));
+        method.instructions.insertBefore(method.instructions.getFirst(), hook);
     }
 
     private static byte[] patchN(byte[] content) {

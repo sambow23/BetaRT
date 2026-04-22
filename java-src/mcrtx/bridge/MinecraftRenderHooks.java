@@ -369,6 +369,13 @@ public final class MinecraftRenderHooks {
         capturedChunkBlocks = 0;
     }
 
+    public static synchronized void unloadChunkSection(int originX, int originY, int originZ) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nUnloadChunkSection(originX, originY, originZ);
+    }
+
     public static synchronized boolean drawScreenOverlay(
             ByteBuffer pixelData,
             int width,

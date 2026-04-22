@@ -378,6 +378,7 @@ public:
       std::uint32_t colorRgba,
       std::uint32_t textureKind);
   void clearWorldScene();
+  void unloadChunkSection(int originX, int originY, int originZ);
   bool beginChunkBuild(
       int originX,
       int originY,
@@ -506,6 +507,7 @@ private:
   void destroyChunkMesh(ChunkMeshData& meshData);
   bool rebuildParticleMesh();
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
+  void evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks);
   bool prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene);
   bool drawCapturedGeometry(const FrameRenderSnapshot& snapshot);
   bool submitCamera(const CameraState& camera);
@@ -605,6 +607,7 @@ private:
   std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
+  int evictRadiusChunks_ {20};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};

@@ -266,6 +266,15 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearWorldScene(JNIE
   RemixRenderer::instance().clearWorldScene();
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUnloadChunkSection(
+    JNIEnv*, jclass, jint originX, jint originY, jint originZ) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUnloadChunkSection");
+  RemixRenderer::instance().unloadChunkSection(
+      static_cast<int>(originX),
+      static_cast<int>(originY),
+      static_cast<int>(originZ));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     JNIEnv*, jclass,
     jint originX, jint originY, jint originZ,

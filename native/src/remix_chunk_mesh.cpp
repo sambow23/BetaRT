@@ -986,12 +986,53 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   return true;
 }
 
+void RemixRenderer::unloadChunkSection(int originX, int originY, int originZ) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::unloadChunkSection");
+  std::scoped_lock lock(mutex_);
+
+  for (int renderPass = 0; renderPass <= 1; ++renderPass) {
+    const ChunkKey key {originX, originY, originZ, renderPass};
+    auto it = chunkMeshes_.find(key);
+    if (it != chunkMeshes_.end()) {
+      destroyChunkMesh(it->second);
+      chunkMeshes_.erase(it);
+    }
+    pendingNeighborRefresh_.erase(key);
+    recentlyRebuiltChunks_.erase(key);
+  }
+}
+
 void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkMesh");
   destroyChunkMeshHandle(meshData);
   destroyChunkTorchLights(meshData);
   meshData.meshFingerprint = 0;
   meshData.fireCellIndices.clear();
+}
+
+void RemixRenderer::evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::evictDistantChunks");
+  // Caller holds mutex_.
+  if (evictRadiusChunks <= 0) {
+    return;
+  }
+
+  for (auto it = chunkMeshes_.begin(); it != chunkMeshes_.end(); ) {
+    const ChunkKey& key = it->first;
+    const int chunkX = key.originX / kChunkDimension;
+    const int chunkZ = key.originZ / kChunkDimension;
+    const int chebyshev = std::max(
+        std::abs(chunkX - cameraChunkX),
+        std::abs(chunkZ - cameraChunkZ));
+    if (chebyshev > evictRadiusChunks) {
+      destroyChunkMesh(it->second);
+      pendingNeighborRefresh_.erase(key);
+      recentlyRebuiltChunks_.erase(key);
+      it = chunkMeshes_.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void RemixRenderer::flushChunkNeighborRefreshes() {

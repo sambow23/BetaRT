@@ -133,6 +133,19 @@ bool RemixRenderer::initialize(
   if (usedLegacySourceWindowEnvVar) {
     log("MCRTX_USE_SOURCE_WINDOW is deprecated; using detached dual-window mode instead");
   }
+
+  {
+    const std::string evictRadiusStr = readEnvironmentVariable("MCRTX_EVICT_RADIUS");
+    if (!evictRadiusStr.empty()) {
+      try {
+        const int parsed = std::stoi(evictRadiusStr);
+        evictRadiusChunks_ = parsed > 0 ? parsed : 20;
+        log("MCRTX_EVICT_RADIUS=" + evictRadiusStr + " -> evictRadiusChunks=" + std::to_string(evictRadiusChunks_));
+      } catch (...) {
+        log("MCRTX_EVICT_RADIUS=" + evictRadiusStr + " is non-numeric; using default evictRadiusChunks=" + std::to_string(evictRadiusChunks_));
+      }
+    }
+  }
   log(
       "Window mode requested=" + describeRequestedWindowMode()
       + " effective=" + (standaloneOutputWindow_ ? std::string("standalone") : (overlayOutputWindow_ ? std::string("overlay") : std::string("dual")))
@@ -876,6 +889,13 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
     if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
       return false;
     }
+  }
+
+  if (!chunkBuildActive_) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.evictDistantChunks");
+    const int cameraChunkX = static_cast<int>(camera_.position[0]) / kChunkDimension;
+    const int cameraChunkZ = static_cast<int>(camera_.position[2]) / kChunkDimension;
+    evictDistantChunks(cameraChunkX, cameraChunkZ, evictRadiusChunks_);
   }
 
   std::uint64_t lockHoldNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockAcquiredAt);

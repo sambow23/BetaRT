@@ -203,6 +203,8 @@ public final class RemixBridgeNative {
 
             public static native void nClearWorldScene();
 
+    public static native void nUnloadChunkSection(int originX, int originY, int originZ);
+
     public static native boolean nBeginChunkBuild(
             int originX,
             int originY,
