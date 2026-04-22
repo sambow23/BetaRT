@@ -20,6 +20,7 @@
 namespace mcrtx {
 
 using namespace mcrtx::detail;
+
 void RemixRenderer::updateCloudLayer(
     bool fancy,
     float cameraX,
@@ -38,27 +39,16 @@ void RemixRenderer::updateCloudLayer(
     return;
   }
 
-  if (fancy) {
-    cloudTransformX_ = cameraX + cloudScroll;
-    cloudTransformY_ = cloudHeight;
-    cloudTransformZ_ = cameraZ;
+  cloudTransformX_ = 0.0f;
+  cloudTransformY_ = 0.0f;
+  cloudTransformZ_ = 0.0f;
 
-    if (cloudMeshHandle_ == nullptr || !cloudMeshFancy_) {
-      log(std::string("Rebuilding cloud mesh: mode=") + (fancy ? "fancy" : "fast")
-          + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
-      rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
-    }
-    return;
-  }
-
-  cloudTransformX_ = cameraX + cloudScroll;
-  cloudTransformY_ = cloudHeight;
-  cloudTransformZ_ = cameraZ;
-  if (cloudMeshHandle_ == nullptr || cloudMeshFancy_) {
+  if (cloudMeshHandle_ == nullptr || cloudMeshFancy_ != fancy) {
     log(std::string("Rebuilding cloud mesh: mode=") + (fancy ? "fancy" : "fast")
         + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
-    rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
   }
+
+  rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
 }
 
 void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere) {
@@ -506,7 +496,7 @@ bool RemixRenderer::rebuildCloudMesh(
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = fancy ? 0x4D43525458434C46ull : 0x4D43525458434C30ull;
+  meshInfo.hash = makeCloudMeshHash(nextCloudMeshHash_++);
   meshInfo.surfaces_values = &surface;
   meshInfo.surfaces_count = 1;
 
