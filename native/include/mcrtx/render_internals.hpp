@@ -210,6 +210,7 @@ struct SurfaceBuildBuffers {
 HMODULE getCurrentModuleHandle();
 bool isTruthyEnvValue(const char* envValue);
 std::string readEnvironmentVariable(const char* name);
+bool isVerboseLoggingEnabled();
 bool equalsIgnoreCase(std::string_view left, std::string_view right);
 bool shouldUseStandaloneOutputWindow();
 bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar = nullptr);

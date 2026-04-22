@@ -1039,7 +1039,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
 
   resetPerFramePerfCounters();
 
-  if (shouldLogSummary) {
+  if (shouldLogSummary && isVerboseLoggingEnabled()) {
     std::ostringstream stream;
     stream << "perf native frames=" << summaryWindow.frames;
     appendDurationSummary(stream, "lockWait", summaryWindow.presentLockWait, summaryWindow.frames);

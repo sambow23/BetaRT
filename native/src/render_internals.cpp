@@ -63,6 +63,14 @@ std::string readEnvironmentVariable(const char* name) {
   return value;
 }
 
+bool isVerboseLoggingEnabled() {
+  static const bool enabled = []() {
+    const std::string value = readEnvironmentVariable("MCRTX_VERBOSE_LOG");
+    return isTruthyEnvValue(value.c_str());
+  }();
+  return enabled;
+}
+
 bool equalsIgnoreCase(std::string_view left, std::string_view right) {
   if (left.size() != right.size()) {
     return false;

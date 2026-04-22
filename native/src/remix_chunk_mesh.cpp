@@ -235,7 +235,7 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
 
   ++capturedChunkBuilds_;
   const bool shouldLog = capturedChunkBuilds_ <= 8 || capturedChunkBuilds_ % 128 == 0;
-  if (shouldLog) {
+  if (shouldLog && isVerboseLoggingEnabled()) {
     std::ostringstream stream;
     stream << "chunk build origin=("
            << activeChunkBuild_.origin[0] << ", "

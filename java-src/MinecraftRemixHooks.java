@@ -16,6 +16,7 @@ public final class MinecraftRemixHooks {
     private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
+    private static final boolean VERBOSE_LOGGING = detectVerboseLoggingEnabled();
 
     private static boolean loggedDisplayCreate;
     private static boolean loggedDisplayReset;
@@ -595,7 +596,9 @@ public final class MinecraftRemixHooks {
                 .append(formatAverageCount(perfTotalSectionsRecaptured, perfFrameCount))
                 .append(" sectionsMax=")
                 .append(perfMaxSectionsRecaptured);
-        System.out.println(summary.toString());
+        if (VERBOSE_LOGGING) {
+            System.out.println(summary.toString());
+        }
         resetPerfTracking();
     }
 
@@ -624,6 +627,20 @@ public final class MinecraftRemixHooks {
     private static boolean detectStandaloneWindowMode() {
         String configuredMode = System.getenv("MCRTX_WINDOW_MODE");
         return configuredMode != null && configuredMode.equalsIgnoreCase("standalone");
+    }
+
+    private static boolean detectVerboseLoggingEnabled() {
+        String value = System.getenv("MCRTX_VERBOSE_LOG");
+        if (value == null || value.isEmpty()) {
+            return false;
+        }
+
+        char firstCharacter = value.charAt(0);
+        return firstCharacter == '1'
+                || firstCharacter == 't'
+                || firstCharacter == 'T'
+                || firstCharacter == 'y'
+                || firstCharacter == 'Y';
     }
 
     private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {

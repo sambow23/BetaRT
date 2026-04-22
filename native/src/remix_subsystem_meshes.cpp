@@ -520,13 +520,15 @@ bool RemixRenderer::rebuildCloudMesh(
   cloudMeshPhaseX_ = 0;
   cloudMeshPhaseZ_ = 0;
   cloudQuadCount_ = indices.size() / 6;
-  log(std::string("Cloud mesh ready: mode=") + (fancy ? "fancy" : "fast")
-      + " quads=" + std::to_string(cloudQuadCount_)
-      + " hash=0x" + [&]() {
-          std::ostringstream stream;
-          stream << std::hex << meshInfo.hash;
-          return stream.str();
-        }());
+  if (isVerboseLoggingEnabled()) {
+    log(std::string("Cloud mesh ready: mode=") + (fancy ? "fancy" : "fast")
+        + " quads=" + std::to_string(cloudQuadCount_)
+        + " hash=0x" + [&]() {
+            std::ostringstream stream;
+            stream << std::hex << meshInfo.hash;
+            return stream.str();
+          }());
+  }
   return true;
 }
 
