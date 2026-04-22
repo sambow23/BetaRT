@@ -947,6 +947,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   if (surfaces.empty()) {
     destroyChunkMesh(meshData);
     meshData.meshFingerprint = 0;
+    meshData.faceCovered = {};
     return true;
   }
 
@@ -955,6 +956,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
       return false;
     }
+    // Face coverage is already up to date from the previous build.
     return true;
   }
 
@@ -983,6 +985,9 @@ bool RemixRenderer::rebuildChunkMeshFromData(
   meshData.meshHandle = newMeshHandle;
   meshData.meshHash = meshInfo.hash;
   meshData.meshFingerprint = meshFingerprint;
+  if (chunkKey.renderPass == 0) {
+    computeFaceCoverage(meshData);
+  }
   return true;
 }
 
@@ -999,6 +1004,108 @@ void RemixRenderer::unloadChunkSection(int originX, int originY, int originZ) {
     }
     pendingNeighborRefresh_.erase(key);
     recentlyRebuiltChunks_.erase(key);
+  }
+}
+
+bool RemixRenderer::isChunkBuried(const ChunkKey& chunkKey) const {
+  // A chunk is buried if all 6 face-adjacent opaque-pass neighbors exist and
+  // each neighbor's opposite face is fully covered by solid opaque blocks.
+  // Conservative: any absent neighbor or uncovered face returns false.
+  for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
+    ChunkKey neighborKey {
+      chunkKey.originX + kNeighborOffsets[faceIndex][0] * kChunkDimension,
+      chunkKey.originY + kNeighborOffsets[faceIndex][1] * kChunkDimension,
+      chunkKey.originZ + kNeighborOffsets[faceIndex][2] * kChunkDimension,
+      0  // opaque pass only
+    };
+    const auto neighborIt = chunkMeshes_.find(neighborKey);
+    if (neighborIt == chunkMeshes_.end()) {
+      return false;
+    }
+    // Opposite face index: faceIndex ^ 1 (swaps within each axis pair: 0↔1, 2↔3, 4↔5)
+    if (!neighborIt->second.faceCovered[faceIndex ^ 1]) {
+      return false;
+    }
+  }
+  return true;
+}
+
+void RemixRenderer::computeFaceCoverage(ChunkMeshData& meshData) {
+  // For each of the 6 face directions, scan the 16×16 border plane and set
+  // faceCovered[face] = true only if every cell is a solid opaque full-cube.
+  // Face index mapping matches kNeighborOffsets:
+  //   0 = -Z (localZ == 0),  1 = +Z (localZ == 15)
+  //   2 = -X (localX == 0),  3 = +X (localX == 15)
+  //   4 = -Y (localY == 0),  5 = +Y (localY == 15)
+
+  const auto isSolidOccluder = [&](int index) -> bool {
+    if (meshData.occupancy[index] == 0) return false;
+    const ChunkBlockCell& cell = meshData.cells[index];
+    if (cell.renderType != kCubeBlockRenderType) return false;
+    if (cell.materialClass != kOpaqueTerrainMaterialClass) return false;
+    if (usesPartialCubeBounds(cell)) return false;
+    return true;
+  };
+
+  // Face 0: -Z, fixed localZ = 0
+  {
+    bool covered = true;
+    for (int localY = 0; localY < kChunkDimension && covered; ++localY) {
+      for (int localX = 0; localX < kChunkDimension && covered; ++localX) {
+        if (!isSolidOccluder(blockIndex(localX, localY, 0))) covered = false;
+      }
+    }
+    meshData.faceCovered[0] = covered;
+  }
+  // Face 1: +Z, fixed localZ = 15
+  {
+    bool covered = true;
+    for (int localY = 0; localY < kChunkDimension && covered; ++localY) {
+      for (int localX = 0; localX < kChunkDimension && covered; ++localX) {
+        if (!isSolidOccluder(blockIndex(localX, localY, kChunkDimension - 1))) covered = false;
+      }
+    }
+    meshData.faceCovered[1] = covered;
+  }
+  // Face 2: -X, fixed localX = 0
+  {
+    bool covered = true;
+    for (int localY = 0; localY < kChunkDimension && covered; ++localY) {
+      for (int localZ = 0; localZ < kChunkDimension && covered; ++localZ) {
+        if (!isSolidOccluder(blockIndex(0, localY, localZ))) covered = false;
+      }
+    }
+    meshData.faceCovered[2] = covered;
+  }
+  // Face 3: +X, fixed localX = 15
+  {
+    bool covered = true;
+    for (int localY = 0; localY < kChunkDimension && covered; ++localY) {
+      for (int localZ = 0; localZ < kChunkDimension && covered; ++localZ) {
+        if (!isSolidOccluder(blockIndex(kChunkDimension - 1, localY, localZ))) covered = false;
+      }
+    }
+    meshData.faceCovered[3] = covered;
+  }
+  // Face 4: -Y, fixed localY = 0
+  {
+    bool covered = true;
+    for (int localZ = 0; localZ < kChunkDimension && covered; ++localZ) {
+      for (int localX = 0; localX < kChunkDimension && covered; ++localX) {
+        if (!isSolidOccluder(blockIndex(localX, 0, localZ))) covered = false;
+      }
+    }
+    meshData.faceCovered[4] = covered;
+  }
+  // Face 5: +Y, fixed localY = 15
+  {
+    bool covered = true;
+    for (int localZ = 0; localZ < kChunkDimension && covered; ++localZ) {
+      for (int localX = 0; localX < kChunkDimension && covered; ++localX) {
+        if (!isSolidOccluder(blockIndex(localX, kChunkDimension - 1, localZ))) covered = false;
+      }
+    }
+    meshData.faceCovered[5] = covered;
   }
 }
 

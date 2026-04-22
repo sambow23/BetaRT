@@ -814,6 +814,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
       continue;
     }
 
+    if (isChunkBuried(chunkKey)) {
+      continue;
+    }
+
     ChunkRenderInstance renderInstance;
     renderInstance.chunkKey = chunkKey;
     renderInstance.meshHandle = meshData.meshHandle;

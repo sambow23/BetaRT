@@ -198,6 +198,7 @@ struct ChunkMeshData {
   std::vector<std::uint16_t> fireCellIndices {};
   std::vector<TorchLightPlacement> torchLights {};
   bool hasOccupancy {false};
+  std::array<bool, 6> faceCovered {};
 };
 
 struct DynamicEntityQuad {
@@ -508,6 +509,8 @@ private:
   bool rebuildParticleMesh();
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   void evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks);
+  void computeFaceCoverage(ChunkMeshData& meshData);
+  bool isChunkBuried(const ChunkKey& chunkKey) const;
   bool prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene);
   bool drawCapturedGeometry(const FrameRenderSnapshot& snapshot);
   bool submitCamera(const CameraState& camera);
