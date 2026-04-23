@@ -12,6 +12,10 @@ public final class RemixDynamicEntityCapture {
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID = Integer.MAX_VALUE - 2;
     private static final int TILE_ENTITY_ID_NAMESPACE = 0x40000000;
+    private static final int NO_HELD_ITEM = -1;
+    private static final int TORCH_BLOCK_ID = 50;
+    private static final int REDSTONE_TORCH_OFF_BLOCK_ID = 75;
+    private static final int REDSTONE_TORCH_ON_BLOCK_ID = 76;
     private static final float FONT_GLYPH_SIZE = 7.99f;
     private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
@@ -216,6 +220,7 @@ public final class RemixDynamicEntityCapture {
         nextDynamicBoneIndex = 0;
         MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
+        MinecraftRenderHooks.setFirstPersonHeldItem(NO_HELD_ITEM);
     }
 
     public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
@@ -327,6 +332,13 @@ public final class RemixDynamicEntityCapture {
 
         activeFirstPersonTexture = itemStack.c < 256 ? "/terrain.png" : "/gui/items.png";
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
+        MinecraftRenderHooks.setFirstPersonHeldItem(isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
+    }
+
+    private static boolean isTorchLikeHeldItem(int itemId) {
+        return itemId == TORCH_BLOCK_ID
+                || itemId == REDSTONE_TORCH_ON_BLOCK_ID
+                || itemId == REDSTONE_TORCH_OFF_BLOCK_ID;
     }
 
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {

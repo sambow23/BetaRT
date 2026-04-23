@@ -219,6 +219,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetDynamicEntityTexture(texturePath);
     }
 
+    public static synchronized void setFirstPersonHeldItem(int itemId) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetFirstPersonHeldItem(itemId);
+    }
+
     public static synchronized void setDynamicEntityBoneTransform(
             int boneIndex,
             float m00,

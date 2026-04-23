@@ -396,6 +396,7 @@ void RemixRenderer::shutdownLocked() {
     while (!torchLights_.empty()) {
       destroyTorchLight(torchLights_.begin()->first);
     }
+    destroyHeldItemTorchLight();
     destroyTerrainMaterials();
     {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Shutdown");
@@ -419,6 +420,8 @@ void RemixRenderer::shutdownLocked() {
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
+  heldItemTorchLightHandle_ = nullptr;
+  heldItemId_ = -1;
   deferredMeshDestroys_.clear();
   deferredLightDestroys_.clear();
   nextChunkMeshHash_ = 1;
@@ -848,12 +851,19 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.submittedDestroyOverlays = destroyOverlayMeshHandle_ != nullptr ? destroyOverlayCount_ : 0;
   snapshot.submittedParticleQuads = particleMeshHandle_ != nullptr ? particleQuadCount_ : 0;
 
-  snapshot.torchLights.reserve(torchLights_.size());
+  if (!reconcileHeldItemTorchLight()) {
+    return false;
+  }
+
+  snapshot.torchLights.reserve(torchLights_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
   for (const auto& [position, lightHandle] : torchLights_) {
     (void)position;
     if (lightHandle != nullptr) {
       snapshot.torchLights.push_back(lightHandle);
     }
+  }
+  if (heldItemTorchLightHandle_ != nullptr) {
+    snapshot.torchLights.push_back(heldItemTorchLightHandle_);
   }
   snapshot.submittedTorchLights = snapshot.torchLights.size();
 
@@ -1182,7 +1192,8 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &boneTransformsInfo;
     instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
-      ? REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
+      ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
+          | REMIXAPI_INSTANCE_CATEGORY_BIT_FIRST_PERSON_PLAYER_SHADOW)
       : (frameInstance.entityId == kFirstPersonDynamicEntityId
           ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
           : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);

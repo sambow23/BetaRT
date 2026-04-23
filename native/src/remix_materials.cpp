@@ -714,6 +714,31 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
     return nullptr;
   }
 
+  std::string normalizedTexturePath = texturePath;
+  if (!normalizedTexturePath.empty() && normalizedTexturePath.front() == '/') {
+    normalizedTexturePath.erase(normalizedTexturePath.begin());
+  }
+
+  constexpr std::string_view kFirstPersonShadowTextureAliasPrefix = "mcrtx_alias/firstperson_shadow/";
+  if (normalizedTexturePath.rfind(kFirstPersonShadowTextureAliasPrefix, 0) == 0) {
+    normalizedTexturePath.erase(0, kFirstPersonShadowTextureAliasPrefix.size());
+  }
+
+  const std::filesystem::path* emissiveTexturePath = nullptr;
+  if (normalizedTexturePath == "terrain.png") {
+    if (!terrainEmissiveTexturePath_.empty()) {
+      emissiveTexturePath = &terrainEmissiveTexturePath_;
+    } else if (!redstoneEmissiveTexturePath_.empty()) {
+      emissiveTexturePath = &redstoneEmissiveTexturePath_;
+    }
+  }
+
+  const wchar_t* emissiveTexture = emissiveTexturePath == nullptr ? nullptr : emissiveTexturePath->c_str();
+  const float emissiveIntensity = emissiveTexture == nullptr ? 0.0f : kTerrainEmissiveIntensity;
+  const remixapi_Float3D emissiveColor = emissiveTexture == nullptr
+      ? remixapi_Float3D {0.0f, 0.0f, 0.0f}
+      : kTerrainEmissiveColor;
+
   remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
   opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
   opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
@@ -729,8 +754,9 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   materialInfo.pNext = &opaqueInfo;
   materialInfo.hash = kDynamicEntityMaterialHashSeed ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath));
   materialInfo.albedoTexture = resolvedTexturePath.c_str();
-  materialInfo.emissiveIntensity = 0.0f;
-  materialInfo.emissiveColorConstant = {0.0f, 0.0f, 0.0f};
+  materialInfo.emissiveTexture = emissiveTexture;
+  materialInfo.emissiveIntensity = emissiveIntensity;
+  materialInfo.emissiveColorConstant = emissiveColor;
   materialInfo.filterMode = 0;
   materialInfo.wrapModeU = 1;
   materialInfo.wrapModeV = 1;

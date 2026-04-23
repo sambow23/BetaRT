@@ -164,6 +164,8 @@ public final class RemixBridgeNative {
 
             public static native void nSetDynamicEntityTexture(String texturePath);
 
+            public static native void nSetFirstPersonHeldItem(int itemId);
+
             public static native void nSetDynamicEntityBoneTransform(
                 int boneIndex,
                 float m00, float m01, float m02, float m03,

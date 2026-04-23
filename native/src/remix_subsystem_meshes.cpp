@@ -81,6 +81,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
 
   clearDynamicEntityFrameInstances();
   activeDynamicEntity_ = {};
+  heldItemId_ = -1;
 }
 
 void RemixRenderer::beginDynamicEntity(int entityId) {
@@ -107,6 +108,17 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
   }
 
   activeDynamicEntity_.currentTexturePath = texturePath;
+}
+
+void RemixRenderer::setFirstPersonHeldItem(int itemId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setFirstPersonHeldItem");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  heldItemId_ = itemId;
 }
 
 void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
@@ -358,6 +370,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
+  lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
 
   remixapi_LightHandle lightHandle = nullptr;
   remixapi_ErrorCode result;
@@ -407,6 +420,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
+  lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
 
   const remixapi_ErrorCode result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.torch");
@@ -451,6 +465,81 @@ bool RemixRenderer::reconcileChunkTorchLights(
   }
 
   meshData.torchLights = desiredTorchLights;
+  return true;
+}
+
+bool RemixRenderer::reconcileHeldItemTorchLight() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileHeldItemTorchLight");
+
+  const bool supportsLightCreation = remix_.CreateLight != nullptr || remix_.CreateLightBatched != nullptr;
+  const bool isTorch = heldItemId_ == kTorchBlockId;
+  const bool isRedstoneTorch = heldItemId_ == kRedstoneTorchOnBlockId;
+  if (!supportsLightCreation || (!isTorch && !isRedstoneTorch)) {
+    destroyHeldItemTorchLight();
+    return true;
+  }
+
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {
+      camera_.position[0] + camera_.forward[0] * kHeldTorchLightForwardOffset
+          + camera_.right[0] * kHeldTorchLightRightOffset
+          + camera_.up[0] * kHeldTorchLightUpOffset,
+      camera_.position[1] + camera_.forward[1] * kHeldTorchLightForwardOffset
+          + camera_.right[1] * kHeldTorchLightRightOffset
+          + camera_.up[1] * kHeldTorchLightUpOffset,
+      camera_.position[2] + camera_.forward[2] * kHeldTorchLightForwardOffset
+          + camera_.right[2] * kHeldTorchLightRightOffset
+          + camera_.up[2] * kHeldTorchLightUpOffset,
+  };
+  sphereInfo.radius = kTorchLightRadius;
+  sphereInfo.shaping_hasvalue = FALSE;
+  sphereInfo.volumetricRadianceScale = 1.0f;
+
+  remixapi_LightInfo lightInfo {};
+  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfo.pNext = &sphereInfo;
+  lightInfo.hash = kHeldTorchLightHash;
+  lightInfo.radiance = isRedstoneTorch ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
+  lightInfo.isDynamic = TRUE;
+  lightInfo.ignoreViewModel = TRUE;
+  lightInfo.ignoreFirstPersonPlayerShadow = TRUE;
+
+  if (heldItemTorchLightHandle_ == nullptr) {
+    remixapi_ErrorCode result;
+    if (remix_.CreateLightBatched != nullptr) {
+      result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.heldTorch");
+        return remix_.CreateLightBatched(&lightInfo, &heldItemTorchLightHandle_);
+      }();
+    } else {
+      result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.heldTorch");
+        return remix_.CreateLight(&lightInfo, &heldItemTorchLightHandle_);
+      }();
+    }
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      heldItemTorchLightHandle_ = nullptr;
+      setError("CreateLight failed: " + errorCodeToString(result));
+      return false;
+    }
+    return true;
+  }
+
+  if (remix_.UpdateLightDefinition == nullptr) {
+    destroyHeldItemTorchLight();
+    return reconcileHeldItemTorchLight();
+  }
+
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.heldTorch");
+    return remix_.UpdateLightDefinition(heldItemTorchLightHandle_, &lightInfo);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("UpdateLightDefinition failed: " + errorCodeToString(result));
+    return false;
+  }
+
   return true;
 }
 
@@ -689,6 +778,16 @@ void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
 
   destroyLightHandle(lightIt->second);
   torchLights_.erase(lightIt);
+}
+
+void RemixRenderer::destroyHeldItemTorchLight() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyHeldItemTorchLight");
+  if (heldItemTorchLightHandle_ == nullptr) {
+    return;
+  }
+
+  destroyLightHandle(heldItemTorchLightHandle_);
+  heldItemTorchLightHandle_ = nullptr;
 }
 
 void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {

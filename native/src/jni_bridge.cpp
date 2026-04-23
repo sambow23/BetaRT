@@ -155,6 +155,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityText
   env->ReleaseStringUTFChars(texturePath, utfChars);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetFirstPersonHeldItem(
+    JNIEnv*, jclass, jint itemId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetFirstPersonHeldItem");
+  RemixRenderer::instance().setFirstPersonHeldItem(itemId);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
     JNIEnv*, jclass,
     jint boneIndex,
