@@ -248,6 +248,15 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void clearWorldScene() {
+        long __perf = HookProfiler.begin();
+        try {
+            MinecraftRenderHooks.clearWorldScene();
+        } finally {
+            HookProfiler.endHook("hook.clearWorldScene", __perf);
+        }
+    }
+
     public static void onChunkSectionUnload(int originX, int originY, int originZ) {
         long __perf = HookProfiler.begin();
         try {

@@ -183,6 +183,8 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lfd;)V")) {
                 method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
+            } else if (method.name.equals("a") && method.desc.equals("()V")) {
+                method.instructions.insertBefore(method.instructions.getFirst(), clearWorldSceneCall());
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
                 patchCloudRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
@@ -841,6 +843,17 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onModelPartRender",
                 "([Ltz;F)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList clearWorldSceneCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "clearWorldScene",
+                "()V",
                 false));
         return instructions;
     }
