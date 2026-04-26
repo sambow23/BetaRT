@@ -41,11 +41,151 @@ public final class RemixDynamicEntityCapture {
     private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
-    private static boolean firstPersonShadowCaptureActive;
+    private static boolean firstPersonShadowCaptureActive = false;
     private static boolean firstPersonShadowCaptureAvailable = true;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedFirstPersonShadowCaptureFailure;
+
+    private static boolean voxelsGeneratedForCurrentItem = false;
+    private static final java.util.Map<Integer, boolean[]> textureAlphaCache = new java.util.HashMap<Integer, boolean[]>();
+    private static final java.util.Map<Integer, Integer> textureWidthCache = new java.util.HashMap<Integer, Integer>();
+    private static final java.util.Map<Integer, Integer> textureHeightCache = new java.util.HashMap<Integer, Integer>();
+    private static java.nio.ByteBuffer textureReadBuffer = null;
+
+    private static boolean[] getTextureAlphaMap(int textureId) {
+        boolean[] cached = textureAlphaCache.get(textureId);
+        if (cached != null) return cached;
+
+        int width = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_WIDTH);
+        int height = GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, 0, GL11.GL_TEXTURE_HEIGHT);
+
+        if (width <= 0 || height <= 0) {
+            boolean[] empty = new boolean[0];
+            textureAlphaCache.put(textureId, empty);
+            return empty;
+        }
+
+        int capacity = width * height * 4;
+        if (textureReadBuffer == null || textureReadBuffer.capacity() < capacity) {
+            textureReadBuffer = org.lwjgl.BufferUtils.createByteBuffer(capacity);
+        } else {
+            textureReadBuffer.clear();
+        }
+
+        GL11.glGetTexImage(GL11.GL_TEXTURE_2D, 0, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, textureReadBuffer);
+
+        boolean[] alphaMap = new boolean[width * height];
+        for (int i = 0; i < width * height; i++) {
+            byte a = textureReadBuffer.get(i * 4 + 3);
+            alphaMap[i] = (a & 0xFF) > 128;
+        }
+
+        textureAlphaCache.put(textureId, alphaMap);
+        textureWidthCache.put(textureId, width);
+        textureHeightCache.put(textureId, height);
+        return alphaMap;
+    }
+
+    private static boolean isPixelOpaque(boolean[] alphaMap, int width, int height, int logicalX, int logicalY) {
+        if (logicalX < 0 || logicalX >= 256 || logicalY < 0 || logicalY >= 256) return false;
+        if (alphaMap.length == 0) return true; // Fallback
+
+        // Map the 256x256 logical coordinate to the actual texture resolution
+        int px = (logicalX * width) / 256;
+        int py = (logicalY * height) / 256;
+        return alphaMap[py * width + px];
+    }
+
+    private static void generateVoxelMesh(int[] rawVertexData, boolean hasColor, int fallbackColorRgba, int boneIndex) {
+        int textureId = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        boolean[] alphaMap = getTextureAlphaMap(textureId);
+        Integer tWidthObj = textureWidthCache.get(textureId);
+        Integer tHeightObj = textureHeightCache.get(textureId);
+        if (tWidthObj == null || tHeightObj == null || alphaMap.length == 0) return;
+        int textureWidth = tWidthObj;
+        int textureHeight = tHeightObj;
+
+        float u0 = Float.intBitsToFloat(rawVertexData[3]);
+        float v2 = Float.intBitsToFloat(rawVertexData[2 * 8 + 4]);
+
+        int logicalXBase = Math.round(u0 * 256.0f) - 15;
+        int logicalYBase = Math.round(v2 * 256.0f);
+
+        int quadColor = hasColor ? ColorMath.sanitizePackedColor(ColorMath.unpackTessellatorColor(rawVertexData, 5)) : fallbackColorRgba;
+
+        for (int lx = 0; lx < 16; lx++) {
+            for (int ly = 0; ly < 16; ly++) {
+                if (!isPixelOpaque(alphaMap, textureWidth, textureHeight, logicalXBase + lx, logicalYBase + ly)) {
+                    continue;
+                }
+
+                boolean leftOpaque = lx > 0 && isPixelOpaque(alphaMap, textureWidth, textureHeight, logicalXBase + lx - 1, logicalYBase + ly);
+                boolean rightOpaque = lx < 15 && isPixelOpaque(alphaMap, textureWidth, textureHeight, logicalXBase + lx + 1, logicalYBase + ly);
+                boolean topOpaque = ly > 0 && isPixelOpaque(alphaMap, textureWidth, textureHeight, logicalXBase + lx, logicalYBase + ly - 1);
+                boolean bottomOpaque = ly < 15 && isPixelOpaque(alphaMap, textureWidth, textureHeight, logicalXBase + lx, logicalYBase + ly + 1);
+
+                float pX0 = 1.0f - ((lx + 1) / 16.0f); // X- (Geometry Left)
+                float pX1 = 1.0f - (lx / 16.0f);       // X+ (Geometry Right)
+                float pY0 = 1.0f - ((ly + 1) / 16.0f); // Y- (Geometry Bottom)
+                float pY1 = 1.0f - (ly / 16.0f);       // Y+ (Geometry Top)
+                float zF = 0.0f;
+                float zB = -0.0625f;
+
+                float uC = (logicalXBase + lx + 0.5f) / 256.0f;
+                float vC = (logicalYBase + ly + 0.5f) / 256.0f;
+                
+                float uLeft = (logicalXBase + lx) / 256.0f;
+                float uRight = (logicalXBase + lx + 1) / 256.0f;
+                float vTop = (logicalYBase + ly) / 256.0f;
+                float vBottom = (logicalYBase + ly + 1) / 256.0f;
+
+                // Geometry Right (X+), corresponds to Texture Left (!leftOpaque)
+                // U is constant (uC). V goes from vTop to vBottom. pY1 is top, pY0 is bottom.
+                if (!leftOpaque) {
+                    MinecraftRenderHooks.captureDynamicEntityQuad(
+                        pX1, pY1, zB, uC, vTop,
+                        pX1, pY1, zF, uC, vTop,
+                        pX1, pY0, zF, uC, vBottom,
+                        pX1, pY0, zB, uC, vBottom,
+                        quadColor, boneIndex
+                    );
+                }
+                // Geometry Left (X-), corresponds to Texture Right (!rightOpaque)
+                if (!rightOpaque) {
+                    MinecraftRenderHooks.captureDynamicEntityQuad(
+                        pX0, pY0, zB, uC, vBottom,
+                        pX0, pY0, zF, uC, vBottom,
+                        pX0, pY1, zF, uC, vTop,
+                        pX0, pY1, zB, uC, vTop,
+                        quadColor, boneIndex
+                    );
+                }
+                // Geometry Top (Y+), corresponds to Texture Top (!topOpaque)
+                // V is constant (vC). U goes from uLeft to uRight.
+                // Texture Left is pX1 (uLeft). Texture Right is pX0 (uRight).
+                if (!topOpaque) {
+                    MinecraftRenderHooks.captureDynamicEntityQuad(
+                        pX0, pY1, zF, uRight, vC,
+                        pX1, pY1, zF, uLeft, vC,
+                        pX1, pY1, zB, uLeft, vC,
+                        pX0, pY1, zB, uRight, vC,
+                        quadColor, boneIndex
+                    );
+                }
+                // Geometry Bottom (Y-), corresponds to Texture Bottom (!bottomOpaque)
+                if (!bottomOpaque) {
+                    MinecraftRenderHooks.captureDynamicEntityQuad(
+                        pX1, pY0, zF, uLeft, vC,
+                        pX0, pY0, zF, uRight, vC,
+                        pX0, pY0, zB, uRight, vC,
+                        pX1, pY0, zB, uLeft, vC,
+                        quadColor, boneIndex
+                    );
+                }
+            }
+        }
+    }
 
     private RemixDynamicEntityCapture() {
     }
@@ -452,6 +592,40 @@ public final class RemixDynamicEntityCapture {
         if (vertexCount % 6 != 0) {
             return;
         }
+        
+        if (vertexCount == 6) {
+            voxelsGeneratedForCurrentItem = false;
+        }
+        
+        if (vertexCount == 96) {
+            if (!voxelsGeneratedForCurrentItem) {
+                try {
+                    long renderStartNanos = System.nanoTime();
+                    MODEL_VIEW_BUFFER.clear();
+                    GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+                    float[] modelView = new float[16];
+                    MODEL_VIEW_BUFFER.get(modelView);
+
+                    COLOR_BUFFER.clear();
+                    GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
+                    float[] currentColor = new float[4];
+                    COLOR_BUFFER.get(currentColor);
+
+                    float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+                    int fallbackColorRgba = ColorMath.sanitizePackedColor(ColorMath.packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
+                    int boneIndex = allocateDynamicBoneIndex();
+                    if (boneIndex >= 0) {
+                        submitDynamicBoneTransform(boneIndex, modelToWorld);
+                        generateVoxelMesh(rawVertexData, hasColor, fallbackColorRgba, boneIndex);
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+                voxelsGeneratedForCurrentItem = true;
+            }
+            return; // Drop vanilla side strips
+        }
+        
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
             return;
         }
