@@ -126,7 +126,17 @@ public class RemixCaveCulling {
         for (Map.Entry<Long, Pocket[]> entry : chunkPockets.entrySet()) {
             long chunkKey = entry.getKey().longValue();
             long cy = chunkKey & 0x7FFL;
-            if (cy == 7) { 
+            
+            boolean isTopChunk = (cy == 7);
+            boolean chunkAboveMissing = false;
+            if (!isTopChunk) {
+                long chunkAboveKey = getNeighborKey(chunkKey, DIR_Y_POS);
+                if (!chunkPockets.containsKey(chunkAboveKey)) {
+                    chunkAboveMissing = true;
+                }
+            }
+
+            if (isTopChunk || chunkAboveMissing) { 
                 Pocket[] pockets = entry.getValue();
                 for (int i = 0; i < pockets.length; i++) {
                     Pocket p = pockets[i];
@@ -199,6 +209,10 @@ public class RemixCaveCulling {
                 Pocket[] neighborPockets = chunkPockets.get(neighborKey);
                 if (neighborPockets == null) continue;
 
+                // Any chunk touched by a visible air pocket MUST be rendered, 
+                // because the player can see its boundary (either air or solid blocks).
+                newlyVisibleChunks.add(neighborKey);
+
                 int oppFace = getOppositeFace(face);
 
                 for (int ni = 0; ni < neighborPockets.length; ni++) {
@@ -216,7 +230,6 @@ public class RemixCaveCulling {
                         PocketNode nextNode = new PocketNode(neighborKey, ni);
                         if (visitedPockets.add(nextNode)) {
                             queue.add(nextNode);
-                            newlyVisibleChunks.add(neighborKey);
                         }
                     }
                 }
