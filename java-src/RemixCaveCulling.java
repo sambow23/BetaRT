@@ -236,10 +236,6 @@ public class RemixCaveCulling {
             }
         }
 
-        System.out.println("[mcrtx-cull] Culling pass. chunkPockets=" + chunkPockets.size() + 
-            ", skyCount=" + skyCount + ", playerAdded=" + playerAdded + 
-            ", bfsSteps=" + bfsSteps + ", visible=" + newlyVisibleChunks.size());
-
         // Diff with visibleChunks
         for (Long keyObj : chunkPockets.keySet()) {
             long chunkKey = keyObj.longValue();
