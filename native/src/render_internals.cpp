@@ -839,6 +839,12 @@ bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockC
     return false;
   }
 
+  if (usesCutoutMaterialForBlock(neighborCell.blockId, neighborCell.renderType)) {
+    if (cell.blockId != neighborCell.blockId) {
+      return false;
+    }
+  }
+
   return true;
 }
 
