@@ -1284,6 +1284,7 @@ $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
     (Join-Path $repoRoot "java-src\RemixCameraState.java"),
+    (Join-Path $repoRoot "java-src\RemixCaveCulling.java"),
     (Join-Path $repoRoot "java-src\RemixChunkCapture.java"),
     (Join-Path $repoRoot "java-src\RemixCloudCapture.java"),
     (Join-Path $repoRoot "java-src\RemixFogCapture.java"),

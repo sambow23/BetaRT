@@ -78,6 +78,7 @@ public final class RemixChunkCapture {
     public static void onChunkSectionUnload(int originX, int originY, int originZ) {
         clearPendingRecaptureForSection(originX, originY, originZ);
         MinecraftRenderHooks.unloadChunkSection(originX, originY, originZ);
+        RemixCaveCulling.removeChunk(originX, originY, originZ);
     }
 
     public static void onWorldChanged(fd world) {
@@ -89,6 +90,7 @@ public final class RemixChunkCapture {
             PENDING_RECAPTURE_SECTIONS.clear();
         }
         MinecraftRenderHooks.clearWorldScene();
+        RemixCaveCulling.clear();
 
         if (attachedWorld != null) {
             attachedWorld.b(WORLD_LISTENER);
@@ -120,6 +122,18 @@ public final class RemixChunkCapture {
 
         // A live vanilla rebuild for this section makes any queued recapture redundant.
         clearPendingRecaptureForSection(originX, originY, originZ);
+
+        if (attachedWorld != null && renderPass == 0) {
+            RemixCaveCulling.Pocket[] pockets = RemixCaveCulling.computePockets(attachedWorld, originX, originY, originZ);
+            RemixCaveCulling.setPockets(originX, originY, originZ, pockets);
+        }
+
+        if (!RemixCaveCulling.isVisible(originX, originY, originZ)) {
+            // If the chunk is currently deemed invisible by our BFS, we skip emitting it to RTX.
+            // If the global culling pass later decides it IS visible, it will be queued for a background recapture.
+            return false;
+        }
+
         return MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
     }
 
@@ -371,12 +385,8 @@ public final class RemixChunkCapture {
                         continue;
                     }
 
-                    if (blockDefinition.b_() != renderPass) {
-                        continue;
-                    }
-
                     emittedGeometry = true;
-            capturedBlocks += 1;
+                    capturedBlocks += 1;
                     captureWorldBlock(
                             world,
                             blockX,
@@ -403,6 +413,13 @@ public final class RemixChunkCapture {
     }
 
         private static boolean recaptureChunkSection(fd world, DirtyChunkSection section, boolean allowNeighborRefresh) {
+            RemixCaveCulling.Pocket[] pockets = RemixCaveCulling.computePockets(world, section.originX, section.originY, section.originZ);
+            RemixCaveCulling.setPockets(section.originX, section.originY, section.originZ, pockets);
+
+            if (!RemixCaveCulling.isVisible(section.originX, section.originY, section.originZ)) {
+                return true;
+            }
+
             boolean fullSectionScan = shouldUseFullSectionScan(section);
             if (!recaptureChunkSectionPass(world, section, 0, allowNeighborRefresh, fullSectionScan)) {
             return false;
@@ -658,6 +675,13 @@ public final class RemixChunkCapture {
     }
 
     public static void flushPendingChunkRecaptures() {
+        if (attachedWorld != null && MinecraftRenderHooks.isInitialized()) {
+            int playerX = (int)Math.floor(RemixCameraState.cameraPositionX);
+            int playerY = (int)Math.floor(RemixCameraState.cameraPositionY);
+            int playerZ = (int)Math.floor(RemixCameraState.cameraPositionZ);
+            RemixCaveCulling.updateGlobalCulling(playerX, playerY, playerZ);
+        }
+
         long flushStartNanos = System.nanoTime();
         int queueDepthBefore = 0;
         int sectionsRecaptured = 0;
