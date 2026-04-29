@@ -451,6 +451,9 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
   if (blockId == kNetherPortalBlockId) {
     return kPortalTerrainMaterialClass;
   }
+  if (blockId == kIceBlockId) {
+    return kIceTerrainMaterialClass;
+  }
   if (blockId == kRedstoneDustBlockId && renderType == kRedstoneDustBlockRenderType && blockMetadata > 0) {
     return kPoweredRedstoneTerrainMaterialClass;
   }
@@ -732,6 +735,7 @@ bool usesPartialCubeBounds(const ChunkBlockCell& cell) {
 bool isSolidSupportBlock(const ChunkBlockCell& cell) {
   return cell.renderType == kCubeBlockRenderType
       && !usesPartialCubeBounds(cell)
+      && cell.blockId != kIceBlockId
       && !usesCutoutMaterialForBlock(cell.blockId, cell.renderType);
 }
 
@@ -839,10 +843,12 @@ bool shouldCullFaceAgainstNeighbor(const ChunkBlockCell& cell, const ChunkBlockC
     return false;
   }
 
-  if (usesCutoutMaterialForBlock(neighborCell.blockId, neighborCell.renderType)) {
+  if (usesCutoutMaterialForBlock(neighborCell.blockId, neighborCell.renderType) || neighborCell.blockId == kIceBlockId) {
     if (cell.blockId != neighborCell.blockId) {
       return false;
     }
+  } else if (!isSolidSupportBlock(neighborCell)) {
+    return false;
   }
 
   return true;

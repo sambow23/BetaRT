@@ -28,13 +28,14 @@ namespace detail {
 constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 constexpr int kChunkDimension = 16;
 constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
-constexpr std::size_t kTerrainMaterialClassCount = 6;
+constexpr std::size_t kTerrainMaterialClassCount = 7;
 constexpr std::uint8_t kOpaqueTerrainMaterialClass = 0;
 constexpr std::uint8_t kCutoutTerrainMaterialClass = 1;
 constexpr std::uint8_t kWaterTerrainMaterialClass = 2;
 constexpr std::uint8_t kLavaTerrainMaterialClass = 3;
 constexpr std::uint8_t kPoweredRedstoneTerrainMaterialClass = 4;
 constexpr std::uint8_t kPortalTerrainMaterialClass = 5;
+constexpr std::uint8_t kIceTerrainMaterialClass = 6;
 constexpr std::uint8_t kCubeBlockRenderType = 0;
 constexpr std::uint8_t kCrossedQuadBlockRenderType = 1;
 constexpr std::uint8_t kTorchBlockRenderType = 2;
@@ -114,6 +115,20 @@ constexpr float kPortalEmissiveIntensity = 0.85f;
 inline constexpr remixapi_Float3D kPortalEmissiveColor = {1.0f, 1.0f, 1.0f};
 constexpr float kTerrainEmissiveIntensity = 5.0f;
 inline constexpr remixapi_Float3D kTerrainEmissiveColor = {1.0f, 1.0f, 1.0f};
+
+// Translucent material physics parameters
+inline constexpr remixapi_Float3D kWaterTransmittanceColor = {0.2f, 0.5f, 0.8f};
+constexpr float kWaterTransmittanceDistance = 1.0f;
+constexpr float kWaterRefractiveIndex = 1.333f;
+
+inline constexpr remixapi_Float3D kPortalTransmittanceColor = {0.5f, 0.2f, 0.8f};
+constexpr float kPortalTransmittanceDistance = 0.5f;
+constexpr float kPortalRefractiveIndex = 1.1f;
+
+inline constexpr remixapi_Float3D kIceTransmittanceColor = {0.8f, 0.9f, 1.0f};
+constexpr float kIceTransmittanceDistance = 2.0f;
+constexpr float kIceRefractiveIndex = 1.309f;
+
 constexpr float kFaceOverlayBias = 0.001f;
 constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
 constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;

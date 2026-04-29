@@ -402,6 +402,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const auto createTerrainMaterial = [this](
                                        std::size_t materialClass,
                                        bool cutout,
+                                       bool useDrawCallAlphaState,
+                                       bool isTranslucent,
+                                       remixapi_Float3D transmittanceColor,
+                                       float transmittanceMeasurementDistance,
+                                       float refractiveIndex,
                                        const std::filesystem::path& texturePath,
                                        std::uint64_t materialHash,
                                        const wchar_t* emissiveTexturePath,
@@ -411,18 +416,33 @@ bool RemixRenderer::initializeTerrainMaterials() {
                                        std::uint8_t spriteSheetRows,
                                        std::uint8_t spriteSheetFps) {
     remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
-    opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
-    opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
-    opaqueInfo.opacityConstant = 1.0f;
-    opaqueInfo.roughnessConstant = 1.0f;
-    opaqueInfo.metallicConstant = 0.0f;
-    opaqueInfo.useDrawCallAlphaState = FALSE;
-    opaqueInfo.alphaTestType = cutout ? 4 : 7;
-    opaqueInfo.alphaReferenceValue = cutout ? 1 : 0;
+    remixapi_MaterialInfoTranslucentEXT translucentInfo {};
+    void* pNext = nullptr;
+
+    if (isTranslucent) {
+      translucentInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT;
+      translucentInfo.refractiveIndex = refractiveIndex;
+      translucentInfo.transmittanceColor = transmittanceColor;
+      translucentInfo.transmittanceMeasurementDistance = transmittanceMeasurementDistance;
+      translucentInfo.thinWallThickness_hasvalue = FALSE;
+      translucentInfo.useDiffuseLayer = TRUE;
+      translucentInfo.transmittanceTexture = texturePath.c_str();
+      pNext = &translucentInfo;
+    } else {
+      opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+      opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+      opaqueInfo.opacityConstant = 1.0f;
+      opaqueInfo.roughnessConstant = 1.0f;
+      opaqueInfo.metallicConstant = 0.0f;
+      opaqueInfo.useDrawCallAlphaState = useDrawCallAlphaState ? TRUE : FALSE;
+      opaqueInfo.alphaTestType = cutout ? 4 : 7;
+      opaqueInfo.alphaReferenceValue = cutout ? 1 : 0;
+      pNext = &opaqueInfo;
+    }
 
     remixapi_MaterialInfo materialInfo {};
     materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
-    materialInfo.pNext = &opaqueInfo;
+    materialInfo.pNext = pNext;
     materialInfo.hash = materialHash;
     materialInfo.albedoTexture = texturePath.c_str();
     materialInfo.emissiveTexture = emissiveTexturePath;
@@ -462,6 +482,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const bool opaqueCreated = createTerrainMaterial(
       kOpaqueTerrainMaterialClass,
       false,
+      false,
+      false,
+      {1.0f, 1.0f, 1.0f},
+      1.0f,
+      1.0f,
       terrainAtlasPath_,
       kOpaqueTerrainMaterialHash,
       terrainEmissiveTexture,
@@ -473,6 +498,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const bool cutoutCreated = createTerrainMaterial(
       kCutoutTerrainMaterialClass,
       true,
+      false,
+      false,
+      {1.0f, 1.0f, 1.0f},
+      1.0f,
+      1.0f,
       terrainAtlasPath_,
       kCutoutTerrainMaterialHash,
       terrainEmissiveTexture,
@@ -484,6 +514,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
       const bool poweredRedstoneCreated = createTerrainMaterial(
         kPoweredRedstoneTerrainMaterialClass,
         true,
+        false,
+        false,
+        {1.0f, 1.0f, 1.0f},
+        1.0f,
+        1.0f,
         terrainAtlasPath_,
         kPoweredRedstoneTerrainMaterialHash,
         redstoneEmissiveTexturePath_.empty() ? nullptr : redstoneEmissiveTexturePath_.c_str(),
@@ -495,6 +530,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const bool waterCreated = !waterTexturePath_.empty() && createTerrainMaterial(
       kWaterTerrainMaterialClass,
       false,
+      false,
+      true,
+      kWaterTransmittanceColor,
+      kWaterTransmittanceDistance,
+      kWaterRefractiveIndex,
       waterTexturePath_,
       kWaterTerrainMaterialHash,
       nullptr,
@@ -506,6 +546,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const bool lavaCreated = !lavaTexturePath_.empty() && createTerrainMaterial(
       kLavaTerrainMaterialClass,
       false,
+      false,
+      false,
+      {1.0f, 1.0f, 1.0f},
+      1.0f,
+      1.0f,
       lavaTexturePath_,
       kLavaTerrainMaterialHash,
       lavaEmissiveTexturePath_.empty() ? nullptr : lavaEmissiveTexturePath_.c_str(),
@@ -517,6 +562,11 @@ bool RemixRenderer::initializeTerrainMaterials() {
   const bool portalCreated = !portalTexturePath_.empty() && createTerrainMaterial(
       kPortalTerrainMaterialClass,
       false,
+      false,
+      true,
+      kPortalTransmittanceColor,
+      kPortalTransmittanceDistance,
+      kPortalRefractiveIndex,
       portalTexturePath_,
       kPortalTerrainMaterialHash,
       portalTexturePath_.c_str(),
@@ -525,6 +575,22 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kPortalAnimationFrameCount,
       1,
       kPortalAnimationFramesPerSecond);
+  const bool iceCreated = createTerrainMaterial(
+      kIceTerrainMaterialClass,
+      false,
+      false,
+      true,
+      kIceTransmittanceColor,
+      kIceTransmittanceDistance,
+      kIceRefractiveIndex,
+      terrainAtlasPath_,
+      0x1ce1ce1ce1ce1ceULL,
+      nullptr,
+      0.0f,
+      {0.0f, 0.0f, 0.0f},
+      0,
+      0,
+      0);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
   }
@@ -533,6 +599,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
+  }
+  if (!iceCreated) {
+    log("Ice terrain material unavailable; ice faces will use fallback material");
   }
   if (!redstoneEmissiveTexturePath_.empty()) {
     log("Redstone emissive map loaded from " + redstoneEmissiveTexturePath_.string());
