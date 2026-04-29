@@ -118,7 +118,7 @@ inline constexpr remixapi_Float3D kTerrainEmissiveColor = {1.0f, 1.0f, 1.0f};
 
 // Translucent material physics parameters
 inline constexpr remixapi_Float3D kWaterTransmittanceColor = {0.2f, 0.5f, 0.8f};
-constexpr float kWaterTransmittanceDistance = 1.0f;
+constexpr float kWaterTransmittanceDistance = 1.5f;
 constexpr float kWaterRefractiveIndex = 1.333f;
 
 inline constexpr remixapi_Float3D kPortalTransmittanceColor = {0.5f, 0.2f, 0.8f};
