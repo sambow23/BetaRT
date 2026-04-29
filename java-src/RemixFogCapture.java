@@ -9,8 +9,21 @@ public final class RemixFogCapture {
     private static final float DAY_FOG_BRIGHTNESS = 2.0f;
     private static final float DAY_NIGHT_LUMINANCE_START = 0.02f;
     private static final float DAY_NIGHT_LUMINANCE_END = 0.30f;
+    // Note: Remix's composite pass remaps external linear fog using
+    // rtx.externalFogLinearStartFactor (0.4) and rtx.externalFogLinearEndFactor (1.5).
+    // So the effective fog range is [end*0.4, end*1.5]. Values here are pre-remap.
+    // Water: end=8 -> fog starts at ~3.2 blocks, fully opaque at ~12 blocks.
+    private static final float WATER_FOG_END_BLOCKS = 8.0f;
+    // Lava: end=1.5 -> fog starts at ~0.6 blocks, fully opaque at ~2.25 blocks.
+    private static final float LAVA_FOG_END_BLOCKS = 1.5f;
+
+    private static volatile boolean submergedInWater = false;
 
     private RemixFogCapture() {
+    }
+
+    public static boolean isSubmergedInWater() {
+        return submergedInWater;
     }
 
     public static void onFogState(
@@ -40,15 +53,19 @@ public final class RemixFogCapture {
         float fogDensity = 0.0f;
         float clampedViewDistance = Math.max(0.0f, viewDistance);
 
+        boolean submerged = false;
         if (thickFog) {
             fogMode = D3DFOG_EXP;
             fogDensity = 0.1f;
         } else if (entity != null && entity.a(ln.g)) {
-            fogMode = D3DFOG_EXP;
-            fogDensity = 0.1f;
+            fogMode = D3DFOG_LINEAR;
+            fogEnd = WATER_FOG_END_BLOCKS;
+            fogScale = 1.0f / fogEnd;
+            submerged = true;
         } else if (entity != null && entity.a(ln.h)) {
-            fogMode = D3DFOG_EXP;
-            fogDensity = 2.0f;
+            fogMode = D3DFOG_LINEAR;
+            fogEnd = LAVA_FOG_END_BLOCKS;
+            fogScale = 1.0f / fogEnd;
         } else if (clampedViewDistance > 0.0f) {
             fogMode = D3DFOG_LINEAR;
             float fogStart = clampedViewDistance * 0.4f;
@@ -77,6 +94,17 @@ public final class RemixFogCapture {
                 fogScale,
                 fogEnd,
                 fogDensity);
+
+        submergedInWater = submerged;
+
+        // Vanilla-like underwater tint: deep blue at ~55% alpha, driven through
+        // the native Remix screen-tint pass so it applies uniformly to the
+        // raytraced scene (under the HUD). Cleared when not submerged.
+        if (submerged) {
+            MinecraftRenderHooks.setScreenTint(0.02f, 0.06f, 0.20f, 0.55f);
+        } else {
+            MinecraftRenderHooks.setScreenTint(0.0f, 0.0f, 0.0f, 0.0f);
+        }
     }
 
     private static float toLinearColor(float channel) {

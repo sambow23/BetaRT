@@ -555,6 +555,28 @@ void RemixRenderer::updateFogState(
   }
 }
 
+void RemixRenderer::setScreenTint(float r, float g, float b, float a) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setScreenTint");
+  std::scoped_lock lock(mutex_);
+  if (!initialized_) {
+    return;
+  }
+  if (remix_.SetScreenTint == nullptr) {
+    if (!warnedMissingSetScreenTint_) {
+      warnedMissingSetScreenTint_ = true;
+      log("SetScreenTint not available; fullscreen tint updates are disabled");
+    }
+    return;
+  }
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetScreenTint");
+    return remix_.SetScreenTint(r, g, b, a);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("SetScreenTint failed: " + errorCodeToString(result));
+  }
+}
+
 void RemixRenderer::resize(std::uint32_t width, std::uint32_t height) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::resize");
   std::scoped_lock lock(mutex_);

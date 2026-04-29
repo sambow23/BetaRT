@@ -423,6 +423,7 @@ public:
       float liquidFlowAngle);
   void endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh = false, bool allowNeighborRefresh = true);
   void flushChunkNeighborRefreshes();
+      void setScreenTint(float r, float g, float b, float a);
       bool drawScreenOverlay(
         const void* pixelData,
         std::uint32_t width,
@@ -624,6 +625,7 @@ private:
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};
   bool warnedMissingSetConfigVariable_ {false};
   bool warnedMissingSetFogState_ {false};
+  bool warnedMissingSetScreenTint_ {false};
   std::string lastError_;
 };
 

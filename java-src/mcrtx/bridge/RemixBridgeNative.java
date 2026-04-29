@@ -262,6 +262,8 @@ public final class RemixBridgeNative {
 
     public static native boolean nClearScreenOverlay();
 
+    public static native void nSetScreenTint(float r, float g, float b, float a);
+
     public static native int nGetUiState();
 
     public static native boolean nSetUiState(int state);

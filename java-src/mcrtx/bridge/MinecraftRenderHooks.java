@@ -402,6 +402,13 @@ public final class MinecraftRenderHooks {
         return RemixBridgeNative.nClearScreenOverlay();
     }
 
+    public static synchronized void setScreenTint(float r, float g, float b, float a) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetScreenTint(r, g, b, a);
+    }
+
     public static synchronized boolean present() {
         return initialized && RemixBridgeNative.nPresent();
     }

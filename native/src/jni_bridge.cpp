@@ -401,6 +401,12 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearScreenOverl
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().clearScreenOverlay()));
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetScreenTint(
+    JNIEnv*, jclass, jfloat r, jfloat g, jfloat b, jfloat a) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetScreenTint");
+  RemixRenderer::instance().setScreenTint(r, g, b, a);
+}
+
 JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetUiState(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetUiState");
   return static_cast<jint>(RemixRenderer::instance().getUiState());
