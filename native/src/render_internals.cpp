@@ -451,9 +451,6 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
   if (blockId == kNetherPortalBlockId) {
     return kPortalTerrainMaterialClass;
   }
-  if (blockId == kIceBlockId) {
-    return kIceTerrainMaterialClass;
-  }
   if (blockId == kRedstoneDustBlockId && renderType == kRedstoneDustBlockRenderType && blockMetadata > 0) {
     return kPoweredRedstoneTerrainMaterialClass;
   }

@@ -575,22 +575,6 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kPortalAnimationFrameCount,
       1,
       kPortalAnimationFramesPerSecond);
-  const bool iceCreated = createTerrainMaterial(
-      kIceTerrainMaterialClass,
-      false,
-      false,
-      true,
-      kIceTransmittanceColor,
-      kIceTransmittanceDistance,
-      kIceRefractiveIndex,
-      terrainAtlasPath_,
-      0x1ce1ce1ce1ce1ceULL,
-      nullptr,
-      0.0f,
-      {0.0f, 0.0f, 0.0f},
-      0,
-      0,
-      0);
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
   }
@@ -599,9 +583,6 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!cutoutCreated) {
     log("Cutout terrain material unavailable; cutout faces will use fallback material");
-  }
-  if (!iceCreated) {
-    log("Ice terrain material unavailable; ice faces will use fallback material");
   }
   if (!redstoneEmissiveTexturePath_.empty()) {
     log("Redstone emissive map loaded from " + redstoneEmissiveTexturePath_.string());
