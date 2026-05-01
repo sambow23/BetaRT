@@ -433,6 +433,8 @@ public:
       bool clearScreenOverlay();
   remixapi_UIState getUiState() const;
   bool setUiState(remixapi_UIState state);
+      bool hasWindowFocus() const;
+      bool isVirtualKeyDown(std::uint32_t virtualKey) const;
   bool present();
 
   bool isInitialized() const;

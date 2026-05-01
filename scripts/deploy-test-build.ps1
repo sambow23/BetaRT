@@ -4,6 +4,10 @@ param(
     [string]$MinecraftLibraryJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar",
     [string]$BundleRoot,
     [string]$Configuration = "Release",
+    [ValidateSet("lwjgl2", "lwjgl3", "glfw")]
+    [string]$PlatformBackend = "lwjgl2",
+    [ValidateSet("platform", "native")]
+    [string]$InputBackend = "platform",
     [ValidateSet("single", "overlay", "dual", "detached", "separate", "standalone")]
     [string]$WindowMode = "standalone",
     [switch]$Build,
@@ -41,7 +45,13 @@ $instanceLibraryDllPath = Join-Path $instanceLibrariesDir "mcrtx_jni.dll"
 $instanceAssetsDir = Join-Path $instanceLibrariesDir "mcrtx_assets"
 $instanceMinecraftDllPath = Join-Path $instanceMinecraftDir "mcrtx_jni.dll"
 $instanceConfigPath = Join-Path $InstanceRoot "instance.cfg"
+$instanceMmcPackPath = Join-Path $InstanceRoot "mmc-pack.json"
+$instancePatchesDir = Join-Path $InstanceRoot "patches"
+$instanceMinecraftPatchPath = Join-Path $instancePatchesDir "net.minecraft.json"
 $instanceRemixConfigPath = Join-Path $instanceMinecraftDir "rtx.conf"
+$prismRoot = Split-Path (Split-Path $InstanceRoot -Parent) -Parent
+$prismMetaRoot = Join-Path $prismRoot "meta"
+$minecraftMetaPath = Join-Path $prismMetaRoot "net.minecraft\b1.7.3.json"
 $deployStateDir = Join-Path $repoRoot "out\deploy-state"
 $backupJar = Join-Path $deployStateDir "minecraft-b1.7.3-client.original.jar"
 $deploymentInfo = Join-Path $deployStateDir "last-deploy.json"
@@ -51,6 +61,131 @@ $customJarTargets = @()
 $didCopyJar = $false
 $didCopyDll = $false
 $didWriteMarker = $false
+$defaultLwjgl2Version = "2.9.4-nightly-20150209"
+$defaultLwjgl3Version = "3.3.3"
+
+function Read-JsonFile {
+    param([string]$Path)
+
+    return Get-Content -Path $Path -Raw | ConvertFrom-Json
+}
+
+function Write-JsonFile {
+    param(
+        [string]$Path,
+        [Parameter(ValueFromPipeline = $true)]
+        [object]$InputObject
+    )
+
+    $json = $InputObject | ConvertTo-Json -Depth 32
+    Set-Content -Path $Path -Value $json -Encoding ASCII
+}
+
+function Get-PlatformComponentSpec {
+    param([string]$Backend)
+
+    switch ($Backend.ToLowerInvariant()) {
+        "lwjgl3" {
+            return [pscustomobject]@{
+                BackendId = "lwjgl3"
+                ComponentUid = "org.lwjgl3"
+                CachedName = "LWJGL 3"
+                Version = $defaultLwjgl3Version
+            }
+        }
+        "glfw" {
+            return [pscustomobject]@{
+                BackendId = "lwjgl3"
+                ComponentUid = "org.lwjgl3"
+                CachedName = "LWJGL 3"
+                Version = $defaultLwjgl3Version
+            }
+        }
+        default {
+            return [pscustomobject]@{
+                BackendId = "lwjgl2"
+                ComponentUid = "org.lwjgl"
+                CachedName = "LWJGL 2"
+                Version = $defaultLwjgl2Version
+            }
+        }
+    }
+}
+
+function Set-PrismMinecraftPlatformPatch {
+    param(
+        [string]$MinecraftMetaPath,
+        [string]$PatchPath,
+        [pscustomobject]$PlatformSpec
+    )
+
+    $minecraftPatch = Read-JsonFile -Path $MinecraftMetaPath
+    $minecraftPatch.requires = @(
+        [ordered]@{
+            suggests = $PlatformSpec.Version
+            uid = $PlatformSpec.ComponentUid
+        }
+    )
+    New-Item -ItemType Directory -Force -Path (Split-Path $PatchPath -Parent) | Out-Null
+    Write-JsonFile -Path $PatchPath -InputObject $minecraftPatch
+}
+
+function Sync-PrismPlatformComponent {
+    param(
+        [string]$PackPath,
+        [pscustomobject]$PlatformSpec
+    )
+
+    $pack = Read-JsonFile -Path $PackPath
+    $components = [System.Collections.Generic.List[object]]::new()
+    foreach ($component in $pack.components) {
+        if ($component.uid -eq "org.lwjgl" -or $component.uid -eq "org.lwjgl3") {
+            continue
+        }
+
+        if ($component.uid -eq "net.minecraft") {
+            $component.cachedRequires = @(
+                [ordered]@{
+                    suggests = $PlatformSpec.Version
+                    uid = $PlatformSpec.ComponentUid
+                }
+            )
+        }
+        $components.Add($component)
+    }
+
+    $platformComponent = [pscustomobject]@{
+        cachedName = $PlatformSpec.CachedName
+        cachedVersion = $PlatformSpec.Version
+        cachedVolatile = $true
+        dependencyOnly = $true
+        uid = $PlatformSpec.ComponentUid
+        version = $PlatformSpec.Version
+    }
+
+    $orderedComponents = [System.Collections.Generic.List[object]]::new()
+    $orderedComponents.Add($platformComponent)
+    foreach ($component in $components) {
+        $orderedComponents.Add($component)
+    }
+
+    $pack.components = $orderedComponents
+    Write-JsonFile -Path $PackPath -InputObject $pack
+}
+
+function Set-PrismPlatformBackend {
+    param(
+        [string]$PackPath,
+        [string]$MinecraftMetaPath,
+        [string]$PatchPath,
+        [string]$Backend
+    )
+
+    $platformSpec = Get-PlatformComponentSpec -Backend $Backend
+    Set-PrismMinecraftPlatformPatch -MinecraftMetaPath $MinecraftMetaPath -PatchPath $PatchPath -PlatformSpec $platformSpec
+    Sync-PrismPlatformComponent -PackPath $PackPath -PlatformSpec $platformSpec
+    return $platformSpec
+}
 
 function Set-InstanceConfigValue {
     param(
@@ -131,11 +266,20 @@ function Ensure-PrismPreLaunchSync {
     param(
         [string]$InstanceConfig,
         [string]$ScriptPath,
-        [string]$ConfigurationName
+        [string]$ConfigurationName,
+        [string]$ConfiguredWindowMode,
+        [string]$ConfiguredPlatformBackend,
+        [string]$ConfiguredInputBackend
     )
 
     $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
-    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File ' + $prismScriptPath + ' -Configuration ' + $ConfigurationName
+    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File {0} -Configuration {1} -WindowMode {2} -PlatformBackend {3} -InputBackend {4}' -f @(
+        $prismScriptPath,
+        $ConfigurationName,
+        $ConfiguredWindowMode,
+        $ConfiguredPlatformBackend,
+        $ConfiguredInputBackend
+    )
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideCommands" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value $command
     return $command
@@ -147,13 +291,15 @@ function Remove-PrismPreLaunchSync {
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value ""
 }
 
-function Set-PrismWindowMode {
+function Set-PrismRuntimeEnvironment {
     param(
         [string]$InstanceConfig,
-        [string]$Mode
+        [string]$Mode,
+        [string]$ConfiguredPlatformBackend,
+        [string]$ConfiguredInputBackend
     )
 
-    $envValue = '{\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\"}'
+    $envValue = '{\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\",\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\",\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"}'
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideEnv" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "Env" -Value $envValue
 }
@@ -208,7 +354,7 @@ function Ensure-RemixViewModelConfig {
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.volumetrics.froxelMaxDistanceMeters" -Value "256"
 }
 
-foreach ($requiredPath in @($InstanceRoot, (Split-Path $MinecraftLibraryJar -Parent), $deployScript, $instanceConfigPath, $selfScriptPath)) {
+foreach ($requiredPath in @($InstanceRoot, (Split-Path $MinecraftLibraryJar -Parent), $deployScript, $instanceConfigPath, $instanceMmcPackPath, $minecraftMetaPath, $selfScriptPath)) {
     if (-not (Test-Path $requiredPath)) {
         throw "Required path not found: $requiredPath"
     }
@@ -288,6 +434,10 @@ if ($Restore) {
         Remove-PrismPreLaunchSync -InstanceConfig $instanceConfigPath
     }
 
+    if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Reset Prism platform backend to LWJGL 2")) {
+        Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend "lwjgl2" | Out-Null
+    }
+
     Write-Host "Restored vanilla Beta 1.7.3 jar to $MinecraftLibraryJar"
     Write-Host "Removed deployed DLL from $libraryJarDirectory"
     return
@@ -303,6 +453,12 @@ New-Item -ItemType Directory -Force -Path $deployStateDir | Out-Null
 New-Item -ItemType Directory -Force -Path $libraryJarDirectory | Out-Null
 New-Item -ItemType Directory -Force -Path $instanceLibrariesDir | Out-Null
 New-Item -ItemType Directory -Force -Path $instanceMinecraftDir | Out-Null
+New-Item -ItemType Directory -Force -Path $instancePatchesDir | Out-Null
+
+$platformSpec = $null
+if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Configure Prism platform component backend")) {
+    $platformSpec = Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend $PlatformBackend
+}
 
 $targetJarHash = Get-FileHashString -Path $MinecraftLibraryJar
 $patchedJarHash = Get-FileHashString -Path $patchedJar
@@ -386,6 +542,11 @@ $deploymentRecord = [ordered]@{
     customJarTargets = $customJarTargets
     bundleRoot = $BundleRoot
     configuration = $Configuration
+    platformBackend = $PlatformBackend
+    inputBackend = $InputBackend
+    windowMode = $WindowMode
+    platformComponentUid = if ($platformSpec) { $platformSpec.ComponentUid } else { "" }
+    platformComponentVersion = if ($platformSpec) { $platformSpec.Version } else { "" }
     patchedJar = $patchedJar
     patchedDll = $patchedDll
 }
@@ -397,11 +558,11 @@ if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
 
 $preLaunchCommand = ""
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch sync command")) {
-    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration
+    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend
 }
 
-if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism window mode environment")) {
-    Set-PrismWindowMode -InstanceConfig $instanceConfigPath -Mode $WindowMode
+if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism runtime environment")) {
+    Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend
 }
 
 if ($PSCmdlet.ShouldProcess($instanceRemixConfigPath, "Configure Remix viewmodel runtime settings")) {
@@ -439,7 +600,12 @@ if ($preLaunchCommand) {
     Write-Host "Configured Prism pre-launch sync command in $instanceConfigPath"
 }
 
-Write-Host "Configured Prism window mode '$WindowMode' in $instanceConfigPath"
+Write-Host "Configured Prism runtime environment windowMode='$WindowMode' platformBackend='$PlatformBackend' inputBackend='$InputBackend' in $instanceConfigPath"
+
+if ($platformSpec) {
+    Write-Host "Configured Prism component graph for $($platformSpec.CachedName) $($platformSpec.Version) in $instanceMmcPackPath"
+    Write-Host "Updated local Minecraft patch at $instanceMinecraftPatchPath to require $($platformSpec.ComponentUid) $($platformSpec.Version)"
+}
 
 Write-Host "Configured Remix viewmodel settings in $instanceRemixConfigPath"
 

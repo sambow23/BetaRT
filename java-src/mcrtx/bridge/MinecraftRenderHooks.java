@@ -34,9 +34,11 @@ public final class MinecraftRenderHooks {
     }
 
     public static synchronized boolean initializeForCurrentDisplay(int width, int height) {
-        long hwnd = LwjglWindowHandleResolver.resolveCurrentHwnd();
+        long hwnd = MinecraftPlatformRuntime.current().resolveCurrentWindowHandle();
         if (hwnd == 0L) {
-            lastError = "Failed to resolve LWJGL window handle";
+            lastError = "Failed to resolve the active platform window handle for backend '"
+                    + MinecraftPlatformRuntime.currentBackendSelection()
+                    + "'";
             report(lastError);
             return false;
         }
@@ -102,6 +104,20 @@ public final class MinecraftRenderHooks {
             lastError = "";
         }
         return result;
+    }
+
+    public static synchronized boolean hasNativeWindowFocus() {
+        if (!initialized) {
+            return false;
+        }
+        return RemixBridgeNative.nHasWindowFocus();
+    }
+
+    public static synchronized boolean isNativeVirtualKeyDown(int virtualKey) {
+        if (!initialized) {
+            return false;
+        }
+        return RemixBridgeNative.nIsVirtualKeyDown(virtualKey);
     }
 
     public static synchronized void updateCamera(CameraPose cameraPose) {

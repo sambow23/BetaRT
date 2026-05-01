@@ -232,5 +232,35 @@ void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
   log("Remix overlay window input released");
 }
 
+bool RemixRenderer::hasWindowFocus() const {
+  std::scoped_lock lock(mutex_);
+
+  const HWND foregroundWindow = GetForegroundWindow();
+  if (foregroundWindow == nullptr) {
+    return false;
+  }
+
+  const auto matchesManagedWindow = [foregroundWindow](HWND managedWindow) {
+    if (managedWindow == nullptr) {
+      return false;
+    }
+    return foregroundWindow == managedWindow || IsChild(managedWindow, foregroundWindow);
+  };
+
+  return matchesManagedWindow(outputHwnd_) || matchesManagedWindow(sourceHwnd_);
+}
+
+bool RemixRenderer::isVirtualKeyDown(std::uint32_t virtualKey) const {
+  if (virtualKey > 0xFFu) {
+    return false;
+  }
+
+  if (!hasWindowFocus()) {
+    return false;
+  }
+
+  return (GetAsyncKeyState(static_cast<int>(virtualKey)) & 0x8000) != 0;
+}
+
 
 }  // namespace mcrtx

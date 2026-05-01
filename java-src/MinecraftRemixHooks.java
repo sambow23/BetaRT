@@ -1,10 +1,11 @@
 import mcrtx.bridge.HookProfiler;
+import mcrtx.bridge.MinecraftPlatform;
+import mcrtx.bridge.MinecraftPlatformKey;
+import mcrtx.bridge.MinecraftPlatformRuntime;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
 import java.util.Locale;
-import org.lwjgl.input.Keyboard;
-import org.lwjgl.opengl.Display;
 
 /**
  * Thin dispatcher that receives every bytecode-patched callback from the Beta
@@ -15,12 +16,16 @@ import org.lwjgl.opengl.Display;
 public final class MinecraftRemixHooks {
     private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
+    private static final int WINDOWS_VK_MENU = 0x12;
+    private static final int WINDOWS_VK_X = 0x58;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
     private static final boolean VERBOSE_LOGGING = detectVerboseLoggingEnabled();
+    private static final boolean NATIVE_INPUT_BACKEND = detectNativeInputBackend();
 
     private static boolean loggedDisplayCreate;
     private static boolean loggedDisplayReset;
     private static boolean loggedPresent;
+    private static boolean loggedPlatformBackend;
     private static boolean remixUiOpen;
     private static boolean remixUiHotkeyHeld;
     private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
@@ -59,6 +64,15 @@ public final class MinecraftRemixHooks {
             if (!loggedDisplayCreate) {
                 loggedDisplayCreate = true;
                 System.out.println("[mcrtx] onDisplayCreated width=" + width + " height=" + height);
+            }
+            if (!loggedPlatformBackend) {
+                loggedPlatformBackend = true;
+                System.out.println(
+                        "[mcrtx] platform backend="
+                                + MinecraftPlatformRuntime.currentBackendSelection()
+                                + " status="
+                                + MinecraftPlatformRuntime.selectionStatus());
+                System.out.println("[mcrtx] input backend=" + (NATIVE_INPUT_BACKEND ? "native" : "platform"));
             }
             resetRemixUiTracking();
             resetPerfTracking();
@@ -233,7 +247,7 @@ public final class MinecraftRemixHooks {
     public static boolean isWindowInteractionActive() {
         long __perf = HookProfiler.begin();
         try {
-            return Display.isActive() || (!STANDALONE_WINDOW_MODE && remixUiOpen);
+            return currentWindowActive() || (!STANDALONE_WINDOW_MODE && remixUiOpen);
         } finally {
             HookProfiler.endHook("hook.isWindowInteractionActive", __perf);
         }
@@ -670,10 +684,38 @@ public final class MinecraftRemixHooks {
                 || firstCharacter == 'Y';
     }
 
+    private static boolean detectNativeInputBackend() {
+        String configuredBackend = System.getenv("MCRTX_INPUT_BACKEND");
+        return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
+    }
+
+    private static boolean currentWindowActive() {
+        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized()) {
+            return MinecraftRenderHooks.hasNativeWindowFocus();
+        }
+        return MinecraftPlatformRuntime.current().isWindowActive();
+    }
+
+    private static boolean isAltHotkeyDown(MinecraftPlatform platform) {
+        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized()) {
+            return MinecraftRenderHooks.isNativeVirtualKeyDown(WINDOWS_VK_MENU);
+        }
+        return platform.isKeyDown(MinecraftPlatformKey.LEFT_ALT)
+                || platform.isKeyDown(MinecraftPlatformKey.RIGHT_ALT);
+    }
+
+    private static boolean isXHotkeyDown(MinecraftPlatform platform) {
+        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized()) {
+            return MinecraftRenderHooks.isNativeVirtualKeyDown(WINDOWS_VK_X);
+        }
+        return platform.isKeyDown(MinecraftPlatformKey.X);
+    }
+
     private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {
+        MinecraftPlatform platform = MinecraftPlatformRuntime.current();
         int uiState = MinecraftRenderHooks.getUiState();
-        boolean altDown = Keyboard.isKeyDown(Keyboard.KEY_LMENU) || Keyboard.isKeyDown(Keyboard.KEY_RMENU);
-        boolean xDown = Keyboard.isKeyDown(Keyboard.KEY_X);
+        boolean altDown = isAltHotkeyDown(platform);
+        boolean xDown = isXHotkeyDown(platform);
         boolean hotkeyHeld = altDown && xDown;
 
         if (allowHotkeyToggle && hotkeyHeld && !remixUiHotkeyHeld) {

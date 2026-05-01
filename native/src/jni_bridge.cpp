@@ -419,6 +419,21 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetUiState(
       RemixRenderer::instance().setUiState(static_cast<remixapi_UIState>(state))));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nHasWindowFocus(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nHasWindowFocus");
+  return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().hasWindowFocus()));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsVirtualKeyDown(
+    JNIEnv*, jclass, jint virtualKey) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsVirtualKeyDown");
+  if (virtualKey < 0) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+  return static_cast<jboolean>(fromJniBoolean(
+      RemixRenderer::instance().isVirtualKeyDown(static_cast<std::uint32_t>(virtualKey))));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPresent(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nPresent");
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().present()));

@@ -3,8 +3,8 @@ import mcrtx.bridge.CameraPose;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
+import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
-import org.lwjgl.opengl.GL11;
 
 public final class RemixCameraState {
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
@@ -113,7 +113,9 @@ public final class RemixCameraState {
         }
         long captureStartNanos = System.nanoTime();
         VIEW_BUFFER.clear();
-        GL11.glGetFloat(GL_MODELVIEW_MATRIX, VIEW_BUFFER);
+        if (!OpenGlCompat.getFloat(GL_MODELVIEW_MATRIX, VIEW_BUFFER)) {
+            return;
+        }
         long readModelViewEndNanos = System.nanoTime();
         float[] view = new float[16];
         VIEW_BUFFER.get(view);

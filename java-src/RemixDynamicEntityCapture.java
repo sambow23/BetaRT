@@ -2,6 +2,7 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
+import mcrtx.lwjglshim.OpenGlCompat;
 import java.nio.FloatBuffer;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.BufferUtils;
@@ -53,6 +54,26 @@ public final class RemixDynamicEntityCapture {
     private static final java.util.Map<Integer, Integer> textureWidthCache = new java.util.HashMap<Integer, Integer>();
     private static final java.util.Map<Integer, Integer> textureHeightCache = new java.util.HashMap<Integer, Integer>();
     private static java.nio.ByteBuffer textureReadBuffer = null;
+
+    private static float[] captureModelViewMatrix() {
+        MODEL_VIEW_BUFFER.clear();
+        if (!OpenGlCompat.getFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER)) {
+            return null;
+        }
+        float[] modelView = new float[16];
+        MODEL_VIEW_BUFFER.get(modelView);
+        return modelView;
+    }
+
+    private static float[] captureCurrentColor() {
+        COLOR_BUFFER.clear();
+        if (!OpenGlCompat.getFloat(GL_CURRENT_COLOR, COLOR_BUFFER)) {
+            return null;
+        }
+        float[] currentColor = new float[4];
+        COLOR_BUFFER.get(currentColor);
+        return currentColor;
+    }
 
     private static boolean[] getTextureAlphaMap(int textureId) {
         boolean[] cached = textureAlphaCache.get(textureId);
@@ -270,10 +291,10 @@ public final class RemixDynamicEntityCapture {
 
         try {
             long renderStartNanos = System.nanoTime();
-            MODEL_VIEW_BUFFER.clear();
-            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-            float[] modelView = new float[16];
-            MODEL_VIEW_BUFFER.get(modelView);
+            float[] modelView = captureModelViewMatrix();
+            if (modelView == null) {
+                return;
+            }
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             long stateReadEndNanos = System.nanoTime();
 
@@ -309,10 +330,10 @@ public final class RemixDynamicEntityCapture {
                 MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
             }
 
-            MODEL_VIEW_BUFFER.clear();
-            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-            float[] modelView = new float[16];
-            MODEL_VIEW_BUFFER.get(modelView);
+            float[] modelView = captureModelViewMatrix();
+            if (modelView == null) {
+                return;
+            }
 
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             int packedColor = shadow ? applyFontShadow(colorRgba) : colorRgba;
@@ -425,10 +446,10 @@ public final class RemixDynamicEntityCapture {
             double renderZ = worldZ - th.d;
             float interpolatedYaw = player.aU + (player.aS - player.aU) * partialTicks;
             float brightness = player.a(partialTicks);
-            MODEL_VIEW_BUFFER.clear();
-            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-            float[] overlayModelView = new float[16];
-            MODEL_VIEW_BUFFER.get(overlayModelView);
+            float[] overlayModelView = captureModelViewMatrix();
+            if (overlayModelView == null) {
+                return;
+            }
             float[] overlayInverse = MatrixMath.invertAffineColumnMajor(overlayModelView);
             System.arraycopy(overlayInverse, 0, firstPersonShadowOverlayInverse, 0, firstPersonShadowOverlayInverse.length);
             GL11.glPushAttrib(GL11.GL_ALL_ATTRIB_BITS);
@@ -525,15 +546,15 @@ public final class RemixDynamicEntityCapture {
         }
         try {
             long renderStartNanos = System.nanoTime();
-            MODEL_VIEW_BUFFER.clear();
-            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-            float[] modelView = new float[16];
-            MODEL_VIEW_BUFFER.get(modelView);
+            float[] modelView = captureModelViewMatrix();
+            if (modelView == null) {
+                return;
+            }
 
-            COLOR_BUFFER.clear();
-            GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
-            float[] color = new float[4];
-            COLOR_BUFFER.get(color);
+            float[] color = captureCurrentColor();
+            if (color == null) {
+                return;
+            }
             long stateReadEndNanos = System.nanoTime();
 
             float[] modelToWorld;
@@ -620,15 +641,15 @@ public final class RemixDynamicEntityCapture {
             if (!voxelsGeneratedForCurrentItem) {
                 try {
                     long renderStartNanos = System.nanoTime();
-                    MODEL_VIEW_BUFFER.clear();
-                    GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-                    float[] modelView = new float[16];
-                    MODEL_VIEW_BUFFER.get(modelView);
+                    float[] modelView = captureModelViewMatrix();
+                    if (modelView == null) {
+                        return;
+                    }
 
-                    COLOR_BUFFER.clear();
-                    GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
-                    float[] currentColor = new float[4];
-                    COLOR_BUFFER.get(currentColor);
+                    float[] currentColor = captureCurrentColor();
+                    if (currentColor == null) {
+                        return;
+                    }
 
                     float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
                     int fallbackColorRgba = ColorMath.sanitizePackedColor(ColorMath.packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
@@ -651,15 +672,15 @@ public final class RemixDynamicEntityCapture {
 
         try {
             long renderStartNanos = System.nanoTime();
-            MODEL_VIEW_BUFFER.clear();
-            GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
-            float[] modelView = new float[16];
-            MODEL_VIEW_BUFFER.get(modelView);
+            float[] modelView = captureModelViewMatrix();
+            if (modelView == null) {
+                return;
+            }
 
-            COLOR_BUFFER.clear();
-            GL11.glGetFloat(GL_CURRENT_COLOR, COLOR_BUFFER);
-            float[] currentColor = new float[4];
-            COLOR_BUFFER.get(currentColor);
+            float[] currentColor = captureCurrentColor();
+            if (currentColor == null) {
+                return;
+            }
             long stateReadEndNanos = System.nanoTime();
 
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);

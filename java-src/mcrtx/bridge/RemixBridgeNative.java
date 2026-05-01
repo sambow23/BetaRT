@@ -268,6 +268,10 @@ public final class RemixBridgeNative {
 
     public static native boolean nSetUiState(int state);
 
+    public static native boolean nHasWindowFocus();
+
+    public static native boolean nIsVirtualKeyDown(int virtualKey);
+
     public static native boolean nPresent();
 
     public static native String nGetLastError();

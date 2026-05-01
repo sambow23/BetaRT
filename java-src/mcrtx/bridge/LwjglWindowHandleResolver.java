@@ -19,6 +19,28 @@ final class LwjglWindowHandleResolver {
             }
             return readHandleField(implementation);
         } catch (ReflectiveOperationException | SecurityException exception) {
+            return resolveCompatibilityDisplayHwnd();
+        }
+    }
+
+    private static long resolveCompatibilityDisplayHwnd() {
+        try {
+            Method windowHandleMethod = Display.class.getMethod("windowHandle");
+            Object windowHandle = windowHandleMethod.invoke(null);
+            if (!(windowHandle instanceof Number)) {
+                return 0L;
+            }
+
+            long glfwWindow = ((Number) windowHandle).longValue();
+            if (glfwWindow == 0L) {
+                return 0L;
+            }
+
+            Class<?> glfwNativeWin32Class = Class.forName("org.lwjgl.glfw.GLFWNativeWin32");
+            Method glfwGetWin32Window = glfwNativeWin32Class.getMethod("glfwGetWin32Window", Long.TYPE);
+            Object hwnd = glfwGetWin32Window.invoke(null, Long.valueOf(glfwWindow));
+            return hwnd instanceof Number ? ((Number) hwnd).longValue() : 0L;
+        } catch (ReflectiveOperationException | SecurityException exception) {
             return 0L;
         }
     }

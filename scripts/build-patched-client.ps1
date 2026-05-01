@@ -1283,6 +1283,7 @@ $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
 
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
+    (Join-Path $repoRoot "java-src\cb.java"),
     (Join-Path $repoRoot "java-src\RemixCameraState.java"),
     (Join-Path $repoRoot "java-src\RemixCaveCulling.java"),
     (Join-Path $repoRoot "java-src\RemixChunkCapture.java"),
@@ -1298,16 +1299,43 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MatrixMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\HookProfiler.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformKey.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatform.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformRuntime.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\Lwjgl2MinecraftPlatform.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\Lwjgl3MinecraftPlatform.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\LwjglWindowHandleResolver.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyAL10.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\OpenAlCompat.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\OpenGlCompat.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftRenderHooks.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\UiOverlayCapture.java")
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\UiOverlayCapture.java"),
+    (Join-Path $repoRoot "java-src\paulscode\sound\libraries\LibraryLWJGLOpenAL.java")
+)
+
+$compatSourceFiles = @(
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\GlfwBindings.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyARBOcclusionQuery.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyGL11.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\LWJGLException.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\Sys.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\DisplayMode.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\Display.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\ContextCapabilities.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\GL11.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\GLContext.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\input\Controllers.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\input\Cursor.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\input\Keyboard.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\input\Mouse.java"),
+    (Join-Path $repoRoot "java-src\org\lwjgl\util\glu\GLU.java")
 )
 
 $toolSourceFiles = @(
     (Join-Path $repoRoot "tools-src\mcrtx\tools\ClientPatchTool.java")
 )
 
-$requiredPaths = @($MinecraftJar, $LwjglJar, $LwjglUtilJar, $AsmJar, $AsmTreeJar, $JavacPath, $JavaPath, $JarPath) + $runtimeSourceFiles + $toolSourceFiles
+$requiredPaths = @($MinecraftJar, $LwjglJar, $LwjglUtilJar, $AsmJar, $AsmTreeJar, $JavacPath, $JavaPath, $JarPath) + $runtimeSourceFiles + $compatSourceFiles + $toolSourceFiles
 foreach ($path in $requiredPaths) {
     if (-not (Test-Path $path)) {
         throw "Required path not found: $path"
@@ -1328,6 +1356,11 @@ $toolClasspath = @($AsmJar, $AsmTreeJar) -join ';'
 & $JavacPath --release 8 -Xlint:-options -cp $classpath -d $classesDir $runtimeSourceFiles
 if ($LASTEXITCODE -ne 0) {
     throw "javac runtime compile failed with exit code $LASTEXITCODE"
+}
+
+& $JavacPath --release 8 -Xlint:-options -cp $classesDir -d $classesDir $compatSourceFiles
+if ($LASTEXITCODE -ne 0) {
+    throw "javac compatibility compile failed with exit code $LASTEXITCODE"
 }
 
 & $JavacPath -cp $toolClasspath -d $toolClassesDir $toolSourceFiles

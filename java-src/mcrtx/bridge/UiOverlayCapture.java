@@ -2,6 +2,7 @@ package mcrtx.bridge;
 
 import java.nio.ByteBuffer;
 import java.nio.IntBuffer;
+import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.EXTFramebufferObject;
 import org.lwjgl.opengl.GL11;
@@ -45,7 +46,10 @@ public final class UiOverlayCapture {
 
         previousFramebufferId = GL11.glGetInteger(EXTFramebufferObject.GL_FRAMEBUFFER_BINDING_EXT);
         VIEWPORT_BUFFER.clear();
-        GL11.glGetInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER);
+        if (!OpenGlCompat.getInteger(GL11.GL_VIEWPORT, VIEWPORT_BUFFER)) {
+            MinecraftRenderHooks.clearScreenOverlay();
+            return;
+        }
         viewportX = VIEWPORT_BUFFER.get(0);
         viewportY = VIEWPORT_BUFFER.get(1);
         viewportWidth = VIEWPORT_BUFFER.get(2);

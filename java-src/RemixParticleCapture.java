@@ -2,6 +2,7 @@ import java.nio.FloatBuffer;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.MatrixMath;
+import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
@@ -106,12 +107,16 @@ public final class RemixParticleCapture {
         }
 
         MODEL_VIEW_BUFFER.clear();
-        GL11.glGetFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER);
+        if (!OpenGlCompat.getFloat(GL_MODELVIEW_MATRIX, MODEL_VIEW_BUFFER)) {
+            return;
+        }
         float[] modelView = new float[16];
         MODEL_VIEW_BUFFER.get(modelView);
 
         COLOR_BUFFER.clear();
-        GL11.glGetFloat(GL11.GL_CURRENT_COLOR, COLOR_BUFFER);
+        if (!OpenGlCompat.getFloat(GL11.GL_CURRENT_COLOR, COLOR_BUFFER)) {
+            return;
+        }
         float[] currentColor = new float[4];
         COLOR_BUFFER.get(currentColor);
 

@@ -29,6 +29,12 @@ public final class ClientPatchTool {
     private static final String MINECRAFT_CLASS = "net/minecraft/client/Minecraft";
     private static final String DISPLAY_CLASS = "org/lwjgl/opengl/Display";
     private static final String MOUSE_CLASS = "org/lwjgl/input/Mouse";
+    private static final String AL10_CLASS = "org/lwjgl/openal/AL10";
+    private static final String LEGACY_AL10_CLASS = "mcrtx/lwjglshim/LegacyAL10";
+    private static final String ARB_OCCLUSION_QUERY_CLASS = "org/lwjgl/opengl/ARBOcclusionQuery";
+    private static final String LEGACY_ARB_OCCLUSION_QUERY_CLASS = "mcrtx/lwjglshim/LegacyARBOcclusionQuery";
+    private static final String GL11_CLASS = "org/lwjgl/opengl/GL11";
+    private static final String LEGACY_GL11_CLASS = "mcrtx/lwjglshim/LegacyGL11";
     private static final String MODEL_PART_CLASS = "ps";
     private static final String TESSELLATOR_CLASS = "nw";
     private static final String PARTICLE_CLASS = "xw";
@@ -97,6 +103,10 @@ public final class ClientPatchTool {
                     content = patchHy(content);
                 } else if (entryName.equals(FONT_RENDERER_CLASS + ".class")) {
                     content = patchSj(content);
+                }
+
+                if (entryName.endsWith(".class")) {
+                    content = remapLegacyBindings(content);
                 }
 
                 JarEntry newEntry = new JarEntry(entryName);
@@ -344,7 +354,7 @@ public final class ClientPatchTool {
 
     private static void patchTessellatorDraw(MethodNode method) {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glDrawArrays", "(III)V")) {
+            if (isStaticCall(node, GL11_CLASS, "glDrawArrays", "(III)V")) {
                 method.instructions.insertBefore(node, firstPersonTessellatorDrawCall());
             }
         }
@@ -436,7 +446,7 @@ public final class ClientPatchTool {
         }
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glClear", "(I)V")) {
+            if (isStaticCall(node, GL11_CLASS, "glClear", "(I)V")) {
                 method.instructions.insertBefore(node, uiRenderBeginCall());
             }
         }
@@ -460,7 +470,7 @@ public final class ClientPatchTool {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof LdcInsnNode ldcInsnNode && "/environment/rain.png".equals(ldcInsnNode.cst)) {
                 AbstractInsnNode insertionPoint = node;
-                while (insertionPoint != null && !isStaticCall(insertionPoint, "org/lwjgl/opengl/GL11", "glBindTexture", "(II)V")) {
+                while (insertionPoint != null && !isStaticCall(insertionPoint, GL11_CLASS, "glBindTexture", "(II)V")) {
                     insertionPoint = insertionPoint.getNext();
                 }
                 if (insertionPoint != null) {
@@ -553,10 +563,32 @@ public final class ClientPatchTool {
 
     private static void patchModelPartRender(MethodNode method) {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isStaticCall(node, "org/lwjgl/opengl/GL11", "glCallList", "(I)V")) {
+            if (isStaticCall(node, GL11_CLASS, "glCallList", "(I)V")) {
                 method.instructions.insertBefore(node, modelPartRenderCall());
             }
         }
+    }
+
+    private static byte[] remapLegacyBindings(byte[] content) {
+        ClassNode classNode = readClass(content);
+        boolean modified = false;
+        for (MethodNode method : classNode.methods) {
+            for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+                if (node instanceof MethodInsnNode methodInsnNode) {
+                    if (GL11_CLASS.equals(methodInsnNode.owner)) {
+                        methodInsnNode.owner = LEGACY_GL11_CLASS;
+                        modified = true;
+                    } else if (AL10_CLASS.equals(methodInsnNode.owner)) {
+                        methodInsnNode.owner = LEGACY_AL10_CLASS;
+                        modified = true;
+                    } else if (ARB_OCCLUSION_QUERY_CLASS.equals(methodInsnNode.owner)) {
+                        methodInsnNode.owner = LEGACY_ARB_OCCLUSION_QUERY_CLASS;
+                        modified = true;
+                    }
+                }
+            }
+        }
+        return modified ? writeClass(classNode) : content;
     }
 
     private static void patchDestroyOverlayRender(MethodNode method) {
