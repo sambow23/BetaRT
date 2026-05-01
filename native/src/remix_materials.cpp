@@ -559,6 +559,22 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kLiquidAnimationFrameCount,
       1,
       kLiquidAnimationFramesPerSecond);
+      const bool iceCreated = createTerrainMaterial(
+        kIceTerrainMaterialClass,
+        false,
+        false,
+        true,
+        kIceTransmittanceColor,
+        kIceTransmittanceDistance,
+        kIceRefractiveIndex,
+        terrainAtlasPath_,
+        kIceTerrainMaterialHash,
+        nullptr,
+        0.0f,
+        {0.0f, 0.0f, 0.0f},
+        0,
+        0,
+        0);
   const bool portalCreated = !portalTexturePath_.empty() && createTerrainMaterial(
       kPortalTerrainMaterialClass,
       false,
@@ -604,6 +620,12 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!lavaCreated) {
     log("Lava terrain material unavailable; lava faces will be skipped");
+  }
+  if (!iceCreated) {
+    log("Ice terrain material unavailable; ice will fall back to opaque terrain");
+    terrainMaterialHandles_[kIceTerrainMaterialClass] = terrainMaterialHandles_[kOpaqueTerrainMaterialClass];
+  } else {
+    log("Initialized ice material from " + terrainAtlasPath_.string());
   }
   if (portalTexturePath_.empty()) {
     log("Portal texture asset not found; portals will fall back to cutout terrain");

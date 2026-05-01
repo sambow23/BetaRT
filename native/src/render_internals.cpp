@@ -448,6 +448,9 @@ std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderTyp
   if (isLavaBlock(blockId)) {
     return kLavaTerrainMaterialClass;
   }
+  if (blockId == kIceBlockId) {
+    return kIceTerrainMaterialClass;
+  }
   if (blockId == kNetherPortalBlockId) {
     return kPortalTerrainMaterialClass;
   }

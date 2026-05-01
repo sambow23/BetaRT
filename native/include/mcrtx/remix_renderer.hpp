@@ -584,7 +584,7 @@ private:
   std::filesystem::path portalTexturePath_ {};
   std::filesystem::path lavaEmissiveTexturePath_ {};
   std::filesystem::path redstoneEmissiveTexturePath_ {};
-  std::array<remixapi_MaterialHandle, 6> terrainMaterialHandles_ {};
+  std::array<remixapi_MaterialHandle, 7> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
