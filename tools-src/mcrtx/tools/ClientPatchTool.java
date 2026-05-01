@@ -41,6 +41,7 @@ public final class ClientPatchTool {
     private static final String MINECART_RENDERER_CLASS = "tb";
     private static final String PAINTING_RENDERER_CLASS = "dy";
     private static final String SIGN_RENDERER_CLASS = "po";
+    private static final String MOVING_PISTON_RENDERER_CLASS = "hy";
     private static final String FONT_RENDERER_CLASS = "sj";
 
     private ClientPatchTool() {
@@ -92,6 +93,8 @@ public final class ClientPatchTool {
                     content = patchDy(content);
                 } else if (entryName.equals(SIGN_RENDERER_CLASS + ".class")) {
                     content = patchPo(content);
+                } else if (entryName.equals(MOVING_PISTON_RENDERER_CLASS + ".class")) {
+                    content = patchHy(content);
                 } else if (entryName.equals(FONT_RENDERER_CLASS + ".class")) {
                     content = patchSj(content);
                 }
@@ -287,6 +290,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lyk;DDDF)V")) {
                 patchSignRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchHy(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Luk;DDDF)V")) {
+                patchMovingPistonRender(method);
             }
         }
         return writeClass(classNode);
@@ -610,6 +623,33 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchMovingPistonRender(MethodNode method) {
+        boolean insertedStart = false;
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(TESSELLATOR_CLASS)
+                    && methodInsnNode.name.equals("b")
+                    && methodInsnNode.desc.equals("()V")) {
+                method.instructions.insertBefore(node, movingPistonRenderStartCall());
+                insertedStart = true;
+                break;
+            }
+        }
+
+        if (!insertedStart) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onMovingPistonRenderEnd", "()V"));
+            }
+            node = next;
+        }
+    }
+
     private static void patchFontRender(MethodNode method) {
         method.instructions.insertBefore(method.instructions.getFirst(), signTextRenderCall());
     }
@@ -786,6 +826,13 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onPaintingRender", "(Lqv;)V", false));
+        return instructions;
+    }
+
+    private static InsnList movingPistonRenderStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onMovingPistonRenderStart", "(Luk;)V", false));
         return instructions;
     }
 

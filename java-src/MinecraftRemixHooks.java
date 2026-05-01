@@ -347,6 +347,24 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onMovingPistonRenderStart(uk piston) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onMovingPistonRenderStart(piston);
+        } finally {
+            HookProfiler.endHook("hook.onMovingPistonRenderStart", __perf);
+        }
+    }
+
+    public static void onMovingPistonRenderEnd() {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onMovingPistonRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onMovingPistonRenderEnd", __perf);
+        }
+    }
+
     public static void onPaintingRender(qv painting) {
         long __perf = HookProfiler.begin();
         try {

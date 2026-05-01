@@ -807,6 +807,30 @@ bool RemixRenderer::rebuildChunkMeshFromData(
           continue;
         }
 
+        if (isPistonBaseRenderType(cell.renderType) && isPistonBaseBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendPistonBaseGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              pistonSurface.vertices,
+              pistonSurface.indices);
+          continue;
+        }
+
+        if (isPistonHeadRenderType(cell.renderType) && isPistonHeadBlockId(cell.blockId)) {
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          appendPistonHeadGeometry(
+              cell,
+              static_cast<float>(localX),
+              static_cast<float>(localY),
+              static_cast<float>(localZ),
+              pistonSurface.vertices,
+              pistonSurface.indices);
+          continue;
+        }
+
         if (cell.blockId == kNetherPortalBlockId) {
           SurfaceBuildBuffers& portalSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendPortalGeometry(

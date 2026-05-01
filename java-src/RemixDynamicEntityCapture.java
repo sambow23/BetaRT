@@ -24,6 +24,7 @@ public final class RemixDynamicEntityCapture {
     private static final String FONT_TEXTURE_PATH = "/font/default.png";
     private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
+    private static final String TERRAIN_TEXTURE_PATH = "/terrain.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final float[] firstPersonShadowOverlayInverse = new float[] {
@@ -236,6 +237,24 @@ public final class RemixDynamicEntityCapture {
 
     public static void onSignRenderEnd() {
         signRenderActive = false;
+        onLivingEntityRenderEnd();
+    }
+
+    public static void onMovingPistonRenderStart(uk piston) {
+        if (!MinecraftRenderHooks.isInitialized() || piston == null) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+        dynamicEntityActive = true;
+        activeDynamicEntityId = stableTileEntityId(piston.e, piston.f, piston.g, 0x50495354);
+        activeDynamicEntityTexture = TERRAIN_TEXTURE_PATH;
+        nextDynamicBoneIndex = 0;
+        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId);
+        MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+    }
+
+    public static void onMovingPistonRenderEnd() {
         onLivingEntityRenderEnd();
     }
 
@@ -593,11 +612,11 @@ public final class RemixDynamicEntityCapture {
             return;
         }
         
-        if (vertexCount == 6) {
+        if (firstPersonActive && vertexCount == 6) {
             voxelsGeneratedForCurrentItem = false;
         }
         
-        if (vertexCount == 96) {
+        if (firstPersonActive && vertexCount == 96) {
             if (!voxelsGeneratedForCurrentItem) {
                 try {
                     long renderStartNanos = System.nanoTime();

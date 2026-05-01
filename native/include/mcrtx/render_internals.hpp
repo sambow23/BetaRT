@@ -51,6 +51,8 @@ constexpr std::uint8_t kLeverOrButtonBlockRenderType = 12;
 constexpr std::uint8_t kCactusBlockRenderType = 13;
 constexpr std::uint8_t kBedBlockRenderType = 14;
 constexpr std::uint8_t kRepeaterBlockRenderType = 15;
+constexpr std::uint8_t kPistonBaseBlockRenderType = 16;
+constexpr std::uint8_t kPistonHeadBlockRenderType = 17;
 constexpr std::uint8_t kLiquidBlockRenderType = 4;
 constexpr std::uint8_t kGrassBlockId = 2;
 constexpr std::uint8_t kLeavesBlockId = 18;
@@ -81,6 +83,9 @@ constexpr std::uint8_t kFenceBlockId = 85;
 constexpr std::uint8_t kNetherPortalBlockId = 90;
 constexpr std::uint8_t kRepeaterIdleBlockId = 93;
 constexpr std::uint8_t kRepeaterPoweredBlockId = 94;
+constexpr std::uint8_t kStickyPistonBlockId = 29;
+constexpr std::uint8_t kPistonBaseBlockId = 33;
+constexpr std::uint8_t kPistonHeadBlockId = 34;
 constexpr std::uint8_t kTrapdoorBlockId = 96;
 constexpr std::uint8_t kWaterStillBlockId = 8;
 constexpr std::uint8_t kWaterFlowingBlockId = 9;
@@ -265,6 +270,8 @@ bool isLeverOrButtonRenderType(int renderType);
 bool isCactusRenderType(int renderType);
 bool isBedRenderType(int renderType);
 bool isRepeaterRenderType(int renderType);
+bool isPistonBaseRenderType(int renderType);
+bool isPistonHeadRenderType(int renderType);
 bool isRedstoneDustBlockId(int blockId);
 bool isCropBlockId(int blockId);
 bool isCactusBlockId(int blockId);
@@ -276,6 +283,8 @@ bool isRailBlockId(int blockId);
 bool isLeverBlockId(int blockId);
 bool isButtonBlockId(int blockId);
 bool isRepeaterBlockId(int blockId);
+bool isPistonBaseBlockId(int blockId);
+bool isPistonHeadBlockId(int blockId);
 bool isRedstoneConnectionCell(const ChunkBlockCell& cell, int direction);
 bool isSupportedPass0RenderType(int renderType);
 bool shouldCaptureBlock(int blockId, int renderType);
@@ -467,6 +476,18 @@ void appendBedGeometry(
     std::vector<std::uint32_t>& indices);
 
 void appendRepeaterGeometry(
+    const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendPistonBaseGeometry(
+    const ChunkBlockCell& cell,
+    float localX, float localY, float localZ,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices);
+
+void appendPistonHeadGeometry(
     const ChunkBlockCell& cell,
     float localX, float localY, float localZ,
     std::vector<remixapi_HardcodedVertex>& vertices,

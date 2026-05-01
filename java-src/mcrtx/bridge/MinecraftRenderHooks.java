@@ -20,6 +20,8 @@ public final class MinecraftRenderHooks {
     private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
     private static final int BED_BLOCK_RENDER_TYPE = 14;
     private static final int REPEATER_BLOCK_RENDER_TYPE = 15;
+    private static final int PISTON_BASE_BLOCK_RENDER_TYPE = 16;
+    private static final int PISTON_HEAD_BLOCK_RENDER_TYPE = 17;
 
     private static volatile boolean initialized;
     private static boolean chunkBuildCaptureActive;
@@ -583,6 +585,8 @@ public final class MinecraftRenderHooks {
                     || renderType == CACTUS_BLOCK_RENDER_TYPE
                     || renderType == BED_BLOCK_RENDER_TYPE
                     || renderType == REPEATER_BLOCK_RENDER_TYPE
+                    || renderType == PISTON_BASE_BLOCK_RENDER_TYPE
+                    || renderType == PISTON_HEAD_BLOCK_RENDER_TYPE
                     || renderType == 11)
                     || (renderType == 4 && (blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID));
         }
