@@ -1867,12 +1867,12 @@ void appendBoxGeometry(
                                    float x1, float y1, float z1, float u1, float v1,
                                    float x2, float y2, float z2, float u2, float v2,
                                    float x3, float y3, float z3, float u3, float v3) {
-      const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+                      const auto normal = computeQuadNormal(x3, y3, z3, x2, y2, z2, x1, y1, z1);
       appendCloudQuad(
-          x0, y0, z0, u0, v0,
-          x1, y1, z1, u1, v1,
-          x2, y2, z2, u2, v2,
-          x3, y3, z3, u3, v3,
+                        x3, y3, z3, u3, v3,
+                        x2, y2, z2, u2, v2,
+                        x1, y1, z1, u1, v1,
+                        x0, y0, z0, u0, v0,
           normal[0], normal[1], normal[2],
           kDefaultVertexColor,
           vertices,
@@ -2220,12 +2220,12 @@ void appendBoxGeometry(
                                float uMax,
                                float vMin,
                                float vMax) {
-      const auto normal = computeQuadNormal(v0.x, v0.y, v0.z, v1.x, v1.y, v1.z, v2.x, v2.y, v2.z);
+      const auto normal = computeQuadNormal(v3.x, v3.y, v3.z, v2.x, v2.y, v2.z, v1.x, v1.y, v1.z);
       appendCloudQuad(
-          v0.x, v0.y, v0.z, uMin, vMax,
-          v1.x, v1.y, v1.z, uMax, vMax,
-          v2.x, v2.y, v2.z, uMax, vMin,
           v3.x, v3.y, v3.z, uMin, vMin,
+          v2.x, v2.y, v2.z, uMax, vMin,
+          v1.x, v1.y, v1.z, uMax, vMax,
+          v0.x, v0.y, v0.z, uMin, vMax,
           normal[0], normal[1], normal[2],
           kDefaultVertexColor,
           vertices,
@@ -2334,8 +2334,35 @@ void appendTorchGeometry(
                                   float z3,
                                   float u3,
                                   float v3) {
-    const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+                    const auto normal = computeQuadNormal(x3, y3, z3, x2, y2, z2, x1, y1, z1);
     appendCloudQuad(
+        x3,
+        y3,
+        z3,
+        u3,
+        v3,
+                      x2,
+                      y2,
+                      z2,
+                      u2,
+                      v2,
+                      x1,
+                      y1,
+                      z1,
+                      u1,
+                      v1,
+                      x0,
+                      y0,
+                      z0,
+                      u0,
+                      v0,
+        normal[0],
+        normal[1],
+        normal[2],
+        kDefaultVertexColor,
+        vertices,
+        indices);
+      appendCloudQuad(
         x0,
         y0,
         z0,
@@ -2356,9 +2383,9 @@ void appendTorchGeometry(
         z3,
         u3,
         v3,
-        normal[0],
-        normal[1],
-        normal[2],
+        -normal[0],
+        -normal[1],
+        -normal[2],
         kDefaultVertexColor,
         vertices,
         indices);
@@ -2819,6 +2846,33 @@ void appendRepeaterGeometry(
       tileMinV,
       0.0f,
       1.0f,
+      0.0f,
+      kDefaultVertexColor,
+      vertices,
+      indices);
+  appendCloudQuad(
+      x3,
+      topY,
+      z3,
+      tileMaxU,
+      tileMinV,
+      x2,
+      topY,
+      z2,
+      tileMaxU,
+      tileMaxV,
+      x1,
+      topY,
+      z1,
+      tileMinU,
+      tileMaxV,
+      x0,
+      topY,
+      z0,
+      tileMinU,
+      tileMinV,
+      0.0f,
+      -1.0f,
       0.0f,
       kDefaultVertexColor,
       vertices,
@@ -3624,7 +3678,7 @@ void appendWaterGeometry(
     };
   };
 
-  const auto appendLiquidQuad = [&remapLiquidUv, &vertices, &indices](
+  const auto appendLiquidQuad = [&cell, &remapLiquidUv, &vertices, &indices](
                                    int terrainTileIndex,
                                    float x0,
                                    float y0,
@@ -3679,6 +3733,34 @@ void appendWaterGeometry(
         normalZ,
         vertices,
         indices);
+      if (cell.materialClass == kLavaTerrainMaterialClass) {
+        appendWaterQuad(
+          x3,
+          y3,
+          z3,
+          uv3[0],
+          uv3[1],
+          x2,
+          y2,
+          z2,
+          uv2[0],
+          uv2[1],
+          x1,
+          y1,
+          z1,
+          uv1[0],
+          uv1[1],
+          x0,
+          y0,
+          z0,
+          uv0[0],
+          uv0[1],
+          -normalX,
+          -normalY,
+          -normalZ,
+          vertices,
+          indices);
+      }
   };
 
   const float heightNorthWest = cell.liquidHeights[0];
