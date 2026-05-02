@@ -128,6 +128,7 @@ bool RemixRenderer::initialize(
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
 
   bool usedLegacySourceWindowEnvVar = false;
+  singleNativeOutputWindow_ = shouldUseSingleNativeOutputWindow();
   standaloneOutputWindow_ = shouldUseStandaloneOutputWindow();
   overlayOutputWindow_ = shouldUseOverlayOutputWindow(&usedLegacySourceWindowEnvVar);
   if (usedLegacySourceWindowEnvVar) {
@@ -147,9 +148,19 @@ bool RemixRenderer::initialize(
     }
   }
   log(
-      "Window mode requested=" + describeRequestedWindowMode()
-      + " effective=" + (standaloneOutputWindow_ ? std::string("standalone") : (overlayOutputWindow_ ? std::string("overlay") : std::string("dual")))
-      + (standaloneOutputWindow_ ? " standaloneAsync=enabled" : " standaloneAsync=disabled"));
+      [&]() {
+        const char* effectiveMode = overlayOutputWindow_
+            ? "overlay"
+            : (singleNativeOutputWindow_
+                ? "single-native"
+                : (standaloneOutputWindow_ ? "standalone" : "dual"));
+        const char* standaloneAsync = standaloneOutputWindow_
+            ? " standaloneAsync=enabled"
+            : " standaloneAsync=disabled";
+        return "Window mode requested=" + describeRequestedWindowMode()
+            + " effective=" + std::string(effectiveMode)
+            + standaloneAsync;
+      }());
 
   if (standaloneOutputWindow_) {
     lock.unlock();
@@ -201,9 +212,11 @@ bool RemixRenderer::initialize(
   initialized_ = true;
   log(overlayOutputWindow_
       ? "Remix renderer initialized in single-window overlay mode"
-      : (standaloneOutputWindow_
-        ? "Remix renderer initialized in standalone mode"
-        : "Remix renderer initialized in dual-window mode"));
+      : (singleNativeOutputWindow_
+          ? "Remix renderer initialized in experimental single-native mode"
+          : (standaloneOutputWindow_
+              ? "Remix renderer initialized in standalone mode"
+              : "Remix renderer initialized in dual-window mode")));
   return true;
 }
 
@@ -407,6 +420,7 @@ void RemixRenderer::shutdownLocked() {
   destroyOutputWindow();
   initialized_ = false;
   overlayOutputWindow_ = true;
+  singleNativeOutputWindow_ = false;
   standaloneOutputWindow_ = false;
   sourceHwnd_ = nullptr;
   chunkBuildActive_ = false;

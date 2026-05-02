@@ -235,8 +235,10 @@ struct SurfaceBuildBuffers {
 HMODULE getCurrentModuleHandle();
 bool isTruthyEnvValue(const char* envValue);
 std::string readEnvironmentVariable(const char* name);
+std::filesystem::path getRuntimeConfigPath();
 bool isVerboseLoggingEnabled();
 bool equalsIgnoreCase(std::string_view left, std::string_view right);
+bool shouldUseSingleNativeOutputWindow();
 bool shouldUseStandaloneOutputWindow();
 bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar = nullptr);
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect);
@@ -246,6 +248,8 @@ std::string errorCodeToString(remixapi_ErrorCode code);
 std::filesystem::path getCurrentModuleDirectory();
 
 extern std::atomic_bool g_outputWindowInteractive;
+extern std::atomic_bool g_nativeMouseCursorHidden;
+extern std::atomic_long g_nativeMouseWheelDelta;
 extern const wchar_t kRemixWindowClassName[];
 extern const wchar_t kRemixWindowTitle[];
 

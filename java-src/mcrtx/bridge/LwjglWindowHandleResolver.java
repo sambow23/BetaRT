@@ -1,5 +1,6 @@
 package mcrtx.bridge;
 
+import java.awt.Canvas;
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 import org.lwjgl.opengl.Display;
@@ -9,6 +10,11 @@ final class LwjglWindowHandleResolver {
     }
 
     static long resolveCurrentHwnd() {
+        long singleNativeHwnd = resolveSingleNativePresentationHwnd();
+        if (singleNativeHwnd != 0L) {
+            return singleNativeHwnd;
+        }
+
         try {
             Method getImplementation = Display.class.getDeclaredMethod("getImplementation");
             getImplementation.setAccessible(true);
@@ -43,6 +49,30 @@ final class LwjglWindowHandleResolver {
         } catch (ReflectiveOperationException | SecurityException exception) {
             return 0L;
         }
+    }
+
+    private static long resolveSingleNativePresentationHwnd() {
+        try {
+            Method singleNativeMethod = Display.class.getMethod("isSingleNativeWindowMode");
+            Object singleNative = singleNativeMethod.invoke(null);
+            if (!(singleNative instanceof Boolean) || !((Boolean) singleNative).booleanValue()) {
+                return 0L;
+            }
+
+            Field parentField = Display.class.getDeclaredField("parent");
+            parentField.setAccessible(true);
+            Object parent = parentField.get(null);
+            if (parent instanceof Canvas && RemixBridgeNative.isAvailable()) {
+                long parentWindow = RemixBridgeNative.nResolveAwtWindowHandle((Canvas) parent);
+                if (parentWindow != 0L) {
+                    return parentWindow;
+                }
+            }
+        } catch (ReflectiveOperationException | SecurityException exception) {
+            return 0L;
+        }
+
+        return 0L;
     }
 
     private static long invokeHandleGetter(Object implementation) throws ReflectiveOperationException {

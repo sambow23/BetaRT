@@ -35,6 +35,7 @@ public final class ClientPatchTool {
     private static final String LEGACY_ARB_OCCLUSION_QUERY_CLASS = "mcrtx/lwjglshim/LegacyARBOcclusionQuery";
     private static final String GL11_CLASS = "org/lwjgl/opengl/GL11";
     private static final String LEGACY_GL11_CLASS = "mcrtx/lwjglshim/LegacyGL11";
+    private static final String RENDER_HOOKS_CLASS = "mcrtx/bridge/MinecraftRenderHooks";
     private static final String MODEL_PART_CLASS = "ps";
     private static final String TESSELLATOR_CLASS = "nw";
     private static final String PARTICLE_CLASS = "xw";
@@ -328,7 +329,10 @@ public final class ClientPatchTool {
     private static void patchMinecraftStartup(MethodNode method) {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, DISPLAY_CLASS, "create", "()V")) {
-                method.instructions.insert(node, onDisplayCreatedCall());
+                InsnList startupInstructions = new InsnList();
+                startupInstructions.add(onDisplayCreatedCall());
+                startupInstructions.add(rememberMinecraftInstanceCall());
+                method.instructions.insert(node, startupInstructions);
             }
         }
     }
@@ -715,6 +719,18 @@ public final class ClientPatchTool {
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, MINECRAFT_CLASS, "e", "I"));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onDisplayCreated", "(II)V", false));
+        return instructions;
+    }
+
+    private static InsnList rememberMinecraftInstanceCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                RENDER_HOOKS_CLASS,
+                "rememberMinecraftInstance",
+                "(Lnet/minecraft/client/Minecraft;)V",
+                false));
         return instructions;
     }
 

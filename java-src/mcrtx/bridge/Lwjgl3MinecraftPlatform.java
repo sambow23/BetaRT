@@ -2,7 +2,6 @@ package mcrtx.bridge;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-
 final class Lwjgl3MinecraftPlatform implements MinecraftPlatform {
     private static final int DEFAULT_GLFW_FOCUSED = 131073;
     private static final int DEFAULT_GLFW_PRESS = 1;
@@ -50,20 +49,7 @@ final class Lwjgl3MinecraftPlatform implements MinecraftPlatform {
 
     @Override
     public long resolveCurrentWindowHandle() {
-        long window = getCurrentWindow();
-        if (window == 0L) {
-            return 0L;
-        }
-
-        try {
-            Object hwnd = glfwGetWin32Window.invoke(null, Long.valueOf(window));
-            if (hwnd instanceof Number) {
-                return ((Number) hwnd).longValue();
-            }
-            return 0L;
-        } catch (ReflectiveOperationException exception) {
-            return 0L;
-        }
+        return LwjglWindowHandleResolver.resolveCurrentHwnd();
     }
 
     @Override

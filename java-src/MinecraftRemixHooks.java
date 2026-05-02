@@ -1,4 +1,5 @@
 import mcrtx.bridge.HookProfiler;
+import mcrtx.bridge.McrtxRuntimeConfig;
 import mcrtx.bridge.MinecraftPlatform;
 import mcrtx.bridge.MinecraftPlatformKey;
 import mcrtx.bridge.MinecraftPlatformRuntime;
@@ -667,26 +668,18 @@ public final class MinecraftRemixHooks {
     }
 
     private static boolean detectStandaloneWindowMode() {
-        String configuredMode = System.getenv("MCRTX_WINDOW_MODE");
-        return configuredMode != null && configuredMode.equalsIgnoreCase("standalone");
+        String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
+        return configuredMode != null
+                && (configuredMode.equalsIgnoreCase("standalone")
+                || configuredMode.equalsIgnoreCase("single-native"));
     }
 
     private static boolean detectVerboseLoggingEnabled() {
-        String value = System.getenv("MCRTX_VERBOSE_LOG");
-        if (value == null || value.isEmpty()) {
-            return false;
-        }
-
-        char firstCharacter = value.charAt(0);
-        return firstCharacter == '1'
-                || firstCharacter == 't'
-                || firstCharacter == 'T'
-                || firstCharacter == 'y'
-                || firstCharacter == 'Y';
+        return McrtxRuntimeConfig.isTruthyEnvironmentValue("MCRTX_VERBOSE_LOG");
     }
 
     private static boolean detectNativeInputBackend() {
-        String configuredBackend = System.getenv("MCRTX_INPUT_BACKEND");
+        String configuredBackend = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_INPUT_BACKEND");
         return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
     }
 

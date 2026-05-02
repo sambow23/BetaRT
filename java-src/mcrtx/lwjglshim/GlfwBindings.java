@@ -34,6 +34,7 @@ public final class GlfwBindings {
     private final Method glfwGetVideoMode;
     private final Method glfwSetWindowMonitor;
     private final Method glfwShowWindow;
+    private final Method glfwHideWindow;
     private final Method glfwGetWin32Window;
     private final Method glfwGetCursorPos;
     private final Method glfwSetCursorPos;
@@ -64,6 +65,7 @@ public final class GlfwBindings {
         Method resolvedGlfwGetVideoMode = null;
         Method resolvedGlfwSetWindowMonitor = null;
         Method resolvedGlfwShowWindow = null;
+        Method resolvedGlfwHideWindow = null;
         Method resolvedGlfwGetWin32Window = null;
         Method resolvedGlfwGetCursorPos = null;
         Method resolvedGlfwSetCursorPos = null;
@@ -94,6 +96,7 @@ public final class GlfwBindings {
             resolvedGlfwGetVideoMode = resolvedGlfwClass.getMethod("glfwGetVideoMode", Long.TYPE);
             resolvedGlfwSetWindowMonitor = resolvedGlfwClass.getMethod("glfwSetWindowMonitor", Long.TYPE, Long.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE);
             resolvedGlfwShowWindow = resolvedGlfwClass.getMethod("glfwShowWindow", Long.TYPE);
+            resolvedGlfwHideWindow = resolvedGlfwClass.getMethod("glfwHideWindow", Long.TYPE);
             resolvedGlfwGetWin32Window = Class.forName("org.lwjgl.glfw.GLFWNativeWin32").getMethod("glfwGetWin32Window", Long.TYPE);
             resolvedGlfwGetCursorPos = resolvedGlfwClass.getMethod("glfwGetCursorPos", Long.TYPE, double[].class, double[].class);
             resolvedGlfwSetCursorPos = resolvedGlfwClass.getMethod("glfwSetCursorPos", Long.TYPE, Double.TYPE, Double.TYPE);
@@ -125,6 +128,7 @@ public final class GlfwBindings {
         glfwGetVideoMode = resolvedGlfwGetVideoMode;
         glfwSetWindowMonitor = resolvedGlfwSetWindowMonitor;
         glfwShowWindow = resolvedGlfwShowWindow;
+        glfwHideWindow = resolvedGlfwHideWindow;
         glfwGetWin32Window = resolvedGlfwGetWin32Window;
         glfwGetCursorPos = resolvedGlfwGetCursorPos;
         glfwSetCursorPos = resolvedGlfwSetCursorPos;
@@ -239,6 +243,10 @@ public final class GlfwBindings {
 
     public void showWindow(long window) throws ReflectiveOperationException {
         glfwShowWindow.invoke(null, Long.valueOf(window));
+    }
+
+    public void hideWindow(long window) throws ReflectiveOperationException {
+        glfwHideWindow.invoke(null, Long.valueOf(window));
     }
 
     public long getWin32Window(long window) throws ReflectiveOperationException {

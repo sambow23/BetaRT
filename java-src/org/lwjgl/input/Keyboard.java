@@ -3,6 +3,8 @@ package org.lwjgl.input;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
+import mcrtx.bridge.RemixBridgeNative;
+import org.lwjgl.opengl.Display;
 
 public final class Keyboard {
     public static final int KEY_ESCAPE = 1;
@@ -91,7 +93,52 @@ public final class Keyboard {
     private static final int GLFW_PRESS = 1;
     private static final int GLFW_REPEAT = 2;
     private static final int GLFW_MOD_SHIFT = 0x0001;
+    private static final int VK_BACK = 0x08;
+    private static final int VK_TAB = 0x09;
+    private static final int VK_RETURN = 0x0D;
+    private static final int VK_ESCAPE = 0x1B;
+    private static final int VK_SPACE = 0x20;
+    private static final int VK_PRIOR = 0x21;
+    private static final int VK_NEXT = 0x22;
+    private static final int VK_END = 0x23;
+    private static final int VK_HOME = 0x24;
+    private static final int VK_LEFT = 0x25;
+    private static final int VK_UP = 0x26;
+    private static final int VK_RIGHT = 0x27;
+    private static final int VK_DOWN = 0x28;
+    private static final int VK_INSERT = 0x2D;
+    private static final int VK_DELETE = 0x2E;
+    private static final int VK_F1 = 0x70;
+    private static final int VK_F2 = 0x71;
+    private static final int VK_F3 = 0x72;
+    private static final int VK_F4 = 0x73;
+    private static final int VK_F5 = 0x74;
+    private static final int VK_F6 = 0x75;
+    private static final int VK_F7 = 0x76;
+    private static final int VK_F8 = 0x77;
+    private static final int VK_F9 = 0x78;
+    private static final int VK_F10 = 0x79;
+    private static final int VK_F11 = 0x7A;
+    private static final int VK_F12 = 0x7B;
+    private static final int VK_LSHIFT = 0xA0;
+    private static final int VK_RSHIFT = 0xA1;
+    private static final int VK_LCONTROL = 0xA2;
+    private static final int VK_RCONTROL = 0xA3;
+    private static final int VK_LMENU = 0xA4;
+    private static final int VK_RMENU = 0xA5;
+    private static final int VK_OEM_1 = 0xBA;
+    private static final int VK_OEM_PLUS = 0xBB;
+    private static final int VK_OEM_COMMA = 0xBC;
+    private static final int VK_OEM_MINUS = 0xBD;
+    private static final int VK_OEM_PERIOD = 0xBE;
+    private static final int VK_OEM_2 = 0xBF;
+    private static final int VK_OEM_3 = 0xC0;
+    private static final int VK_OEM_4 = 0xDB;
+    private static final int VK_OEM_5 = 0xDC;
+    private static final int VK_OEM_6 = 0xDD;
+    private static final int VK_OEM_7 = 0xDE;
     private static final boolean[] DOWN = new boolean[256];
+    private static final boolean[] NATIVE_DOWN = new boolean[256];
     private static final ArrayDeque<KeyboardEvent> EVENTS = new ArrayDeque<KeyboardEvent>();
     private static final Map<Integer, KeyMapping> GLFW_TO_KEY = new HashMap<Integer, KeyMapping>();
     private static final Map<Integer, KeyMapping> LWJGL_TO_KEY = new HashMap<Integer, KeyMapping>();
@@ -190,6 +237,9 @@ public final class Keyboard {
         created = true;
         EVENTS.clear();
         currentEvent = null;
+        for (int index = 0; index < NATIVE_DOWN.length; index += 1) {
+            NATIVE_DOWN[index] = false;
+        }
     }
 
     public static void destroy() {
@@ -198,6 +248,7 @@ public final class Keyboard {
         currentEvent = null;
         for (int index = 0; index < DOWN.length; index += 1) {
             DOWN[index] = false;
+            NATIVE_DOWN[index] = false;
         }
     }
 
@@ -258,10 +309,162 @@ public final class Keyboard {
         EVENTS.addLast(new KeyboardEvent(mapping.lwjglKey, character, pressed));
     }
 
+    public static void pollNativeState() {
+        if (!created || !Display.isSingleNativeWindowMode() || !RemixBridgeNative.isAvailable()) {
+            return;
+        }
+
+        if (!RemixBridgeNative.nHasWindowFocus()) {
+            releaseNativeKeys();
+            return;
+        }
+
+        for (int key = 0; key < DOWN.length; key += 1) {
+            KeyMapping mapping = LWJGL_TO_KEY.get(Integer.valueOf(key));
+            NATIVE_DOWN[key] = mapping != null
+                    && mapping.virtualKey >= 0
+                    && RemixBridgeNative.nIsVirtualKeyDown(mapping.virtualKey);
+        }
+
+        boolean shiftDown = NATIVE_DOWN[KEY_LSHIFT] || NATIVE_DOWN[KEY_RSHIFT];
+        for (int key = 0; key < DOWN.length; key += 1) {
+            KeyMapping mapping = LWJGL_TO_KEY.get(Integer.valueOf(key));
+            if (mapping == null) {
+                continue;
+            }
+
+            boolean pressed = NATIVE_DOWN[key];
+            if (DOWN[key] == pressed) {
+                continue;
+            }
+
+            DOWN[key] = pressed;
+            EVENTS.addLast(new KeyboardEvent(
+                    mapping.lwjglKey,
+                    pressed ? (shiftDown ? mapping.shiftedCharacter : mapping.character) : 0,
+                    pressed));
+        }
+    }
+
     private static void register(int glfwKey, int lwjglKey, String name, char character, char shiftedCharacter) {
         KeyMapping mapping = new KeyMapping(glfwKey, lwjglKey, name, character, shiftedCharacter);
         GLFW_TO_KEY.put(Integer.valueOf(glfwKey), mapping);
         LWJGL_TO_KEY.put(Integer.valueOf(lwjglKey), mapping);
+    }
+
+    private static void releaseNativeKeys() {
+        for (int key = 0; key < DOWN.length; key += 1) {
+            if (!DOWN[key]) {
+                NATIVE_DOWN[key] = false;
+                continue;
+            }
+
+            DOWN[key] = false;
+            NATIVE_DOWN[key] = false;
+            KeyMapping mapping = LWJGL_TO_KEY.get(Integer.valueOf(key));
+            if (mapping != null) {
+                EVENTS.addLast(new KeyboardEvent(mapping.lwjglKey, (char) 0, false));
+            }
+        }
+    }
+
+    private static int resolveVirtualKey(int glfwKey, int lwjglKey) {
+        if ((glfwKey >= 48 && glfwKey <= 57) || (glfwKey >= 65 && glfwKey <= 90)) {
+            return glfwKey;
+        }
+
+        switch (lwjglKey) {
+            case KEY_ESCAPE:
+                return VK_ESCAPE;
+            case KEY_MINUS:
+                return VK_OEM_MINUS;
+            case KEY_EQUALS:
+                return VK_OEM_PLUS;
+            case KEY_BACK:
+                return VK_BACK;
+            case KEY_TAB:
+                return VK_TAB;
+            case KEY_LBRACKET:
+                return VK_OEM_4;
+            case KEY_RBRACKET:
+                return VK_OEM_6;
+            case KEY_RETURN:
+                return VK_RETURN;
+            case KEY_LCONTROL:
+                return VK_LCONTROL;
+            case KEY_SEMICOLON:
+                return VK_OEM_1;
+            case KEY_APOSTROPHE:
+                return VK_OEM_7;
+            case KEY_GRAVE:
+                return VK_OEM_3;
+            case KEY_LSHIFT:
+                return VK_LSHIFT;
+            case KEY_BACKSLASH:
+                return VK_OEM_5;
+            case KEY_COMMA:
+                return VK_OEM_COMMA;
+            case KEY_PERIOD:
+                return VK_OEM_PERIOD;
+            case KEY_SLASH:
+                return VK_OEM_2;
+            case KEY_RSHIFT:
+                return VK_RSHIFT;
+            case KEY_LMENU:
+                return VK_LMENU;
+            case KEY_SPACE:
+                return VK_SPACE;
+            case KEY_F1:
+                return VK_F1;
+            case KEY_F2:
+                return VK_F2;
+            case KEY_F3:
+                return VK_F3;
+            case KEY_F4:
+                return VK_F4;
+            case KEY_F5:
+                return VK_F5;
+            case KEY_F6:
+                return VK_F6;
+            case KEY_F7:
+                return VK_F7;
+            case KEY_F8:
+                return VK_F8;
+            case KEY_F9:
+                return VK_F9;
+            case KEY_F10:
+                return VK_F10;
+            case KEY_F11:
+                return VK_F11;
+            case KEY_F12:
+                return VK_F12;
+            case KEY_RCONTROL:
+                return VK_RCONTROL;
+            case KEY_RMENU:
+                return VK_RMENU;
+            case KEY_HOME:
+                return VK_HOME;
+            case KEY_UP:
+                return VK_UP;
+            case KEY_PRIOR:
+                return VK_PRIOR;
+            case KEY_LEFT:
+                return VK_LEFT;
+            case KEY_RIGHT:
+                return VK_RIGHT;
+            case KEY_END:
+                return VK_END;
+            case KEY_DOWN:
+                return VK_DOWN;
+            case KEY_NEXT:
+                return VK_NEXT;
+            case KEY_INSERT:
+                return VK_INSERT;
+            case KEY_DELETE:
+                return VK_DELETE;
+            default:
+                return -1;
+        }
     }
 
     private static final class KeyboardEvent {
@@ -279,6 +482,7 @@ public final class Keyboard {
     private static final class KeyMapping {
         private final int glfwKey;
         private final int lwjglKey;
+        private final int virtualKey;
         private final String name;
         private final char character;
         private final char shiftedCharacter;
@@ -286,6 +490,7 @@ public final class Keyboard {
         private KeyMapping(int glfwKey, int lwjglKey, String name, char character, char shiftedCharacter) {
             this.glfwKey = glfwKey;
             this.lwjglKey = lwjglKey;
+            this.virtualKey = resolveVirtualKey(glfwKey, lwjglKey);
             this.name = name;
             this.character = character;
             this.shiftedCharacter = shiftedCharacter;

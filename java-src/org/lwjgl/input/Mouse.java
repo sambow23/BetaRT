@@ -1,16 +1,28 @@
 package org.lwjgl.input;
 
 import java.util.ArrayDeque;
+import mcrtx.bridge.McrtxRuntimeConfig;
+import mcrtx.bridge.MinecraftRenderHooks;
+import mcrtx.bridge.RemixBridgeNative;
 import org.lwjgl.opengl.Display;
 
 public final class Mouse {
+    private static final int DEBUG_LOG_LIMIT = 200;
     private static final int GLFW_PRESS = 1;
     private static final int GLFW_CURSOR = 0x00033001;
     private static final int GLFW_CURSOR_NORMAL = 0x00034001;
     private static final int GLFW_CURSOR_DISABLED = 0x00034003;
+    private static final int NATIVE_STATE_X = 0;
+    private static final int NATIVE_STATE_Y = 1;
+    private static final int NATIVE_STATE_DX = 2;
+    private static final int NATIVE_STATE_DY = 3;
+    private static final int NATIVE_STATE_DWHEEL = 4;
+    private static final int NATIVE_STATE_BUTTON_MASK = 5;
+    private static final int NATIVE_STATE_WINDOW_HEIGHT = 6;
 
     private static final ArrayDeque<MouseEvent> EVENTS = new ArrayDeque<MouseEvent>();
     private static final boolean[] BUTTONS = new boolean[8];
+    private static final int[] NATIVE_STATE = new int[7];
 
     private static boolean created;
     private static boolean grabbed;
@@ -20,6 +32,12 @@ public final class Mouse {
     private static int windowHeight = 480;
     private static int deltaX;
     private static int deltaY;
+    private static int remainingDebugLogs;
+    private static int nativePollSamples;
+    private static int nativePollFailures;
+    private static boolean restoreGrabOnFocus;
+
+    private static final boolean VERBOSE_INPUT_LOGGING = detectVerboseInputLoggingEnabled();
 
     private Mouse() {
     }
@@ -30,10 +48,21 @@ public final class Mouse {
         currentEvent = null;
         deltaX = 0;
         deltaY = 0;
+        remainingDebugLogs = DEBUG_LOG_LIMIT;
+        nativePollSamples = 0;
+        nativePollFailures = 0;
+        restoreGrabOnFocus = false;
+        debugLog("create singleNative=" + Display.isSingleNativeWindowMode());
     }
 
     public static void destroy() {
+        if (grabbed && Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
+            RemixBridgeNative.nSetNativeMouseGrabbed(false);
+        }
+        transitionLog("destroy grabbed=" + grabbed + " currentX=" + currentX + " currentY=" + currentY);
         created = false;
+        grabbed = false;
+        restoreGrabOnFocus = false;
         EVENTS.clear();
         currentEvent = null;
         deltaX = 0;
@@ -45,6 +74,14 @@ public final class Mouse {
 
     public static boolean next() {
         currentEvent = EVENTS.pollFirst();
+        if (currentEvent != null) {
+            debugLog("next event button=" + currentEvent.button
+                    + " pressed=" + currentEvent.buttonState
+                    + " dWheel=" + currentEvent.dWheel
+                    + " x=" + currentEvent.x
+                    + " y=" + currentEvent.y
+                    + " remainingEvents=" + EVENTS.size());
+        }
         return currentEvent != null;
     }
 
@@ -83,18 +120,31 @@ public final class Mouse {
     public static int getDX() {
         int value = deltaX;
         deltaX = 0;
+        if (value != 0) {
+            debugLog("getDX value=" + value + " grabbed=" + grabbed + " currentX=" + currentX + " currentY=" + currentY);
+        }
         return value;
     }
 
     public static int getDY() {
         int value = deltaY;
         deltaY = 0;
+        if (value != 0) {
+            debugLog("getDY value=" + value + " grabbed=" + grabbed + " currentX=" + currentX + " currentY=" + currentY);
+        }
         return value;
     }
 
     public static void setCursorPosition(int newX, int newY) {
         currentX = newX;
         currentY = newY;
+        debugLog("setCursorPosition x=" + newX + " y=" + newY + " singleNative=" + Display.isSingleNativeWindowMode());
+        if (Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
+            if (!RemixBridgeNative.nSetNativeCursorPosition(newX, newY)) {
+                throw new IllegalStateException("Failed to move the native cursor");
+            }
+            return;
+        }
         try {
             Display.bindings().setCursorPos(Display.windowHandle(), (double) newX, (double) toTopLeftY(newY));
         } catch (Exception exception) {
@@ -103,7 +153,29 @@ public final class Mouse {
     }
 
     public static void setGrabbed(boolean shouldGrab) {
+        boolean wasGrabbed = grabbed;
         grabbed = shouldGrab;
+        transitionLog("setGrabbed grabbed=" + shouldGrab + " singleNative=" + Display.isSingleNativeWindowMode());
+        if (Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
+            if (!shouldGrab && wasGrabbed && !hasNativeInputFocus()) {
+                restoreGrabOnFocus = true;
+                transitionLog("deferring native regrab until focus returns");
+            } else if (shouldGrab) {
+                restoreGrabOnFocus = false;
+            } else if (!wasGrabbed) {
+                restoreGrabOnFocus = false;
+            }
+
+            if (!RemixBridgeNative.nSetNativeMouseGrabbed(shouldGrab)) {
+                throw new IllegalStateException("Failed to update native mouse grab state");
+            }
+            return;
+        }
+
+        if (shouldGrab || !wasGrabbed) {
+            restoreGrabOnFocus = false;
+        }
+
         try {
             if (shouldGrab) {
                 Display.requestInputFocus();
@@ -126,12 +198,17 @@ public final class Mouse {
             return;
         }
 
+        int previousX = currentX;
+        int previousY = currentY;
         int translatedX = (int) Math.round(x);
         int translatedY = toBottomLeftY((int) Math.round(y));
         deltaX += translatedX - currentX;
         deltaY += translatedY - currentY;
         currentX = translatedX;
         currentY = translatedY;
+        if (!grabbed && (translatedX != previousX || translatedY != previousY)) {
+            EVENTS.addLast(new MouseEvent(-1, false, 0, currentX, currentY));
+        }
     }
 
     public static void handleButton(int button, int action) {
@@ -142,6 +219,7 @@ public final class Mouse {
         boolean pressed = action == GLFW_PRESS;
         BUTTONS[button] = pressed;
         EVENTS.addLast(new MouseEvent(button, pressed, 0, currentX, currentY));
+        debugLog("glfw button button=" + button + " pressed=" + pressed + " x=" + currentX + " y=" + currentY + " events=" + EVENTS.size());
     }
 
     public static void handleScroll(double offsetY) {
@@ -151,6 +229,116 @@ public final class Mouse {
 
         int dWheel = (int) Math.round(offsetY * 120.0);
         EVENTS.addLast(new MouseEvent(-1, false, dWheel, currentX, currentY));
+        debugLog("glfw wheel dWheel=" + dWheel + " x=" + currentX + " y=" + currentY + " events=" + EVENTS.size());
+    }
+
+    public static void pollNativeState() {
+        if (!created || !Display.isSingleNativeWindowMode() || !RemixBridgeNative.isAvailable()) {
+            return;
+        }
+
+        if (restoreGrabOnFocus && !grabbed && hasNativeInputFocus()) {
+            restoreGrabOnFocus = false;
+            transitionLog("restoring native grab after focus return");
+            if (!MinecraftRenderHooks.restoreIngameFocusIfNeeded()) {
+                setGrabbed(true);
+            }
+        }
+
+        if (!RemixBridgeNative.nPollNativeMouseState(NATIVE_STATE)) {
+            nativePollFailures += 1;
+            if (nativePollFailures <= 10 || nativePollFailures % 60 == 0) {
+                debugLog("native poll failed count=" + nativePollFailures + " grabbed=" + grabbed);
+            }
+            return;
+        }
+        nativePollFailures = 0;
+        nativePollSamples += 1;
+
+        int previousX = currentX;
+        int previousY = currentY;
+        updateWindowHeight(NATIVE_STATE[NATIVE_STATE_WINDOW_HEIGHT]);
+        currentX = NATIVE_STATE[NATIVE_STATE_X];
+        currentY = NATIVE_STATE[NATIVE_STATE_Y];
+        deltaX += NATIVE_STATE[NATIVE_STATE_DX];
+        deltaY += NATIVE_STATE[NATIVE_STATE_DY];
+
+        int buttonsMask = NATIVE_STATE[NATIVE_STATE_BUTTON_MASK];
+        if (nativePollSamples <= 10
+                || NATIVE_STATE[NATIVE_STATE_DX] != 0
+                || NATIVE_STATE[NATIVE_STATE_DY] != 0
+                || NATIVE_STATE[NATIVE_STATE_DWHEEL] != 0
+                || buttonsMask != currentButtonsMask()) {
+            debugLog("native poll x=" + currentX
+                    + " y=" + currentY
+                    + " dx=" + NATIVE_STATE[NATIVE_STATE_DX]
+                    + " dy=" + NATIVE_STATE[NATIVE_STATE_DY]
+                    + " dWheel=" + NATIVE_STATE[NATIVE_STATE_DWHEEL]
+                    + " buttonsMask=" + buttonsMask
+                    + " grabbed=" + grabbed
+                    + " events=" + EVENTS.size());
+        }
+
+        if (!grabbed && (currentX != previousX || currentY != previousY)) {
+            EVENTS.addLast(new MouseEvent(-1, false, 0, currentX, currentY));
+            debugLog("native move event x=" + currentX + " y=" + currentY + " events=" + EVENTS.size());
+        }
+
+        for (int button = 0; button < BUTTONS.length; button += 1) {
+            boolean pressed = (buttonsMask & (1 << button)) != 0;
+            if (BUTTONS[button] != pressed) {
+                BUTTONS[button] = pressed;
+                EVENTS.addLast(new MouseEvent(button, pressed, 0, currentX, currentY));
+                debugLog("native button button=" + button + " pressed=" + pressed + " x=" + currentX + " y=" + currentY + " events=" + EVENTS.size());
+            }
+        }
+
+        int dWheel = NATIVE_STATE[NATIVE_STATE_DWHEEL];
+        if (dWheel != 0) {
+            EVENTS.addLast(new MouseEvent(-1, false, dWheel, currentX, currentY));
+            debugLog("native wheel dWheel=" + dWheel + " x=" + currentX + " y=" + currentY + " events=" + EVENTS.size());
+        }
+    }
+
+    private static int currentButtonsMask() {
+        int buttonsMask = 0;
+        for (int button = 0; button < BUTTONS.length; button += 1) {
+            if (BUTTONS[button]) {
+                buttonsMask |= 1 << button;
+            }
+        }
+        return buttonsMask;
+    }
+
+    private static boolean detectVerboseInputLoggingEnabled() {
+        String value = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_VERBOSE_INPUT_LOG");
+        if (value == null || value.isEmpty()) {
+            value = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_VERBOSE_LOG");
+        }
+        return McrtxRuntimeConfig.isTruthyValue(value);
+    }
+
+    private static boolean hasNativeInputFocus() {
+        return Display.isSingleNativeWindowMode()
+                && RemixBridgeNative.isAvailable()
+                && RemixBridgeNative.nHasWindowFocus();
+    }
+
+    private static void debugLog(String message) {
+        if (!VERBOSE_INPUT_LOGGING || remainingDebugLogs <= 0) {
+            return;
+        }
+
+        remainingDebugLogs -= 1;
+        System.out.println("[mcrtx][mouse] " + message);
+    }
+
+    private static void transitionLog(String message) {
+        if (!VERBOSE_INPUT_LOGGING) {
+            return;
+        }
+
+        System.out.println("[mcrtx][mouse] " + message);
     }
 
     private static int toBottomLeftY(int topLeftY) {

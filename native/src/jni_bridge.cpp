@@ -598,6 +598,57 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsVirtualKeyDown
       RemixRenderer::instance().isVirtualKeyDown(static_cast<std::uint32_t>(virtualKey))));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPollNativeMouseState(
+    JNIEnv* env, jclass, jintArray stateOut) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nPollNativeMouseState");
+  if (env == nullptr || stateOut == nullptr || env->GetArrayLength(stateOut) < 7) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  std::int32_t x = 0;
+  std::int32_t y = 0;
+  std::int32_t deltaX = 0;
+  std::int32_t deltaY = 0;
+  std::int32_t dWheel = 0;
+  std::uint32_t buttonsMask = 0;
+  std::int32_t windowHeight = 0;
+  if (!RemixRenderer::instance().pollNativeMouseState(
+          x,
+          y,
+          deltaX,
+          deltaY,
+          dWheel,
+          buttonsMask,
+          windowHeight)) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  const jint state[7] = {
+      static_cast<jint>(x),
+      static_cast<jint>(y),
+      static_cast<jint>(deltaX),
+      static_cast<jint>(deltaY),
+      static_cast<jint>(dWheel),
+      static_cast<jint>(buttonsMask),
+      static_cast<jint>(windowHeight)};
+  env->SetIntArrayRegion(stateOut, 0, 7, state);
+  return static_cast<jboolean>(fromJniBoolean(true));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetNativeMouseGrabbed(
+    JNIEnv*, jclass, jboolean grabbed) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetNativeMouseGrabbed");
+  return static_cast<jboolean>(fromJniBoolean(
+      RemixRenderer::instance().setNativeMouseGrabbed(grabbed == JNI_TRUE)));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetNativeCursorPosition(
+    JNIEnv*, jclass, jint x, jint y) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetNativeCursorPosition");
+  return static_cast<jboolean>(fromJniBoolean(
+      RemixRenderer::instance().setNativeCursorPosition(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y))));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPresent(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nPresent");
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().present()));

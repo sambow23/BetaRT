@@ -281,6 +281,12 @@ public final class RemixBridgeNative {
 
     public static native boolean nIsVirtualKeyDown(int virtualKey);
 
+    public static native boolean nPollNativeMouseState(int[] stateOut);
+
+    public static native boolean nSetNativeMouseGrabbed(boolean grabbed);
+
+    public static native boolean nSetNativeCursorPosition(int x, int y);
+
     public static native boolean nPresent();
 
     public static native String nGetLastError();

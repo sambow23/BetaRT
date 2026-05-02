@@ -11,15 +11,74 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
+#include <fstream>
 #include <iostream>
 #include <sstream>
 #include <string_view>
+#include <unordered_map>
 #include <vector>
 
 namespace mcrtx {
 namespace detail {
 
+namespace {
+
+constexpr wchar_t kRuntimeConfigFileName[] = L"mcrtx-runtime.env";
+
+std::string trimAsciiWhitespace(std::string value) {
+  const std::size_t first = value.find_first_not_of(" \t\r\n");
+  if (first == std::string::npos) {
+    return {};
+  }
+
+  const std::size_t last = value.find_last_not_of(" \t\r\n");
+  return value.substr(first, last - first + 1);
+}
+
+std::unordered_map<std::string, std::string> loadRuntimeConfigValues() {
+  std::unordered_map<std::string, std::string> values;
+  const std::filesystem::path configPath = getRuntimeConfigPath();
+  if (configPath.empty() || !std::filesystem::is_regular_file(configPath)) {
+    return values;
+  }
+
+  std::ifstream stream(configPath);
+  if (!stream.is_open()) {
+    return values;
+  }
+
+  std::string line;
+  while (std::getline(stream, line)) {
+    const std::string trimmedLine = trimAsciiWhitespace(line);
+    if (trimmedLine.empty() || trimmedLine[0] == '#') {
+      continue;
+    }
+
+    const std::size_t separatorIndex = trimmedLine.find('=');
+    if (separatorIndex == std::string::npos || separatorIndex == 0) {
+      continue;
+    }
+
+    const std::string key = trimAsciiWhitespace(trimmedLine.substr(0, separatorIndex));
+    const std::string value = trimAsciiWhitespace(trimmedLine.substr(separatorIndex + 1));
+    if (!key.empty()) {
+      values[key] = value;
+    }
+  }
+
+  return values;
+}
+
+const std::unordered_map<std::string, std::string>& runtimeConfigValues() {
+  static const std::unordered_map<std::string, std::string> values = loadRuntimeConfigValues();
+  return values;
+}
+
+}  // namespace
+
 std::atomic_bool g_outputWindowInteractive {false};
+std::atomic_bool g_nativeMouseCursorHidden {false};
+std::atomic_long g_nativeMouseWheelDelta {0};
 const wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
 const wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
 
@@ -52,6 +111,12 @@ bool isTruthyEnvValue(const char* envValue) {
 }
 
 std::string readEnvironmentVariable(const char* name) {
+  const auto& configuredValues = runtimeConfigValues();
+  const auto configuredValue = configuredValues.find(name);
+  if (configuredValue != configuredValues.end() && !configuredValue->second.empty()) {
+    return configuredValue->second;
+  }
+
   char* envValue = nullptr;
   std::size_t envValueLength = 0;
   if (_dupenv_s(&envValue, &envValueLength, name) != 0 || envValue == nullptr || envValueLength == 0) {
@@ -61,6 +126,24 @@ std::string readEnvironmentVariable(const char* name) {
   std::string value(envValue);
   std::free(envValue);
   return value;
+}
+
+std::filesystem::path getRuntimeConfigPath() {
+  std::vector<wchar_t> buffer(MAX_PATH);
+  DWORD length = GetCurrentDirectoryW(static_cast<DWORD>(buffer.size()), buffer.data());
+  if (length == 0) {
+    return {};
+  }
+
+  if (length >= buffer.size()) {
+    buffer.resize(length + 1);
+    length = GetCurrentDirectoryW(static_cast<DWORD>(buffer.size()), buffer.data());
+    if (length == 0 || length >= buffer.size()) {
+      return {};
+    }
+  }
+
+  return std::filesystem::path(std::wstring(buffer.data(), length)) / kRuntimeConfigFileName;
 }
 
 bool isVerboseLoggingEnabled() {
@@ -87,6 +170,11 @@ bool equalsIgnoreCase(std::string_view left, std::string_view right) {
   return true;
 }
 
+bool shouldUseSingleNativeOutputWindow() {
+  const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
+  return !configuredWindowMode.empty() && equalsIgnoreCase(configuredWindowMode, "single-native");
+}
+
 bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar) {
   if (usedLegacyEnvVar != nullptr) {
     *usedLegacyEnvVar = false;
@@ -98,7 +186,8 @@ bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar) {
     if (equalsIgnoreCase(mode, "dual")
         || equalsIgnoreCase(mode, "detached")
         || equalsIgnoreCase(mode, "separate")
-        || equalsIgnoreCase(mode, "standalone")) {
+        || equalsIgnoreCase(mode, "standalone")
+        || equalsIgnoreCase(mode, "single-native")) {
       return false;
     }
 
@@ -122,7 +211,8 @@ bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar) {
 
 bool shouldUseStandaloneOutputWindow() {
   const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
-  return !configuredWindowMode.empty() && equalsIgnoreCase(configuredWindowMode, "standalone");
+  return !configuredWindowMode.empty()
+      && equalsIgnoreCase(configuredWindowMode, "standalone");
 }
 
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {
@@ -146,6 +236,15 @@ bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect) {
 
 LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam) {
   switch (message) {
+    case WM_SETCURSOR:
+      if (g_nativeMouseCursorHidden.load(std::memory_order_relaxed)) {
+        SetCursor(nullptr);
+        return TRUE;
+      }
+      return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_MOUSEWHEEL:
+      g_nativeMouseWheelDelta.fetch_add(GET_WHEEL_DELTA_WPARAM(wParam), std::memory_order_relaxed);
+      return 0;
     case WM_NCHITTEST:
       if (!g_outputWindowInteractive.load(std::memory_order_relaxed)) {
         return HTTRANSPARENT;

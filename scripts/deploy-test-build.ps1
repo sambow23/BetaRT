@@ -8,12 +8,14 @@ param(
     [string]$PlatformBackend = "lwjgl3",
     [ValidateSet("platform", "native")]
     [string]$InputBackend = "native",
-    [ValidateSet("single", "overlay", "dual", "detached", "separate", "standalone")]
+    [ValidateSet("single", "overlay", "dual", "detached", "separate", "standalone", "single-native")]
     [string]$WindowMode = "overlay",
     [switch]$UseNoApplet,
     [switch]$Build,
     [switch]$Restore,
-    [switch]$OverwriteAssets
+    [switch]$OverwriteAssets,
+    [switch]$ForceRequestedLaunchConfig,
+    [switch]$VerboseInputLogging
 )
 
 $ErrorActionPreference = "Stop"
@@ -45,6 +47,7 @@ $instanceMinecraftDir = Join-Path $InstanceRoot "minecraft"
 $instanceLibraryDllPath = Join-Path $instanceLibrariesDir "mcrtx_jni.dll"
 $instanceAssetsDir = Join-Path $instanceLibrariesDir "mcrtx_assets"
 $instanceMinecraftDllPath = Join-Path $instanceMinecraftDir "mcrtx_jni.dll"
+$runtimeConfigPath = Join-Path $instanceMinecraftDir "mcrtx-runtime.env"
 $instanceConfigPath = Join-Path $InstanceRoot "instance.cfg"
 $instanceMmcPackPath = Join-Path $InstanceRoot "mmc-pack.json"
 $instancePatchesDir = Join-Path $InstanceRoot "patches"
@@ -81,6 +84,67 @@ function Write-JsonFile {
     $json = $InputObject | ConvertTo-Json -Depth 32
     Set-Content -Path $Path -Value $json -Encoding ASCII
 }
+
+function Resolve-LaunchConfig {
+    param(
+        [string]$DeploymentInfoPath,
+        [string]$RequestedPlatformBackend,
+        [string]$RequestedInputBackend,
+        [string]$RequestedWindowMode,
+        [bool]$RequestedUseNoApplet,
+        [bool]$RequestedVerboseInputLogging,
+        [bool]$ForceRequestedConfig
+    )
+
+    $resolvedConfig = [ordered]@{
+        PlatformBackend = $RequestedPlatformBackend
+        InputBackend = $RequestedInputBackend
+        WindowMode = $RequestedWindowMode
+        UseNoApplet = $RequestedUseNoApplet
+        VerboseInputLogging = $RequestedVerboseInputLogging
+    }
+
+    if ($ForceRequestedConfig -or -not (Test-Path $DeploymentInfoPath)) {
+        return [pscustomobject]$resolvedConfig
+    }
+
+    try {
+        $lastDeploy = Read-JsonFile -Path $DeploymentInfoPath
+    } catch {
+        return [pscustomobject]$resolvedConfig
+    }
+
+    if ($null -eq $lastDeploy) {
+        return [pscustomobject]$resolvedConfig
+    }
+
+    $pinnedPlatformBackend = [string]$lastDeploy.platformBackend
+    $pinnedInputBackend = [string]$lastDeploy.inputBackend
+    $pinnedWindowMode = [string]$lastDeploy.windowMode
+    $pinnedUseNoApplet = [bool]$lastDeploy.useNoApplet
+    $pinnedVerboseInputLogging = [bool]$lastDeploy.verboseInputLogging
+    if (([string]::IsNullOrWhiteSpace($pinnedPlatformBackend)) -or ([string]::IsNullOrWhiteSpace($pinnedInputBackend)) -or ([string]::IsNullOrWhiteSpace($pinnedWindowMode))) {
+        return [pscustomobject]$resolvedConfig
+    }
+
+    if (($RequestedPlatformBackend -ne $pinnedPlatformBackend) -or ($RequestedInputBackend -ne $pinnedInputBackend) -or ($RequestedWindowMode -ne $pinnedWindowMode) -or ($RequestedUseNoApplet -ne $pinnedUseNoApplet) -or ($RequestedVerboseInputLogging -ne $pinnedVerboseInputLogging)) {
+        Write-Host "Using pinned launch config from $DeploymentInfoPath instead of requested arguments: windowMode='$pinnedWindowMode' platformBackend='$pinnedPlatformBackend' inputBackend='$pinnedInputBackend' useNoApplet='$pinnedUseNoApplet' verboseInputLogging='$pinnedVerboseInputLogging'"
+    }
+
+    $resolvedConfig.PlatformBackend = $pinnedPlatformBackend
+    $resolvedConfig.InputBackend = $pinnedInputBackend
+    $resolvedConfig.WindowMode = $pinnedWindowMode
+    $resolvedConfig.UseNoApplet = $pinnedUseNoApplet
+    $resolvedConfig.VerboseInputLogging = $pinnedVerboseInputLogging
+    return [pscustomobject]$resolvedConfig
+}
+
+$resolvedLaunchConfig = Resolve-LaunchConfig -DeploymentInfoPath $deploymentInfo -RequestedPlatformBackend $PlatformBackend -RequestedInputBackend $InputBackend -RequestedWindowMode $WindowMode -RequestedUseNoApplet:$UseNoApplet.IsPresent -RequestedVerboseInputLogging:$VerboseInputLogging.IsPresent -ForceRequestedConfig:$ForceRequestedLaunchConfig.IsPresent
+$PlatformBackend = $resolvedLaunchConfig.PlatformBackend
+$InputBackend = $resolvedLaunchConfig.InputBackend
+$WindowMode = $resolvedLaunchConfig.WindowMode
+$useNoAppletEnabled = [bool]$resolvedLaunchConfig.UseNoApplet
+$verboseInputLoggingEnabled = [bool]$resolvedLaunchConfig.VerboseInputLogging
 
 function Get-PlatformComponentSpec {
     param([string]$Backend)
@@ -335,7 +399,8 @@ function Ensure-PrismPreLaunchSync {
         [string]$ConfiguredWindowMode,
         [string]$ConfiguredPlatformBackend,
         [string]$ConfiguredInputBackend,
-        [bool]$ConfiguredUseNoApplet
+        [bool]$ConfiguredUseNoApplet,
+        [bool]$ConfiguredVerboseInputLogging
     )
 
     $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
@@ -348,6 +413,9 @@ function Ensure-PrismPreLaunchSync {
     )
     if ($ConfiguredUseNoApplet) {
         $command += ' -UseNoApplet'
+    }
+    if ($ConfiguredVerboseInputLogging) {
+        $command += ' -VerboseInputLogging'
     }
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideCommands" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value $command
@@ -365,12 +433,40 @@ function Set-PrismRuntimeEnvironment {
         [string]$InstanceConfig,
         [string]$Mode,
         [string]$ConfiguredPlatformBackend,
-        [string]$ConfiguredInputBackend
+        [string]$ConfiguredInputBackend,
+        [bool]$ConfiguredVerboseInputLogging
     )
 
-    $envValue = '{\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\",\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\",\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"}'
+    $envPairs = [System.Collections.Generic.List[string]]::new()
+    $envPairs.Add('\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\"')
+    $envPairs.Add('\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\"')
+    $envPairs.Add('\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"')
+    if ($ConfiguredVerboseInputLogging) {
+        $envPairs.Add('\"MCRTX_VERBOSE_INPUT_LOG\":\"1\"')
+    }
+    $envValue = '{' + ($envPairs -join ',') + '}'
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideEnv" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "Env" -Value $envValue
+}
+
+function Set-McrtxRuntimeConfig {
+    param(
+        [string]$Path,
+        [string]$Mode,
+        [string]$ConfiguredPlatformBackend,
+        [string]$ConfiguredInputBackend,
+        [bool]$ConfiguredVerboseInputLogging
+    )
+
+    $lines = [System.Collections.Generic.List[string]]::new()
+    $lines.Add("MCRTX_WINDOW_MODE=$Mode")
+    $lines.Add("MCRTX_PLATFORM_BACKEND=$ConfiguredPlatformBackend")
+    $lines.Add("MCRTX_INPUT_BACKEND=$ConfiguredInputBackend")
+    if ($ConfiguredVerboseInputLogging) {
+        $lines.Add("MCRTX_VERBOSE_INPUT_LOG=1")
+    }
+
+    Set-Content -Path $Path -Value $lines -Encoding ASCII
 }
 
 function Remove-LegacyMcrtxJavaOverrides {
@@ -506,6 +602,12 @@ if ($Restore) {
         }
     }
 
+    if (Test-Path $runtimeConfigPath) {
+        if ($PSCmdlet.ShouldProcess($runtimeConfigPath, "Remove mcrtx runtime launch config")) {
+            Remove-Item $runtimeConfigPath -Force
+        }
+    }
+
     foreach ($customJarTarget in $customJarTargets) {
         if ($PSCmdlet.ShouldProcess($customJarTarget, "Remove Prism custom jar override")) {
             Remove-Item $customJarTarget -Force
@@ -555,7 +657,7 @@ New-Item -ItemType Directory -Force -Path $instancePatchesDir | Out-Null
 
 $platformSpec = $null
 if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Configure Prism platform component backend")) {
-    $platformSpec = Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend $PlatformBackend -UseNoApplet:$UseNoApplet.IsPresent
+    $platformSpec = Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend $PlatformBackend -UseNoApplet:$useNoAppletEnabled
 }
 
 $targetJarHash = Get-FileHashString -Path $MinecraftLibraryJar
@@ -643,11 +745,13 @@ $deploymentRecord = [ordered]@{
     platformBackend = $PlatformBackend
     inputBackend = $InputBackend
     windowMode = $WindowMode
-    useNoApplet = $UseNoApplet.IsPresent
+    useNoApplet = $useNoAppletEnabled
+    verboseInputLogging = $verboseInputLoggingEnabled
     platformComponentUid = if ($platformSpec) { $platformSpec.ComponentUid } else { "" }
     platformComponentVersion = if ($platformSpec) { $platformSpec.Version } else { "" }
     patchedJar = $patchedJar
     patchedDll = $patchedDll
+    runtimeConfigPath = $runtimeConfigPath
 }
 
 if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
@@ -657,11 +761,15 @@ if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
 
 $preLaunchCommand = ""
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch sync command")) {
-    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$UseNoApplet.IsPresent
+    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$useNoAppletEnabled -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism runtime environment")) {
-    Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend
+    Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
+}
+
+if ($PSCmdlet.ShouldProcess($runtimeConfigPath, "Write mcrtx runtime launch config")) {
+    Set-McrtxRuntimeConfig -Path $runtimeConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove stale mcrtx JVM launch overrides")) {
@@ -704,7 +812,9 @@ if ($preLaunchCommand) {
 }
 
 Write-Host "Configured Prism runtime environment windowMode='$WindowMode' platformBackend='$PlatformBackend' inputBackend='$InputBackend' in $instanceConfigPath"
-Write-Host "Configured Prism noapplet trait: $($UseNoApplet.IsPresent) in $instanceMinecraftPatchPath"
+Write-Host "Configured Prism noapplet trait: $useNoAppletEnabled in $instanceMinecraftPatchPath"
+Write-Host "Configured verbose input logging: $verboseInputLoggingEnabled"
+Write-Host "Wrote mcrtx runtime launch config to $runtimeConfigPath"
 
 if ($platformSpec) {
     Write-Host "Configured Prism component graph for $($platformSpec.CachedName) $($platformSpec.Version) in $instanceMmcPackPath"

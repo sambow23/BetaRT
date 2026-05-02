@@ -435,6 +435,16 @@ public:
   bool setUiState(remixapi_UIState state);
       bool hasWindowFocus() const;
       bool isVirtualKeyDown(std::uint32_t virtualKey) const;
+      bool pollNativeMouseState(
+        std::int32_t& x,
+        std::int32_t& y,
+        std::int32_t& deltaX,
+        std::int32_t& deltaY,
+        std::int32_t& dWheel,
+        std::uint32_t& buttonsMask,
+        std::int32_t& windowHeight);
+      bool setNativeMouseGrabbed(bool grabbed);
+      bool setNativeCursorPosition(std::int32_t x, std::int32_t y);
   bool present();
 
   bool isInitialized() const;
@@ -453,6 +463,11 @@ private:
   void applyRemixConfigPreStartupLocked();
   void applyRemixConfigPostStartupLocked();
   void updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere);
+  bool hasWindowFocusLocked() const;
+  HWND resolveNativeMouseWindowLocked() const;
+  bool getNativeMouseClientRectLocked(HWND mouseWindow, RECT& clientRect, RECT& clientRectScreenSpace) const;
+  void releaseNativeMouseGrabLocked(HWND mouseWindow);
+  bool applyNativeMouseGrabLocked(HWND mouseWindow, const RECT& clientRect, const RECT& clientRectScreenSpace);
   bool createOutputWindow(HWND sourceHwnd);
   void destroyOutputWindow();
   void pumpOutputWindowMessages();
@@ -539,7 +554,12 @@ private:
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool outputWindowInteractive_ {false};
+  bool nativeMouseGrabbed_ {false};
+  bool nativeMouseGrabActive_ {false};
+  bool nativeMouseLastCursorValid_ {false};
+  POINT nativeMouseLastCursorPos_ {};
   bool overlayOutputWindow_ {true};
+  bool singleNativeOutputWindow_ {false};
   bool standaloneOutputWindow_ {false};
   bool standaloneWorkerActive_ {false};
   bool standaloneWorkerInitReady_ {false};

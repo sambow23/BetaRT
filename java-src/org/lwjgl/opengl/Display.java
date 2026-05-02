@@ -5,6 +5,7 @@ import java.awt.Component;
 import java.awt.KeyboardFocusManager;
 import java.awt.Toolkit;
 import java.awt.Window;
+import mcrtx.bridge.McrtxRuntimeConfig;
 import mcrtx.bridge.RemixBridgeNative;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.input.Keyboard;
@@ -17,6 +18,7 @@ public final class Display {
     private static final int GLFW_VISIBLE = 0x00020004;
     private static final int GLFW_RESIZABLE = 0x00020003;
     private static final int GLFW_FOCUSED = 0x00020001;
+    private static final boolean SINGLE_NATIVE_WINDOW_MODE = detectSingleNativeWindowMode();
 
     private static final Object LOCK = new Object();
     private static final GlfwBindings BINDINGS = GlfwBindings.get();
@@ -59,7 +61,7 @@ public final class Display {
                     throw new LWJGLException("glfwInit returned false");
                 }
                 BINDINGS.defaultWindowHints();
-                BINDINGS.windowHint(GLFW_VISIBLE, parent == null ? GLFW_TRUE : GLFW_FALSE);
+                BINDINGS.windowHint(GLFW_VISIBLE, shouldHideCompatibilityHost() ? GLFW_FALSE : GLFW_TRUE);
                 BINDINGS.windowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
                 DisplayMode mode = initialDisplayMode();
@@ -72,7 +74,9 @@ public final class Display {
                 BINDINGS.makeContextCurrent(windowHandle);
                 BINDINGS.createCapabilities();
                 embeddedParentWindow = attachToParentCanvas(mode);
-                if (!embeddedParentWindow) {
+                if (shouldHideCompatibilityHost()) {
+                    BINDINGS.hideWindow(windowHandle);
+                } else if (!embeddedParentWindow) {
                     BINDINGS.showWindow(windowHandle);
                 }
                 installCallbacks();
@@ -186,6 +190,7 @@ public final class Display {
                     BINDINGS.setWindowMonitor(windowHandle, 0L, windowedX, windowedY, width, height, 0);
                     Mouse.updateWindowHeight(height);
                 }
+                syncCompatibilityHostVisibility();
             } catch (Exception exception) {
                 throw new IllegalStateException("Failed to toggle GLFW fullscreen mode", exception);
             }
@@ -243,11 +248,16 @@ public final class Display {
                 return;
             }
             try {
+                syncCompatibilityHostVisibility();
                 syncEmbeddedParentSize();
                 restoreEmbeddedFocusIfNeeded();
                 BINDINGS.pollEvents();
                 int[] windowSize = BINDINGS.getWindowSize(windowHandle);
                 Mouse.updateWindowHeight(windowSize[1]);
+                if (SINGLE_NATIVE_WINDOW_MODE) {
+                    Keyboard.pollNativeState();
+                    Mouse.pollNativeState();
+                }
                 closeRequested = BINDINGS.windowShouldClose(windowHandle);
                 active = currentActiveState();
             } catch (Exception exception) {
@@ -258,6 +268,10 @@ public final class Display {
 
     public static void requestInputFocus() {
         synchronized (LOCK) {
+            if (SINGLE_NATIVE_WINDOW_MODE) {
+                requestSingleNativeInputFocus();
+                return;
+            }
             requestEmbeddedInputFocus(true);
         }
     }
@@ -272,8 +286,56 @@ public final class Display {
         }
     }
 
+    public static long resolveNativePresentationWindowHandle() {
+        synchronized (LOCK) {
+            if (!created || !RemixBridgeNative.isAvailable()) {
+                return 0L;
+            }
+
+            if (parent != null) {
+                long parentWindow = RemixBridgeNative.nResolveAwtWindowHandle(parent);
+                if (parentWindow != 0L) {
+                    return parentWindow;
+                }
+            }
+
+            if (windowHandle == 0L) {
+                return 0L;
+            }
+
+            try {
+                return BINDINGS.getWin32Window(windowHandle);
+            } catch (Exception exception) {
+                return 0L;
+            }
+        }
+    }
+
+    public static boolean isSingleNativeWindowMode() {
+        return SINGLE_NATIVE_WINDOW_MODE;
+    }
+
+    private static void requestSingleNativeInputFocus() {
+        if (!RemixBridgeNative.isAvailable()) {
+            return;
+        }
+
+        if (parent != null) {
+            parent.requestFocusInWindow();
+            Window owningWindow = findOwningWindow(parent);
+            if (owningWindow != null) {
+                owningWindow.requestFocus();
+            }
+        }
+
+        long presentationWindow = resolveNativePresentationWindowHandle();
+        if (presentationWindow != 0L) {
+            RemixBridgeNative.nFocusWindow(presentationWindow);
+        }
+    }
+
     private static boolean attachToParentCanvas(DisplayMode mode) throws Exception {
-        if (parent == null || !RemixBridgeNative.isAvailable()) {
+        if (SINGLE_NATIVE_WINDOW_MODE || parent == null || !RemixBridgeNative.isAvailable()) {
             return false;
         }
 
@@ -357,6 +419,13 @@ public final class Display {
         }
 
         try {
+            if (SINGLE_NATIVE_WINDOW_MODE) {
+                if (RemixBridgeNative.isAvailable() && RemixBridgeNative.nHasWindowFocus()) {
+                    return true;
+                }
+                return BINDINGS.isFocused(windowHandle, GLFW_FOCUSED);
+            }
+
             if (!embeddedParentWindow) {
                 return BINDINGS.isFocused(windowHandle, GLFW_FOCUSED);
             }
@@ -399,6 +468,25 @@ public final class Display {
             current = current.getParent();
         }
         return current instanceof Window ? (Window) current : null;
+    }
+
+    private static boolean detectSingleNativeWindowMode() {
+        String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
+        return configuredMode != null && configuredMode.equalsIgnoreCase("single-native");
+    }
+
+    private static boolean shouldHideCompatibilityHost() {
+        return SINGLE_NATIVE_WINDOW_MODE || parent != null;
+    }
+
+    private static void syncCompatibilityHostVisibility() throws Exception {
+        if (!created || windowHandle == 0L) {
+            return;
+        }
+
+        if (shouldHideCompatibilityHost()) {
+            BINDINGS.hideWindow(windowHandle);
+        }
     }
 
     private static void installCallbacks() throws Exception {

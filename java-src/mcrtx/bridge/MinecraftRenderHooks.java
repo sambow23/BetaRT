@@ -1,6 +1,7 @@
 package mcrtx.bridge;
 
 import java.nio.ByteBuffer;
+import net.minecraft.client.Minecraft;
 
 public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
@@ -24,6 +25,7 @@ public final class MinecraftRenderHooks {
     private static final int PISTON_HEAD_BLOCK_RENDER_TYPE = 17;
 
     private static volatile boolean initialized;
+    private static Minecraft currentMinecraft;
     private static boolean chunkBuildCaptureActive;
     private static int activeChunkRenderPass;
     private static int capturedChunkBlocks;
@@ -72,11 +74,28 @@ public final class MinecraftRenderHooks {
 
     public static synchronized void shutdown() {
         if (!initialized) {
+            currentMinecraft = null;
             return;
         }
         RemixBridgeNative.nShutdown();
         initialized = false;
+        currentMinecraft = null;
         report("Renderer shutdown complete");
+    }
+
+    public static synchronized void rememberMinecraftInstance(Minecraft minecraft) {
+        if (minecraft != null) {
+            currentMinecraft = minecraft;
+        }
+    }
+
+    public static synchronized boolean restoreIngameFocusIfNeeded() {
+        if (currentMinecraft == null) {
+            return false;
+        }
+
+        currentMinecraft.g();
+        return true;
     }
 
     public static synchronized void resize(int width, int height) {

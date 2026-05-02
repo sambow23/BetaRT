@@ -85,7 +85,7 @@ public final class MinecraftPlatformRuntime {
             return backendProperty.trim();
         }
 
-        String backendEnvironment = System.getenv(BACKEND_ENVIRONMENT);
+        String backendEnvironment = McrtxRuntimeConfig.getEnvironmentValue(BACKEND_ENVIRONMENT);
         if (backendEnvironment != null && !backendEnvironment.isEmpty()) {
             return backendEnvironment.trim();
         }
