@@ -418,7 +418,8 @@ public class LibraryLWJGLOpenAL extends Library {
     }
 
     private boolean checkALError() {
-        switch (LegacyAL10.alGetError()) {
+        int errorCode = LegacyAL10.alGetError();
+        switch (errorCode) {
             case 0:
                 return false;
             case 40961:
