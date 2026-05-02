@@ -59,7 +59,7 @@ public final class Mouse {
         if (grabbed && Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
             RemixBridgeNative.nSetNativeMouseGrabbed(false);
         }
-        transitionLog("destroy grabbed=" + grabbed + " currentX=" + currentX + " currentY=" + currentY);
+        debugLog("destroy grabbed=" + grabbed + " currentX=" + currentX + " currentY=" + currentY);
         created = false;
         grabbed = false;
         restoreGrabOnFocus = false;
@@ -155,11 +155,11 @@ public final class Mouse {
     public static void setGrabbed(boolean shouldGrab) {
         boolean wasGrabbed = grabbed;
         grabbed = shouldGrab;
-        transitionLog("setGrabbed grabbed=" + shouldGrab + " singleNative=" + Display.isSingleNativeWindowMode());
+        debugLog("setGrabbed grabbed=" + shouldGrab + " singleNative=" + Display.isSingleNativeWindowMode());
         if (Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
             if (!shouldGrab && wasGrabbed && !hasNativeInputFocus()) {
                 restoreGrabOnFocus = true;
-                transitionLog("deferring native regrab until focus returns");
+                debugLog("deferring native regrab until focus returns");
             } else if (shouldGrab) {
                 restoreGrabOnFocus = false;
             } else if (!wasGrabbed) {
@@ -239,7 +239,7 @@ public final class Mouse {
 
         if (restoreGrabOnFocus && !grabbed && hasNativeInputFocus()) {
             restoreGrabOnFocus = false;
-            transitionLog("restoring native grab after focus return");
+            debugLog("restoring native grab after focus return");
             if (!MinecraftRenderHooks.restoreIngameFocusIfNeeded()) {
                 setGrabbed(true);
             }
@@ -330,14 +330,6 @@ public final class Mouse {
         }
 
         remainingDebugLogs -= 1;
-        System.out.println("[mcrtx][mouse] " + message);
-    }
-
-    private static void transitionLog(String message) {
-        if (!VERBOSE_INPUT_LOGGING) {
-            return;
-        }
-
         System.out.println("[mcrtx][mouse] " + message);
     }
 
