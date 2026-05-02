@@ -1,5 +1,6 @@
 package mcrtx.bridge;
 
+import java.awt.Canvas;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
@@ -116,6 +117,14 @@ public final class RemixBridgeNative {
     }
 
     public static native boolean nInitialize(long hwnd, int width, int height);
+
+    public static native long nResolveAwtWindowHandle(Canvas canvas);
+
+    public static native boolean nEmbedCompatibilityWindow(long childHwnd, long parentHwnd, int width, int height);
+
+    public static native boolean nFocusWindow(long hwnd);
+
+    public static native boolean nIsEmbeddedWindowActive(long childHwnd, long parentHwnd);
 
     public static native void nShutdown();
 

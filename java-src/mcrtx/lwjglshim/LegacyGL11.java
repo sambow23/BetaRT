@@ -384,16 +384,16 @@ public final class LegacyGL11 {
             glEnable = gl11Class.getMethod("glEnable", Integer.TYPE);
             glEnableClientState = gl11Class.getMethod("glEnableClientState", Integer.TYPE);
             glEndList = gl11Class.getMethod("glEndList");
-            glFog = gl11Class.getMethod("glFogfv", Integer.TYPE, FloatBuffer.class);
+            glFog = resolveMethod(gl11Class, new String[] {"glFogfv", "glFog"}, Integer.TYPE, FloatBuffer.class);
             glFogf = gl11Class.getMethod("glFogf", Integer.TYPE, Float.TYPE);
             glFogi = gl11Class.getMethod("glFogi", Integer.TYPE, Integer.TYPE);
             glGenLists = gl11Class.getMethod("glGenLists", Integer.TYPE);
             glGenTextures = gl11Class.getMethod("glGenTextures", IntBuffer.class);
             glGetError = gl11Class.getMethod("glGetError");
-            glGetFloat = gl11Class.getMethod("glGetFloatv", Integer.TYPE, FloatBuffer.class);
+            glGetFloat = resolveMethod(gl11Class, new String[] {"glGetFloatv", "glGetFloat"}, Integer.TYPE, FloatBuffer.class);
             glGetString = gl11Class.getMethod("glGetString", Integer.TYPE);
-            glLight = gl11Class.getMethod("glLightfv", Integer.TYPE, Integer.TYPE, FloatBuffer.class);
-            glLightModel = gl11Class.getMethod("glLightModelfv", Integer.TYPE, FloatBuffer.class);
+            glLight = resolveMethod(gl11Class, new String[] {"glLightfv", "glLight"}, Integer.TYPE, Integer.TYPE, FloatBuffer.class);
+            glLightModel = resolveMethod(gl11Class, new String[] {"glLightModelfv", "glLightModel"}, Integer.TYPE, FloatBuffer.class);
             glLineWidth = gl11Class.getMethod("glLineWidth", Float.TYPE);
             glLoadIdentity = gl11Class.getMethod("glLoadIdentity");
             glMatrixMode = gl11Class.getMethod("glMatrixMode", Integer.TYPE);
@@ -428,6 +428,24 @@ public final class LegacyGL11 {
             } catch (ReflectiveOperationException exception) {
                 throw new IllegalStateException("Failed to initialize LegacyGL11 bindings", exception);
             }
+        }
+
+        private static Method resolveMethod(Class<?> owner, String[] names, Class<?>... parameterTypes)
+                throws NoSuchMethodException {
+            NoSuchMethodException lastException = null;
+            for (String name : names) {
+                try {
+                    return owner.getMethod(name, parameterTypes);
+                } catch (NoSuchMethodException exception) {
+                    lastException = exception;
+                }
+            }
+
+            if (lastException != null) {
+                throw lastException;
+            }
+
+            throw new NoSuchMethodException(owner.getName());
         }
 
         public void invokeVoid(Method method, Object... arguments) {

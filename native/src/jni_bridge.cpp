@@ -2,6 +2,8 @@
 #include "mcrtx/perf_log.hpp"
 
 #include <jni.h>
+#include <jawt.h>
+#include <jawt_md.h>
 #include <string>
 
 namespace {
@@ -11,6 +13,138 @@ using mcrtx::RemixRenderer;
 
 bool fromJniBoolean(bool value) {
   return value;
+}
+
+HWND fromJniHandle(jlong handle) {
+  return reinterpret_cast<HWND>(static_cast<intptr_t>(handle));
+}
+
+jlong toJniHandle(HWND hwnd) {
+  return static_cast<jlong>(reinterpret_cast<intptr_t>(hwnd));
+}
+
+HWND resolveAwtWindowHandle(JNIEnv* env, jobject component) {
+  if (env == nullptr || component == nullptr) {
+    return nullptr;
+  }
+
+  JAWT awt {};
+  awt.version = JAWT_VERSION_1_4;
+  if (JAWT_GetAWT(env, &awt) == JNI_FALSE) {
+    return nullptr;
+  }
+
+  JAWT_DrawingSurface* drawingSurface = awt.GetDrawingSurface(env, component);
+  if (drawingSurface == nullptr) {
+    return nullptr;
+  }
+
+  HWND hwnd = nullptr;
+  const jint lock = drawingSurface->Lock(drawingSurface);
+  if ((lock & JAWT_LOCK_ERROR) == 0) {
+    JAWT_DrawingSurfaceInfo* drawingSurfaceInfo = drawingSurface->GetDrawingSurfaceInfo(drawingSurface);
+    if (drawingSurfaceInfo != nullptr) {
+      auto* win32Info = static_cast<JAWT_Win32DrawingSurfaceInfo*>(drawingSurfaceInfo->platformInfo);
+      if (win32Info != nullptr) {
+        hwnd = win32Info->hwnd;
+      }
+      drawingSurface->FreeDrawingSurfaceInfo(drawingSurfaceInfo);
+    }
+    drawingSurface->Unlock(drawingSurface);
+  }
+
+  awt.FreeDrawingSurface(drawingSurface);
+  return hwnd;
+}
+
+bool embedCompatibilityWindow(HWND childWindow, HWND parentWindow, int width, int height) {
+  if (childWindow == nullptr || parentWindow == nullptr) {
+    return false;
+  }
+  if (!IsWindow(childWindow) || !IsWindow(parentWindow)) {
+    return false;
+  }
+
+  SetLastError(0);
+  const HWND previousParent = SetParent(childWindow, parentWindow);
+  if (previousParent == nullptr && GetLastError() != 0) {
+    return false;
+  }
+
+  LONG_PTR style = GetWindowLongPtrW(childWindow, GWL_STYLE);
+  style &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_MINIMIZE | WS_MAXIMIZE | WS_SYSMENU);
+  style |= WS_CHILD | WS_CLIPSIBLINGS | WS_CLIPCHILDREN;
+  SetWindowLongPtrW(childWindow, GWL_STYLE, style);
+
+  LONG_PTR exStyle = GetWindowLongPtrW(childWindow, GWL_EXSTYLE);
+  exStyle &= ~(WS_EX_APPWINDOW | WS_EX_TOPMOST);
+  exStyle |= WS_EX_NOPARENTNOTIFY;
+  SetWindowLongPtrW(childWindow, GWL_EXSTYLE, exStyle);
+
+  const int embeddedWidth = width > 0 ? width : 1;
+  const int embeddedHeight = height > 0 ? height : 1;
+  if (!SetWindowPos(
+          childWindow,
+          HWND_TOP,
+          0,
+          0,
+          embeddedWidth,
+          embeddedHeight,
+          SWP_FRAMECHANGED | SWP_SHOWWINDOW)) {
+    return false;
+  }
+
+  UpdateWindow(childWindow);
+  return true;
+}
+
+bool focusWindow(HWND window) {
+  if (window == nullptr || !IsWindow(window)) {
+    return false;
+  }
+
+  HWND rootWindow = GetAncestor(window, GA_ROOT);
+  if (rootWindow != nullptr) {
+    SetActiveWindow(rootWindow);
+  }
+
+  SetFocus(window);
+  return GetFocus() == window;
+}
+
+bool matchesManagedWindow(HWND managedWindow, HWND candidateWindow) {
+  if (managedWindow == nullptr || candidateWindow == nullptr) {
+    return false;
+  }
+
+  if (candidateWindow == managedWindow || IsChild(managedWindow, candidateWindow)) {
+    return true;
+  }
+
+  const HWND managedRoot = GetAncestor(managedWindow, GA_ROOT);
+  const HWND candidateRoot = GetAncestor(candidateWindow, GA_ROOT);
+  return managedRoot != nullptr && managedRoot == candidateRoot;
+}
+
+bool isEmbeddedWindowActive(HWND childWindow, HWND parentWindow) {
+  const auto matchesAnyManagedWindow = [childWindow, parentWindow](HWND candidateWindow) {
+    return matchesManagedWindow(childWindow, candidateWindow)
+        || matchesManagedWindow(parentWindow, candidateWindow);
+  };
+
+  if (matchesAnyManagedWindow(GetForegroundWindow())) {
+    return true;
+  }
+
+  GUITHREADINFO guiThreadInfo {};
+  guiThreadInfo.cbSize = sizeof(guiThreadInfo);
+  if (!GetGUIThreadInfo(0, &guiThreadInfo)) {
+    return false;
+  }
+
+  return matchesAnyManagedWindow(guiThreadInfo.hwndActive)
+      || matchesAnyManagedWindow(guiThreadInfo.hwndFocus)
+      || matchesAnyManagedWindow(guiThreadInfo.hwndCapture);
 }
 
 }  // namespace
@@ -26,6 +160,36 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nInitialize(
       static_cast<std::uint32_t>(width),
       static_cast<std::uint32_t>(height));
   return static_cast<jboolean>(fromJniBoolean(ok));
+}
+
+JNIEXPORT jlong JNICALL Java_mcrtx_bridge_RemixBridgeNative_nResolveAwtWindowHandle(
+    JNIEnv* env, jclass, jobject canvas) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nResolveAwtWindowHandle");
+  return toJniHandle(resolveAwtWindowHandle(env, canvas));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEmbedCompatibilityWindow(
+    JNIEnv*, jclass, jlong childHwnd, jlong parentHwnd, jint width, jint height) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEmbedCompatibilityWindow");
+  const bool ok = embedCompatibilityWindow(
+      fromJniHandle(childHwnd),
+      fromJniHandle(parentHwnd),
+      static_cast<int>(width),
+      static_cast<int>(height));
+  return static_cast<jboolean>(fromJniBoolean(ok));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nFocusWindow(
+    JNIEnv*, jclass, jlong hwnd) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nFocusWindow");
+  return static_cast<jboolean>(fromJniBoolean(focusWindow(fromJniHandle(hwnd))));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsEmbeddedWindowActive(
+    JNIEnv*, jclass, jlong childHwnd, jlong parentHwnd) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsEmbeddedWindowActive");
+  return static_cast<jboolean>(fromJniBoolean(
+      isEmbeddedWindowActive(fromJniHandle(childHwnd), fromJniHandle(parentHwnd))));
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nShutdown(JNIEnv*, jclass) {

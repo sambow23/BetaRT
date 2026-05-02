@@ -28,6 +28,10 @@ target_compile_definitions(mcrtx_jni
 
 target_compile_features(mcrtx_jni PRIVATE cxx_std_20)
 
+if(JAVA_AWT_LIBRARY)
+  target_link_libraries(mcrtx_jni PRIVATE ${JAVA_AWT_LIBRARY})
+endif()
+
 if(MSVC)
   set_property(TARGET mcrtx_jni PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()

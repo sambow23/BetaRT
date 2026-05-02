@@ -105,6 +105,9 @@ public final class Mouse {
     public static void setGrabbed(boolean shouldGrab) {
         grabbed = shouldGrab;
         try {
+            if (shouldGrab) {
+                Display.requestInputFocus();
+            }
             Display.bindings().setInputMode(
                     Display.windowHandle(),
                     GLFW_CURSOR,

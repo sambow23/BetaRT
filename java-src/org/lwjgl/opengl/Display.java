@@ -1,13 +1,18 @@
 package org.lwjgl.opengl;
 
 import java.awt.Canvas;
+import java.awt.Component;
+import java.awt.KeyboardFocusManager;
 import java.awt.Toolkit;
+import java.awt.Window;
+import mcrtx.bridge.RemixBridgeNative;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.input.Keyboard;
 import org.lwjgl.input.Mouse;
 import mcrtx.lwjglshim.GlfwBindings;
 
 public final class Display {
+    private static final int GLFW_FALSE = 0;
     private static final int GLFW_TRUE = 1;
     private static final int GLFW_VISIBLE = 0x00020004;
     private static final int GLFW_RESIZABLE = 0x00020003;
@@ -23,6 +28,9 @@ public final class Display {
     private static boolean created;
     private static boolean closeRequested;
     private static boolean active;
+    private static boolean embeddedParentWindow;
+    private static long embeddedChildWindowHandle;
+    private static long embeddedParentWindowHandle;
     private static long windowHandle;
     private static int windowedWidth;
     private static int windowedHeight;
@@ -51,7 +59,7 @@ public final class Display {
                     throw new LWJGLException("glfwInit returned false");
                 }
                 BINDINGS.defaultWindowHints();
-                BINDINGS.windowHint(GLFW_VISIBLE, GLFW_TRUE);
+                BINDINGS.windowHint(GLFW_VISIBLE, parent == null ? GLFW_TRUE : GLFW_FALSE);
                 BINDINGS.windowHint(GLFW_RESIZABLE, GLFW_TRUE);
 
                 DisplayMode mode = initialDisplayMode();
@@ -63,7 +71,10 @@ public final class Display {
 
                 BINDINGS.makeContextCurrent(windowHandle);
                 BINDINGS.createCapabilities();
-                BINDINGS.showWindow(windowHandle);
+                embeddedParentWindow = attachToParentCanvas(mode);
+                if (!embeddedParentWindow) {
+                    BINDINGS.showWindow(windowHandle);
+                }
                 installCallbacks();
                 created = true;
                 active = true;
@@ -95,6 +106,9 @@ public final class Display {
                 created = false;
                 closeRequested = false;
                 active = false;
+                embeddedParentWindow = false;
+                embeddedChildWindowHandle = 0L;
+                embeddedParentWindowHandle = 0L;
                 windowHandle = 0L;
                 keyCallback = null;
                 mouseButtonCallback = null;
@@ -128,7 +142,7 @@ public final class Display {
 
     public static boolean isActive() {
         synchronized (LOCK) {
-            return created && active;
+            return created && currentActiveState();
         }
     }
 
@@ -229,14 +243,22 @@ public final class Display {
                 return;
             }
             try {
+                syncEmbeddedParentSize();
+                restoreEmbeddedFocusIfNeeded();
                 BINDINGS.pollEvents();
                 int[] windowSize = BINDINGS.getWindowSize(windowHandle);
                 Mouse.updateWindowHeight(windowSize[1]);
                 closeRequested = BINDINGS.windowShouldClose(windowHandle);
-                active = BINDINGS.isFocused(windowHandle, GLFW_FOCUSED);
+                active = currentActiveState();
             } catch (Exception exception) {
                 throw new IllegalStateException("Failed to poll GLFW events", exception);
             }
+        }
+    }
+
+    public static void requestInputFocus() {
+        synchronized (LOCK) {
+            requestEmbeddedInputFocus(true);
         }
     }
 
@@ -248,6 +270,135 @@ public final class Display {
         synchronized (LOCK) {
             return windowHandle;
         }
+    }
+
+    private static boolean attachToParentCanvas(DisplayMode mode) throws Exception {
+        if (parent == null || !RemixBridgeNative.isAvailable()) {
+            return false;
+        }
+
+        long parentWindow = RemixBridgeNative.nResolveAwtWindowHandle(parent);
+        long childWindow = BINDINGS.getWin32Window(windowHandle);
+        if (parentWindow == 0L || childWindow == 0L) {
+            return false;
+        }
+
+        if (!RemixBridgeNative.nEmbedCompatibilityWindow(childWindow, parentWindow, mode.getWidth(), mode.getHeight())) {
+            return false;
+        }
+
+        embeddedChildWindowHandle = childWindow;
+        embeddedParentWindowHandle = parentWindow;
+        return true;
+    }
+
+    private static void syncEmbeddedParentSize() throws Exception {
+        if (!embeddedParentWindow || parent == null) {
+            return;
+        }
+
+        int parentWidth = parent.getWidth();
+        int parentHeight = parent.getHeight();
+        if (parentWidth <= 0 || parentHeight <= 0) {
+            return;
+        }
+
+        int[] windowSize = BINDINGS.getWindowSize(windowHandle);
+        if (windowSize[0] == parentWidth && windowSize[1] == parentHeight) {
+            return;
+        }
+
+        BINDINGS.setWindowSize(windowHandle, parentWidth, parentHeight);
+        windowedWidth = parentWidth;
+        windowedHeight = parentHeight;
+        Mouse.updateWindowHeight(parentHeight);
+    }
+
+    private static void restoreEmbeddedFocusIfNeeded() {
+        requestEmbeddedInputFocus(false);
+    }
+
+    private static void requestEmbeddedInputFocus(boolean force) {
+        if (!embeddedParentWindow || parent == null || windowHandle == 0L) {
+            return;
+        }
+
+        if (!force && active) {
+            return;
+        }
+
+        boolean parentWindowActive = isParentWindowActive();
+        boolean nativeWindowActive = RemixBridgeNative.isAvailable() && RemixBridgeNative.nHasWindowFocus();
+        if (!parentWindowActive && !nativeWindowActive) {
+            return;
+        }
+
+        try {
+            parent.requestFocusInWindow();
+            Window owningWindow = findOwningWindow(parent);
+            if (owningWindow != null) {
+                owningWindow.requestFocus();
+            }
+
+            long childWindow = embeddedChildWindowHandle != 0L
+                    ? embeddedChildWindowHandle
+                    : BINDINGS.getWin32Window(windowHandle);
+            if (childWindow != 0L && RemixBridgeNative.nFocusWindow(childWindow)) {
+                active = true;
+            }
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to restore focus to the embedded GLFW compatibility window", exception);
+        }
+    }
+
+    private static boolean currentActiveState() {
+        if (!created) {
+            return false;
+        }
+
+        try {
+            if (!embeddedParentWindow) {
+                return BINDINGS.isFocused(windowHandle, GLFW_FOCUSED);
+            }
+
+            if (RemixBridgeNative.isAvailable() && RemixBridgeNative.nHasWindowFocus()) {
+                return true;
+            }
+
+            if (embeddedChildWindowHandle == 0L || embeddedParentWindowHandle == 0L) {
+                return isParentWindowActive();
+            }
+
+            return RemixBridgeNative.nIsEmbeddedWindowActive(embeddedChildWindowHandle, embeddedParentWindowHandle);
+        } catch (Exception exception) {
+            throw new IllegalStateException("Failed to query GLFW compatibility window focus state", exception);
+        }
+    }
+
+    private static boolean isParentWindowActive() {
+        if (parent == null) {
+            return false;
+        }
+
+        if (parent.isFocusOwner() || parent.hasFocus()) {
+            return true;
+        }
+
+        Window owningWindow = findOwningWindow(parent);
+        if (owningWindow == null) {
+            return false;
+        }
+
+        KeyboardFocusManager focusManager = KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        return owningWindow == focusManager.getActiveWindow() || owningWindow == focusManager.getFocusedWindow();
+    }
+
+    private static Window findOwningWindow(Component component) {
+        Component current = component;
+        while (current != null && !(current instanceof Window)) {
+            current = current.getParent();
+        }
+        return current instanceof Window ? (Window) current : null;
     }
 
     private static void installCallbacks() throws Exception {
@@ -278,7 +429,8 @@ public final class Display {
         focusCallback = BINDINGS.installCallback(windowHandle, "glfwSetWindowFocusCallback", "org.lwjgl.glfw.GLFWWindowFocusCallbackI", new GlfwBindings.CallbackHandler() {
             @Override
             public void invoke(Object[] args) {
-                active = ((Boolean) args[1]).booleanValue();
+                boolean focused = ((Boolean) args[1]).booleanValue();
+                active = embeddedParentWindow ? (focused || isParentWindowActive()) : focused;
             }
         });
     }

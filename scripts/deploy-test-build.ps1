@@ -5,11 +5,12 @@ param(
     [string]$BundleRoot,
     [string]$Configuration = "Release",
     [ValidateSet("lwjgl2", "lwjgl3", "glfw")]
-    [string]$PlatformBackend = "lwjgl2",
+    [string]$PlatformBackend = "lwjgl3",
     [ValidateSet("platform", "native")]
-    [string]$InputBackend = "platform",
+    [string]$InputBackend = "native",
     [ValidateSet("single", "overlay", "dual", "detached", "separate", "standalone")]
-    [string]$WindowMode = "standalone",
+    [string]$WindowMode = "overlay",
+    [switch]$UseNoApplet,
     [switch]$Build,
     [switch]$Restore,
     [switch]$OverwriteAssets
@@ -116,7 +117,8 @@ function Set-PrismMinecraftPlatformPatch {
     param(
         [string]$MinecraftMetaPath,
         [string]$PatchPath,
-        [pscustomobject]$PlatformSpec
+        [pscustomobject]$PlatformSpec,
+        [bool]$UseNoApplet
     )
 
     $minecraftPatch = Read-JsonFile -Path $MinecraftMetaPath
@@ -126,6 +128,29 @@ function Set-PrismMinecraftPlatformPatch {
             uid = $PlatformSpec.ComponentUid
         }
     )
+
+    $traits = [System.Collections.Generic.List[string]]::new()
+    if ($minecraftPatch.PSObject.Properties.Name -contains "+traits") {
+        foreach ($trait in $minecraftPatch.'+traits') {
+            if (-not [string]::IsNullOrWhiteSpace($trait) -and -not $traits.Contains($trait)) {
+                $traits.Add($trait)
+            }
+        }
+    }
+
+    if ($UseNoApplet) {
+        if (-not $traits.Contains("noapplet")) {
+            $traits.Add("noapplet")
+        }
+    } else {
+        for ($traitIndex = $traits.Count - 1; $traitIndex -ge 0; $traitIndex -= 1) {
+            if ($traits[$traitIndex] -eq "noapplet") {
+                $traits.RemoveAt($traitIndex)
+            }
+        }
+    }
+
+    $minecraftPatch.'+traits' = @($traits)
     New-Item -ItemType Directory -Force -Path (Split-Path $PatchPath -Parent) | Out-Null
     Write-JsonFile -Path $PatchPath -InputObject $minecraftPatch
 }
@@ -178,11 +203,12 @@ function Set-PrismPlatformBackend {
         [string]$PackPath,
         [string]$MinecraftMetaPath,
         [string]$PatchPath,
-        [string]$Backend
+        [string]$Backend,
+        [bool]$UseNoApplet
     )
 
     $platformSpec = Get-PlatformComponentSpec -Backend $Backend
-    Set-PrismMinecraftPlatformPatch -MinecraftMetaPath $MinecraftMetaPath -PatchPath $PatchPath -PlatformSpec $platformSpec
+    Set-PrismMinecraftPlatformPatch -MinecraftMetaPath $MinecraftMetaPath -PatchPath $PatchPath -PlatformSpec $platformSpec -UseNoApplet $UseNoApplet
     Sync-PrismPlatformComponent -PackPath $PackPath -PlatformSpec $platformSpec
     return $platformSpec
 }
@@ -256,6 +282,45 @@ function Set-InstanceConfigValue {
     Set-Content -Path $Path -Value $contentLines -Encoding ASCII
 }
 
+function Get-InstanceConfigValue {
+    param(
+        [string]$Path,
+        [string]$Key,
+        [string]$Section = "General"
+    )
+
+    $contentLines = Get-Content -Path $Path
+    $escapedKey = [regex]::Escape($Key)
+    $sectionHeader = "[$Section]"
+    $sectionStart = -1
+    for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -eq $sectionHeader) {
+            $sectionStart = $lineIndex
+            break
+        }
+    }
+
+    if ($sectionStart -lt 0) {
+        return ""
+    }
+
+    $sectionEnd = $contentLines.Count
+    for ($lineIndex = $sectionStart + 1; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -match '^\[.+\]$') {
+            $sectionEnd = $lineIndex
+            break
+        }
+    }
+
+    for ($lineIndex = $sectionStart + 1; $lineIndex -lt $sectionEnd; $lineIndex += 1) {
+        if ($contentLines[$lineIndex] -match "^$escapedKey=(.*)$") {
+            return $Matches[1]
+        }
+    }
+
+    return ""
+}
+
 function Convert-ToPrismPath {
     param([string]$Path)
 
@@ -269,7 +334,8 @@ function Ensure-PrismPreLaunchSync {
         [string]$ConfigurationName,
         [string]$ConfiguredWindowMode,
         [string]$ConfiguredPlatformBackend,
-        [string]$ConfiguredInputBackend
+        [string]$ConfiguredInputBackend,
+        [bool]$ConfiguredUseNoApplet
     )
 
     $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
@@ -280,6 +346,9 @@ function Ensure-PrismPreLaunchSync {
         $ConfiguredPlatformBackend,
         $ConfiguredInputBackend
     )
+    if ($ConfiguredUseNoApplet) {
+        $command += ' -UseNoApplet'
+    }
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideCommands" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value $command
     return $command
@@ -302,6 +371,35 @@ function Set-PrismRuntimeEnvironment {
     $envValue = '{\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\",\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\",\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"}'
     Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideEnv" -Value "true"
     Set-InstanceConfigValue -Path $InstanceConfig -Key "Env" -Value $envValue
+}
+
+function Remove-LegacyMcrtxJavaOverrides {
+    param([string]$InstanceConfig)
+
+    $currentJvmArgs = Get-InstanceConfigValue -Path $InstanceConfig -Key "JvmArgs"
+    if ([string]::IsNullOrWhiteSpace($currentJvmArgs)) {
+        Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideJavaArgs" -Value "false"
+        Set-InstanceConfigValue -Path $InstanceConfig -Key "JvmArgs" -Value '""'
+        return ""
+    }
+
+    $normalizedJvmArgs = $currentJvmArgs.Trim()
+    if ($normalizedJvmArgs.Length -ge 2 -and $normalizedJvmArgs.StartsWith('"') -and $normalizedJvmArgs.EndsWith('"')) {
+        $normalizedJvmArgs = $normalizedJvmArgs.Substring(1, $normalizedJvmArgs.Length - 2)
+    }
+
+    $normalizedJvmArgs = $normalizedJvmArgs -replace '(^|\s)-Dmcrtx\.(platformBackend|inputBackend|windowMode)=\S+', ' '
+    $remainingArgs = @($normalizedJvmArgs -split '\s+' | Where-Object { -not [string]::IsNullOrWhiteSpace($_) }) -join ' '
+
+    if ([string]::IsNullOrWhiteSpace($remainingArgs)) {
+        Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideJavaArgs" -Value "false"
+        Set-InstanceConfigValue -Path $InstanceConfig -Key "JvmArgs" -Value '""'
+        return ""
+    }
+
+    Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideJavaArgs" -Value "true"
+    Set-InstanceConfigValue -Path $InstanceConfig -Key "JvmArgs" -Value ('"' + $remainingArgs + '"')
+    return $remainingArgs
 }
 
 function Set-RemixConfigValue {
@@ -435,7 +533,7 @@ if ($Restore) {
     }
 
     if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Reset Prism platform backend to LWJGL 2")) {
-        Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend "lwjgl2" | Out-Null
+        Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend "lwjgl2" -UseNoApplet:$false | Out-Null
     }
 
     Write-Host "Restored vanilla Beta 1.7.3 jar to $MinecraftLibraryJar"
@@ -457,7 +555,7 @@ New-Item -ItemType Directory -Force -Path $instancePatchesDir | Out-Null
 
 $platformSpec = $null
 if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Configure Prism platform component backend")) {
-    $platformSpec = Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend $PlatformBackend
+    $platformSpec = Set-PrismPlatformBackend -PackPath $instanceMmcPackPath -MinecraftMetaPath $minecraftMetaPath -PatchPath $instanceMinecraftPatchPath -Backend $PlatformBackend -UseNoApplet:$UseNoApplet.IsPresent
 }
 
 $targetJarHash = Get-FileHashString -Path $MinecraftLibraryJar
@@ -545,6 +643,7 @@ $deploymentRecord = [ordered]@{
     platformBackend = $PlatformBackend
     inputBackend = $InputBackend
     windowMode = $WindowMode
+    useNoApplet = $UseNoApplet.IsPresent
     platformComponentUid = if ($platformSpec) { $platformSpec.ComponentUid } else { "" }
     platformComponentVersion = if ($platformSpec) { $platformSpec.Version } else { "" }
     patchedJar = $patchedJar
@@ -558,11 +657,15 @@ if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
 
 $preLaunchCommand = ""
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch sync command")) {
-    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend
+    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$UseNoApplet.IsPresent
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism runtime environment")) {
     Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend
+}
+
+if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove stale mcrtx JVM launch overrides")) {
+    Remove-LegacyMcrtxJavaOverrides -InstanceConfig $instanceConfigPath | Out-Null
 }
 
 if ($PSCmdlet.ShouldProcess($instanceRemixConfigPath, "Configure Remix viewmodel runtime settings")) {
@@ -601,6 +704,7 @@ if ($preLaunchCommand) {
 }
 
 Write-Host "Configured Prism runtime environment windowMode='$WindowMode' platformBackend='$PlatformBackend' inputBackend='$InputBackend' in $instanceConfigPath"
+Write-Host "Configured Prism noapplet trait: $($UseNoApplet.IsPresent) in $instanceMinecraftPatchPath"
 
 if ($platformSpec) {
     Write-Host "Configured Prism component graph for $($platformSpec.CachedName) $($platformSpec.Version) in $instanceMmcPackPath"

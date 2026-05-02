@@ -65,9 +65,13 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glColorPointerOffset, Integer.valueOf(size), Integer.valueOf(type), Integer.valueOf(stride), Long.valueOf(pointer));
     }
 
+    public static void glColorPointer(int size, int type, int stride, ByteBuffer pointer) {
+        glColorPointer(size, type, stride, BINDINGS.bufferAddress(pointer));
+    }
+
     public static void glColorPointer(int size, boolean unsigned, int stride, ByteBuffer pointer) {
         int type = unsigned ? GL_UNSIGNED_BYTE : GL_BYTE;
-        glColorPointer(size, type, stride, BINDINGS.bufferAddress(pointer));
+        glColorPointer(size, type, stride, pointer);
     }
 
     public static void glDeleteLists(int list, int range) {
@@ -118,6 +122,10 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glFog, Integer.valueOf(parameterName), parameters);
     }
 
+    public static void glFogfv(int parameterName, FloatBuffer parameters) {
+        glFog(parameterName, parameters);
+    }
+
     public static void glFogf(int parameterName, float parameter) {
         BINDINGS.invokeVoid(BINDINGS.glFogf, Integer.valueOf(parameterName), Float.valueOf(parameter));
     }
@@ -138,6 +146,10 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glGetFloat, Integer.valueOf(parameterName), parameters);
     }
 
+    public static void glGetFloatv(int parameterName, FloatBuffer parameters) {
+        glGetFloat(parameterName, parameters);
+    }
+
     public static String glGetString(int name) {
         return BINDINGS.invokeString(BINDINGS.glGetString, Integer.valueOf(name));
     }
@@ -146,8 +158,16 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glLight, Integer.valueOf(light), Integer.valueOf(parameterName), parameters);
     }
 
+    public static void glLightfv(int light, int parameterName, FloatBuffer parameters) {
+        glLight(light, parameterName, parameters);
+    }
+
     public static void glLightModel(int parameterName, FloatBuffer parameters) {
         BINDINGS.invokeVoid(BINDINGS.glLightModel, Integer.valueOf(parameterName), parameters);
+    }
+
+    public static void glLightModelfv(int parameterName, FloatBuffer parameters) {
+        glLightModel(parameterName, parameters);
     }
 
     public static void glLineWidth(float width) {
@@ -174,8 +194,12 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glNormalPointerOffset, Integer.valueOf(type), Integer.valueOf(stride), Long.valueOf(pointer));
     }
 
+    public static void glNormalPointer(int type, int stride, ByteBuffer pointer) {
+        glNormalPointer(type, stride, BINDINGS.bufferAddress(pointer));
+    }
+
     public static void glNormalPointer(int stride, ByteBuffer pointer) {
-        glNormalPointer(GL_BYTE, stride, BINDINGS.bufferAddress(pointer));
+        glNormalPointer(GL_BYTE, stride, pointer);
     }
 
     public static void glOrtho(double left, double right, double bottom, double top, double nearValue, double farValue) {
@@ -230,8 +254,12 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glTexCoordPointerOffset, Integer.valueOf(size), Integer.valueOf(type), Integer.valueOf(stride), Long.valueOf(pointer));
     }
 
+    public static void glTexCoordPointer(int size, int type, int stride, FloatBuffer pointer) {
+        glTexCoordPointer(size, type, stride, BINDINGS.bufferAddress(pointer));
+    }
+
     public static void glTexCoordPointer(int size, int stride, FloatBuffer pointer) {
-        glTexCoordPointer(size, GL_FLOAT, stride, BINDINGS.bufferAddress(pointer));
+        glTexCoordPointer(size, GL_FLOAT, stride, pointer);
     }
 
     public static void glTexImage2D(int target, int level, int internalFormat, int width, int height, int border, int format, int type, ByteBuffer pixels) {
@@ -274,8 +302,12 @@ public final class GL11 {
         BINDINGS.invokeVoid(BINDINGS.glVertexPointerOffset, Integer.valueOf(size), Integer.valueOf(type), Integer.valueOf(stride), Long.valueOf(pointer));
     }
 
+    public static void glVertexPointer(int size, int type, int stride, FloatBuffer pointer) {
+        glVertexPointer(size, type, stride, BINDINGS.bufferAddress(pointer));
+    }
+
     public static void glVertexPointer(int size, int stride, FloatBuffer pointer) {
-        glVertexPointer(size, GL_FLOAT, stride, BINDINGS.bufferAddress(pointer));
+        glVertexPointer(size, GL_FLOAT, stride, pointer);
     }
 
     public static void glViewport(int x, int y, int width, int height) {

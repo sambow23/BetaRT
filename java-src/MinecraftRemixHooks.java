@@ -6,6 +6,7 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
 import java.util.Locale;
+import org.lwjgl.opengl.Display;
 
 /**
  * Thin dispatcher that receives every bytecode-patched callback from the Beta
@@ -690,9 +691,14 @@ public final class MinecraftRemixHooks {
     }
 
     private static boolean currentWindowActive() {
-        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized()) {
-            return MinecraftRenderHooks.hasNativeWindowFocus();
+        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized() && MinecraftRenderHooks.hasNativeWindowFocus()) {
+            return true;
         }
+
+        if (Display.isActive()) {
+            return true;
+        }
+
         return MinecraftPlatformRuntime.current().isWindowActive();
     }
 
