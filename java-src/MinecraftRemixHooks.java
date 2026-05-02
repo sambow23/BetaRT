@@ -670,8 +670,7 @@ public final class MinecraftRemixHooks {
     private static boolean detectStandaloneWindowMode() {
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
         return configuredMode != null
-                && (configuredMode.equalsIgnoreCase("standalone")
-                || configuredMode.equalsIgnoreCase("single-native"));
+                && configuredMode.equalsIgnoreCase("standalone");
     }
 
     private static boolean detectVerboseLoggingEnabled() {
