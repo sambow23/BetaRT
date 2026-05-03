@@ -3,6 +3,7 @@ package org.lwjgl.input;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.Map;
+import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.RemixBridgeNative;
 import org.lwjgl.opengl.Display;
 
@@ -146,6 +147,7 @@ public final class Keyboard {
     private static boolean created;
     private static boolean repeatEvents;
     private static KeyboardEvent currentEvent;
+    private static boolean remixUiInputSuppressed;
 
     static {
         register(256, KEY_ESCAPE, "ESCAPE", (char) 27, (char) 27);
@@ -237,6 +239,7 @@ public final class Keyboard {
         created = true;
         EVENTS.clear();
         currentEvent = null;
+        remixUiInputSuppressed = false;
         for (int index = 0; index < NATIVE_DOWN.length; index += 1) {
             NATIVE_DOWN[index] = false;
         }
@@ -246,6 +249,7 @@ public final class Keyboard {
         created = false;
         EVENTS.clear();
         currentEvent = null;
+        remixUiInputSuppressed = false;
         for (int index = 0; index < DOWN.length; index += 1) {
             DOWN[index] = false;
             NATIVE_DOWN[index] = false;
@@ -257,6 +261,9 @@ public final class Keyboard {
     }
 
     public static boolean next() {
+        if (syncSuppressedState()) {
+            return false;
+        }
         currentEvent = EVENTS.pollFirst();
         return currentEvent != null;
     }
@@ -279,11 +286,14 @@ public final class Keyboard {
     }
 
     public static boolean isKeyDown(int key) {
+        if (syncSuppressedState()) {
+            return false;
+        }
         return key >= 0 && key < DOWN.length && DOWN[key];
     }
 
     public static void handleGlfwKey(int glfwKey, int action, int mods) {
-        if (!created) {
+        if (!created || syncSuppressedState()) {
             return;
         }
 
@@ -311,6 +321,10 @@ public final class Keyboard {
 
     public static void pollNativeState() {
         if (!created || !Display.isSingleNativeWindowMode() || !RemixBridgeNative.isAvailable()) {
+            return;
+        }
+
+        if (syncSuppressedState()) {
             return;
         }
 
@@ -366,6 +380,26 @@ public final class Keyboard {
                 EVENTS.addLast(new KeyboardEvent(mapping.lwjglKey, (char) 0, false));
             }
         }
+    }
+
+    private static boolean syncSuppressedState() {
+        boolean suppress = MinecraftRenderHooks.isRemixUiInputActive();
+        if (!suppress) {
+            remixUiInputSuppressed = false;
+            return false;
+        }
+
+        if (!remixUiInputSuppressed) {
+            EVENTS.clear();
+            currentEvent = null;
+            for (int index = 0; index < DOWN.length; index += 1) {
+                DOWN[index] = false;
+                NATIVE_DOWN[index] = false;
+            }
+            remixUiInputSuppressed = true;
+        }
+
+        return true;
     }
 
     private static int resolveVirtualKey(int glfwKey, int lwjglKey) {

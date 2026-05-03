@@ -445,6 +445,16 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUnloadChunkSection(
       static_cast<int>(originZ));
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetChunkSectionHidden(
+  JNIEnv*, jclass, jint originX, jint originY, jint originZ, jboolean hidden) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetChunkSectionHidden");
+  RemixRenderer::instance().setChunkSectionHidden(
+    static_cast<int>(originX),
+    static_cast<int>(originY),
+    static_cast<int>(originZ),
+    hidden != JNI_FALSE);
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginChunkBuild(
     JNIEnv*, jclass,
     jint originX, jint originY, jint originZ,

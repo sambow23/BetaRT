@@ -1031,6 +1031,19 @@ void RemixRenderer::unloadChunkSection(int originX, int originY, int originZ) {
   }
 }
 
+void RemixRenderer::setChunkSectionHidden(int originX, int originY, int originZ, bool hidden) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setChunkSectionHidden");
+  std::scoped_lock lock(mutex_);
+
+  for (int renderPass = 0; renderPass <= 1; ++renderPass) {
+    const ChunkKey key {originX, originY, originZ, renderPass};
+    auto it = chunkMeshes_.find(key);
+    if (it != chunkMeshes_.end()) {
+      it->second.hidden = hidden;
+    }
+  }
+}
+
 bool RemixRenderer::isChunkBuried(const ChunkKey& chunkKey) const {
   // A chunk is buried if all 6 face-adjacent opaque-pass neighbors exist and
   // each neighbor's opposite face is fully covered by solid opaque blocks.
@@ -1044,6 +1057,9 @@ bool RemixRenderer::isChunkBuried(const ChunkKey& chunkKey) const {
     };
     const auto neighborIt = chunkMeshes_.find(neighborKey);
     if (neighborIt == chunkMeshes_.end()) {
+      return false;
+    }
+    if (neighborIt->second.meshHandle == nullptr || neighborIt->second.hidden) {
       return false;
     }
     // Opposite face index: faceIndex ^ 1 (swaps within each axis pair: 0↔1, 2↔3, 4↔5)

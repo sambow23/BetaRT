@@ -852,6 +852,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
       continue;
     }
 
+    if (meshData.hidden) {
+      continue;
+    }
+
     if (isChunkBuried(chunkKey)) {
       continue;
     }

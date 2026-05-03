@@ -7,7 +7,6 @@ import java.util.Queue;
 import java.util.ArrayDeque;
 import java.util.HashSet;
 import java.util.Set;
-import mcrtx.bridge.MinecraftRenderHooks;
 
 public class RemixCaveCulling {
 
@@ -244,16 +243,8 @@ public class RemixCaveCulling {
 
             if (isNowVisible && !wasVisible) {
                 visibleChunks.add(chunkKey);
-                int originX = extractX(chunkKey) * 16;
-                int originY = extractY(chunkKey) * 16;
-                int originZ = extractZ(chunkKey) * 16;
-                RemixChunkCapture.queueRecaptureRegion(originX, originY, originZ, originX + 15, originY + 15, originZ + 15);
             } else if (!isNowVisible && wasVisible) {
                 visibleChunks.remove(chunkKey);
-                int originX = extractX(chunkKey) * 16;
-                int originY = extractY(chunkKey) * 16;
-                int originZ = extractZ(chunkKey) * 16;
-                MinecraftRenderHooks.unloadChunkSection(originX, originY, originZ);
             }
         }
     }

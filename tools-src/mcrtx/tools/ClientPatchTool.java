@@ -199,6 +199,8 @@ public final class ClientPatchTool {
                 method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
             } else if (method.name.equals("a") && method.desc.equals("()V")) {
                 method.instructions.insertBefore(method.instructions.getFirst(), clearWorldSceneCall());
+            } else if (method.name.equals("a") && method.desc.equals("(Lbt;Lyn;F)V")) {
+                patchWorldEntityVisibility(method);
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
                 patchCloudRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
@@ -545,6 +547,26 @@ public final class ClientPatchTool {
 
     private static void patchCloudRender(MethodNode method) {
         method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall());
+    }
+
+    private static void patchWorldEntityVisibility(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEINTERFACE
+                    && methodInsnNode.owner.equals("yn")
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Leq;)Z")) {
+                method.instructions.set(
+                        node,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                REMIX_HELPER_CLASS,
+                                "shouldRenderBoundingBox",
+                                "(Lyn;Leq;)Z",
+                                false));
+                return;
+            }
+        }
     }
 
     private static void patchLivingEntityFrameBegin(MethodNode method) {

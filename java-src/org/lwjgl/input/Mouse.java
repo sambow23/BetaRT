@@ -36,6 +36,7 @@ public final class Mouse {
     private static int nativePollSamples;
     private static int nativePollFailures;
     private static boolean restoreGrabOnFocus;
+    private static boolean remixUiInputSuppressed;
 
     private static final boolean VERBOSE_INPUT_LOGGING = detectVerboseInputLoggingEnabled();
 
@@ -52,6 +53,7 @@ public final class Mouse {
         nativePollSamples = 0;
         nativePollFailures = 0;
         restoreGrabOnFocus = false;
+        remixUiInputSuppressed = false;
         debugLog("create singleNative=" + Display.isSingleNativeWindowMode());
     }
 
@@ -63,6 +65,7 @@ public final class Mouse {
         created = false;
         grabbed = false;
         restoreGrabOnFocus = false;
+        remixUiInputSuppressed = false;
         EVENTS.clear();
         currentEvent = null;
         deltaX = 0;
@@ -73,6 +76,9 @@ public final class Mouse {
     }
 
     public static boolean next() {
+        if (syncSuppressedState()) {
+            return false;
+        }
         currentEvent = EVENTS.pollFirst();
         if (currentEvent != null) {
             debugLog("next event button=" + currentEvent.button
@@ -114,10 +120,16 @@ public final class Mouse {
     }
 
     public static boolean isButtonDown(int button) {
+        if (syncSuppressedState()) {
+            return false;
+        }
         return button >= 0 && button < BUTTONS.length && BUTTONS[button];
     }
 
     public static int getDX() {
+        if (syncSuppressedState()) {
+            return 0;
+        }
         int value = deltaX;
         deltaX = 0;
         if (value != 0) {
@@ -127,6 +139,9 @@ public final class Mouse {
     }
 
     public static int getDY() {
+        if (syncSuppressedState()) {
+            return 0;
+        }
         int value = deltaY;
         deltaY = 0;
         if (value != 0) {
@@ -136,6 +151,9 @@ public final class Mouse {
     }
 
     public static void setCursorPosition(int newX, int newY) {
+        if (syncSuppressedState()) {
+            return;
+        }
         currentX = newX;
         currentY = newY;
         debugLog("setCursorPosition x=" + newX + " y=" + newY + " singleNative=" + Display.isSingleNativeWindowMode());
@@ -153,6 +171,9 @@ public final class Mouse {
     }
 
     public static void setGrabbed(boolean shouldGrab) {
+        if (syncSuppressedState() && shouldGrab) {
+            return;
+        }
         boolean wasGrabbed = grabbed;
         grabbed = shouldGrab;
         debugLog("setGrabbed grabbed=" + shouldGrab + " singleNative=" + Display.isSingleNativeWindowMode());
@@ -194,7 +215,7 @@ public final class Mouse {
     }
 
     public static void handleCursorPosition(double x, double y) {
-        if (!created) {
+        if (!created || syncSuppressedState()) {
             return;
         }
 
@@ -212,7 +233,7 @@ public final class Mouse {
     }
 
     public static void handleButton(int button, int action) {
-        if (!created || button < 0 || button >= BUTTONS.length) {
+        if (!created || syncSuppressedState() || button < 0 || button >= BUTTONS.length) {
             return;
         }
 
@@ -223,7 +244,7 @@ public final class Mouse {
     }
 
     public static void handleScroll(double offsetY) {
-        if (!created) {
+        if (!created || syncSuppressedState()) {
             return;
         }
 
@@ -234,6 +255,10 @@ public final class Mouse {
 
     public static void pollNativeState() {
         if (!created || !Display.isSingleNativeWindowMode() || !RemixBridgeNative.isAvailable()) {
+            return;
+        }
+
+        if (syncSuppressedState()) {
             return;
         }
 
@@ -322,6 +347,39 @@ public final class Mouse {
         return Display.isSingleNativeWindowMode()
                 && RemixBridgeNative.isAvailable()
                 && RemixBridgeNative.nHasWindowFocus();
+    }
+
+    private static boolean syncSuppressedState() {
+        boolean suppress = MinecraftRenderHooks.isRemixUiInputActive();
+        if (!suppress) {
+            remixUiInputSuppressed = false;
+            return false;
+        }
+
+        if (!remixUiInputSuppressed) {
+            if (grabbed && Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
+                RemixBridgeNative.nSetNativeMouseGrabbed(false);
+            } else if (grabbed) {
+                try {
+                    Display.bindings().setInputMode(Display.windowHandle(), GLFW_CURSOR, GLFW_CURSOR_NORMAL);
+                } catch (Exception exception) {
+                    throw new IllegalStateException("Failed to release the GLFW cursor while Remix UI input is active", exception);
+                }
+            }
+
+            grabbed = false;
+            restoreGrabOnFocus = false;
+            deltaX = 0;
+            deltaY = 0;
+            currentEvent = null;
+            EVENTS.clear();
+            for (int index = 0; index < BUTTONS.length; index += 1) {
+                BUTTONS[index] = false;
+            }
+            remixUiInputSuppressed = true;
+        }
+
+        return true;
     }
 
     private static void debugLog(String message) {

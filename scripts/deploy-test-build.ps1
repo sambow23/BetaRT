@@ -14,6 +14,7 @@ param(
     [switch]$Build,
     [switch]$Restore,
     [switch]$OverwriteAssets,
+    [double]$NoCullDistance = 20,
     [switch]$ForceRequestedLaunchConfig,
     [switch]$VerboseInputLogging
 )
@@ -92,6 +93,7 @@ function Resolve-LaunchConfig {
         [string]$RequestedInputBackend,
         [string]$RequestedWindowMode,
         [bool]$RequestedUseNoApplet,
+        [double]$RequestedNoCullDistance,
         [bool]$RequestedVerboseInputLogging,
         [bool]$ForceRequestedConfig
     )
@@ -101,6 +103,7 @@ function Resolve-LaunchConfig {
         InputBackend = $RequestedInputBackend
         WindowMode = $RequestedWindowMode
         UseNoApplet = $RequestedUseNoApplet
+        NoCullDistance = $RequestedNoCullDistance
         VerboseInputLogging = $RequestedVerboseInputLogging
     }
 
@@ -122,28 +125,34 @@ function Resolve-LaunchConfig {
     $pinnedInputBackend = [string]$lastDeploy.inputBackend
     $pinnedWindowMode = [string]$lastDeploy.windowMode
     $pinnedUseNoApplet = [bool]$lastDeploy.useNoApplet
+    $pinnedNoCullDistance = $RequestedNoCullDistance
+    if ($lastDeploy.PSObject.Properties.Name -contains "noCullDistance") {
+        $pinnedNoCullDistance = [double]$lastDeploy.noCullDistance
+    }
     $pinnedVerboseInputLogging = [bool]$lastDeploy.verboseInputLogging
     if (([string]::IsNullOrWhiteSpace($pinnedPlatformBackend)) -or ([string]::IsNullOrWhiteSpace($pinnedInputBackend)) -or ([string]::IsNullOrWhiteSpace($pinnedWindowMode))) {
         return [pscustomobject]$resolvedConfig
     }
 
-    if (($RequestedPlatformBackend -ne $pinnedPlatformBackend) -or ($RequestedInputBackend -ne $pinnedInputBackend) -or ($RequestedWindowMode -ne $pinnedWindowMode) -or ($RequestedUseNoApplet -ne $pinnedUseNoApplet) -or ($RequestedVerboseInputLogging -ne $pinnedVerboseInputLogging)) {
-        Write-Host "Using pinned launch config from $DeploymentInfoPath instead of requested arguments: windowMode='$pinnedWindowMode' platformBackend='$pinnedPlatformBackend' inputBackend='$pinnedInputBackend' useNoApplet='$pinnedUseNoApplet' verboseInputLogging='$pinnedVerboseInputLogging'"
+    if (($RequestedPlatformBackend -ne $pinnedPlatformBackend) -or ($RequestedInputBackend -ne $pinnedInputBackend) -or ($RequestedWindowMode -ne $pinnedWindowMode) -or ($RequestedUseNoApplet -ne $pinnedUseNoApplet) -or ($RequestedNoCullDistance -ne $pinnedNoCullDistance) -or ($RequestedVerboseInputLogging -ne $pinnedVerboseInputLogging)) {
+        Write-Host "Using pinned launch config from $DeploymentInfoPath instead of requested arguments: windowMode='$pinnedWindowMode' platformBackend='$pinnedPlatformBackend' inputBackend='$pinnedInputBackend' useNoApplet='$pinnedUseNoApplet' noCullDistance='$pinnedNoCullDistance' verboseInputLogging='$pinnedVerboseInputLogging'"
     }
 
     $resolvedConfig.PlatformBackend = $pinnedPlatformBackend
     $resolvedConfig.InputBackend = $pinnedInputBackend
     $resolvedConfig.WindowMode = $pinnedWindowMode
     $resolvedConfig.UseNoApplet = $pinnedUseNoApplet
+    $resolvedConfig.NoCullDistance = $pinnedNoCullDistance
     $resolvedConfig.VerboseInputLogging = $pinnedVerboseInputLogging
     return [pscustomobject]$resolvedConfig
 }
 
-$resolvedLaunchConfig = Resolve-LaunchConfig -DeploymentInfoPath $deploymentInfo -RequestedPlatformBackend $PlatformBackend -RequestedInputBackend $InputBackend -RequestedWindowMode $WindowMode -RequestedUseNoApplet:$UseNoApplet.IsPresent -RequestedVerboseInputLogging:$VerboseInputLogging.IsPresent -ForceRequestedConfig:$ForceRequestedLaunchConfig.IsPresent
+$resolvedLaunchConfig = Resolve-LaunchConfig -DeploymentInfoPath $deploymentInfo -RequestedPlatformBackend $PlatformBackend -RequestedInputBackend $InputBackend -RequestedWindowMode $WindowMode -RequestedUseNoApplet:$UseNoApplet.IsPresent -RequestedNoCullDistance $NoCullDistance -RequestedVerboseInputLogging:$VerboseInputLogging.IsPresent -ForceRequestedConfig:$ForceRequestedLaunchConfig.IsPresent
 $PlatformBackend = $resolvedLaunchConfig.PlatformBackend
 $InputBackend = $resolvedLaunchConfig.InputBackend
 $WindowMode = $resolvedLaunchConfig.WindowMode
 $useNoAppletEnabled = [bool]$resolvedLaunchConfig.UseNoApplet
+$NoCullDistance = [double]$resolvedLaunchConfig.NoCullDistance
 $verboseInputLoggingEnabled = [bool]$resolvedLaunchConfig.VerboseInputLogging
 
 function Get-PlatformComponentSpec {
@@ -400,16 +409,18 @@ function Ensure-PrismPreLaunchSync {
         [string]$ConfiguredPlatformBackend,
         [string]$ConfiguredInputBackend,
         [bool]$ConfiguredUseNoApplet,
+        [double]$ConfiguredNoCullDistance,
         [bool]$ConfiguredVerboseInputLogging
     )
 
     $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
-    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File {0} -Configuration {1} -WindowMode {2} -PlatformBackend {3} -InputBackend {4}' -f @(
+    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File {0} -Configuration {1} -WindowMode {2} -PlatformBackend {3} -InputBackend {4} -NoCullDistance {5}' -f @(
         $prismScriptPath,
         $ConfigurationName,
         $ConfiguredWindowMode,
         $ConfiguredPlatformBackend,
-        $ConfiguredInputBackend
+        $ConfiguredInputBackend,
+        $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture)
     )
     if ($ConfiguredUseNoApplet) {
         $command += ' -UseNoApplet'
@@ -434,6 +445,7 @@ function Set-PrismRuntimeEnvironment {
         [string]$Mode,
         [string]$ConfiguredPlatformBackend,
         [string]$ConfiguredInputBackend,
+        [double]$ConfiguredNoCullDistance,
         [bool]$ConfiguredVerboseInputLogging
     )
 
@@ -441,6 +453,7 @@ function Set-PrismRuntimeEnvironment {
     $envPairs.Add('\"MCRTX_WINDOW_MODE\":\"' + $Mode + '\"')
     $envPairs.Add('\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\"')
     $envPairs.Add('\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"')
+    $envPairs.Add('\"MCRTX_NO_CULL_DISTANCE\":\"' + $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '\"')
     if ($ConfiguredVerboseInputLogging) {
         $envPairs.Add('\"MCRTX_VERBOSE_INPUT_LOG\":\"1\"')
     }
@@ -455,6 +468,7 @@ function Set-McrtxRuntimeConfig {
         [string]$Mode,
         [string]$ConfiguredPlatformBackend,
         [string]$ConfiguredInputBackend,
+        [double]$ConfiguredNoCullDistance,
         [bool]$ConfiguredVerboseInputLogging
     )
 
@@ -462,6 +476,7 @@ function Set-McrtxRuntimeConfig {
     $lines.Add("MCRTX_WINDOW_MODE=$Mode")
     $lines.Add("MCRTX_PLATFORM_BACKEND=$ConfiguredPlatformBackend")
     $lines.Add("MCRTX_INPUT_BACKEND=$ConfiguredInputBackend")
+    $lines.Add("MCRTX_NO_CULL_DISTANCE=$($ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture))")
     if ($ConfiguredVerboseInputLogging) {
         $lines.Add("MCRTX_VERBOSE_INPUT_LOG=1")
     }
@@ -746,6 +761,7 @@ $deploymentRecord = [ordered]@{
     inputBackend = $InputBackend
     windowMode = $WindowMode
     useNoApplet = $useNoAppletEnabled
+    noCullDistance = $NoCullDistance
     verboseInputLogging = $verboseInputLoggingEnabled
     platformComponentUid = if ($platformSpec) { $platformSpec.ComponentUid } else { "" }
     platformComponentVersion = if ($platformSpec) { $platformSpec.Version } else { "" }
@@ -761,15 +777,15 @@ if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
 
 $preLaunchCommand = ""
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch sync command")) {
-    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$useNoAppletEnabled -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
+    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$useNoAppletEnabled -ConfiguredNoCullDistance $NoCullDistance -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism runtime environment")) {
-    Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
+    Set-PrismRuntimeEnvironment -InstanceConfig $instanceConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredNoCullDistance $NoCullDistance -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($runtimeConfigPath, "Write mcrtx runtime launch config")) {
-    Set-McrtxRuntimeConfig -Path $runtimeConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
+    Set-McrtxRuntimeConfig -Path $runtimeConfigPath -Mode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredNoCullDistance $NoCullDistance -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove stale mcrtx JVM launch overrides")) {

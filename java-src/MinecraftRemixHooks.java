@@ -255,6 +255,21 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static boolean shouldRenderBoundingBox(yn frustum, eq bounds) {
+        long __perf = HookProfiler.begin();
+        try {
+            if (bounds == null) {
+                return true;
+            }
+            if (RemixCameraState.isWithinNoCullDistance(bounds.a, bounds.b, bounds.c, bounds.d, bounds.e, bounds.f)) {
+                return true;
+            }
+            return frustum == null || frustum.a(bounds);
+        } finally {
+            HookProfiler.endHook("hook.shouldRenderBoundingBox", __perf);
+        }
+    }
+
     public static void onWorldChanged(fd world) {
         long __perf = HookProfiler.begin();
         try {
@@ -531,6 +546,7 @@ public final class MinecraftRemixHooks {
         remixUiOpen = false;
         remixUiHotkeyHeld = false;
         preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
+        MinecraftRenderHooks.setRemixUiInputActive(false);
     }
 
     private static void resetPerfTracking() {
@@ -734,6 +750,7 @@ public final class MinecraftRemixHooks {
         }
 
         boolean uiOpen = uiState != MinecraftRenderHooks.REMIX_UI_STATE_NONE;
+        MinecraftRenderHooks.setRemixUiInputActive(uiOpen);
         if (minecraft != null) {
             if (uiOpen) {
                 minecraft.h();

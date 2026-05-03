@@ -198,6 +198,7 @@ struct ChunkMeshData {
   std::vector<std::uint16_t> fireCellIndices {};
   std::vector<TorchLightPlacement> torchLights {};
   bool hasOccupancy {false};
+  bool hidden {false};
   std::array<bool, 6> faceCovered {};
 };
 
@@ -381,6 +382,7 @@ public:
       std::uint32_t textureKind);
   void clearWorldScene();
   void unloadChunkSection(int originX, int originY, int originZ);
+  void setChunkSectionHidden(int originX, int originY, int originZ, bool hidden);
   bool beginChunkBuild(
       int originX,
       int originY,

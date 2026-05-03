@@ -216,6 +216,8 @@ public final class RemixBridgeNative {
 
     public static native void nUnloadChunkSection(int originX, int originY, int originZ);
 
+            public static native void nSetChunkSectionHidden(int originX, int originY, int originZ, boolean hidden);
+
     public static native boolean nBeginChunkBuild(
             int originX,
             int originY,

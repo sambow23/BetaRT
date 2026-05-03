@@ -25,6 +25,7 @@ public final class MinecraftRenderHooks {
     private static final int PISTON_HEAD_BLOCK_RENDER_TYPE = 17;
 
     private static volatile boolean initialized;
+    private static volatile boolean remixUiInputActive;
     private static Minecraft currentMinecraft;
     private static boolean chunkBuildCaptureActive;
     private static int activeChunkRenderPass;
@@ -74,11 +75,13 @@ public final class MinecraftRenderHooks {
 
     public static synchronized void shutdown() {
         if (!initialized) {
+            remixUiInputActive = false;
             currentMinecraft = null;
             return;
         }
         RemixBridgeNative.nShutdown();
         initialized = false;
+        remixUiInputActive = false;
         currentMinecraft = null;
         report("Renderer shutdown complete");
     }
@@ -96,6 +99,14 @@ public final class MinecraftRenderHooks {
 
         currentMinecraft.g();
         return true;
+    }
+
+    public static synchronized void setRemixUiInputActive(boolean active) {
+        remixUiInputActive = active;
+    }
+
+    public static boolean isRemixUiInputActive() {
+        return remixUiInputActive;
     }
 
     public static synchronized void resize(int width, int height) {
@@ -418,6 +429,13 @@ public final class MinecraftRenderHooks {
             return;
         }
         RemixBridgeNative.nUnloadChunkSection(originX, originY, originZ);
+    }
+
+    public static synchronized void setChunkSectionHidden(int originX, int originY, int originZ, boolean hidden) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetChunkSectionHidden(originX, originY, originZ, hidden);
     }
 
     public static synchronized boolean drawScreenOverlay(

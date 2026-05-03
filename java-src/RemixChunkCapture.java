@@ -3,8 +3,10 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Set;
 
 public final class RemixChunkCapture {
     private static final int CHUNK_DIMENSION = 16;
@@ -31,6 +33,9 @@ public final class RemixChunkCapture {
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
     private static final RemixWorldListener WORLD_LISTENER = new RemixWorldListener();
     private static final LinkedHashMap<DirtyChunkSection, DirtyChunkSection> PENDING_RECAPTURE_SECTIONS = new LinkedHashMap<DirtyChunkSection, DirtyChunkSection>();
+    private static final Set<Long> KNOWN_CHUNK_SECTIONS = new HashSet<Long>();
+    private static final Set<Long> HAS_NATIVE_MESH_SECTIONS = new HashSet<Long>();
+    private static final Set<Long> RESIDENT_CHUNK_SECTIONS = new HashSet<Long>();
 
     private static boolean loggedChunkBuild;
     private static boolean loggedWorldListenerAttach;
@@ -57,6 +62,92 @@ public final class RemixChunkCapture {
         return new DirtyChunkSection(originX, originY, originZ, minX, minY, minZ, maxX, maxY, maxZ);
     }
 
+    private static long chunkSectionKey(int originX, int originY, int originZ) {
+        return RemixCaveCulling.getChunkKey(originX, originY, originZ);
+    }
+
+    private static void rememberKnownSection(int originX, int originY, int originZ) {
+        KNOWN_CHUNK_SECTIONS.add(Long.valueOf(chunkSectionKey(originX, originY, originZ)));
+    }
+
+    private static void markSectionResident(int originX, int originY, int originZ) {
+        Long key = Long.valueOf(chunkSectionKey(originX, originY, originZ));
+        HAS_NATIVE_MESH_SECTIONS.add(key);
+        RESIDENT_CHUNK_SECTIONS.add(key);
+    }
+
+    private static void forgetSection(int originX, int originY, int originZ) {
+        Long key = Long.valueOf(chunkSectionKey(originX, originY, originZ));
+        KNOWN_CHUNK_SECTIONS.remove(key);
+        HAS_NATIVE_MESH_SECTIONS.remove(key);
+        RESIDENT_CHUNK_SECTIONS.remove(key);
+    }
+
+    private static int originXFromKey(long key) {
+        return extractChunkAxis(key >>> 37, 0x3FFFFFFL, 0x2000000L) << 4;
+    }
+
+    private static int originZFromKey(long key) {
+        return extractChunkAxis(key >>> 11, 0x3FFFFFFL, 0x2000000L) << 4;
+    }
+
+    private static int originYFromKey(long key) {
+        return ((int) (key & 0x7FFL)) << 4;
+    }
+
+    private static int extractChunkAxis(long encodedValue, long mask, long signBit) {
+        long decoded = encodedValue & mask;
+        if ((decoded & signBit) != 0L) {
+            decoded |= ~mask;
+        }
+        return (int) decoded;
+    }
+
+    private static void syncSectionVisibility() {
+        if (KNOWN_CHUNK_SECTIONS.isEmpty()) {
+            return;
+        }
+
+        List<Long> newlyVisibleSections = new ArrayList<Long>();
+        List<Long> newlyHiddenSections = new ArrayList<Long>();
+        for (Long keyObject : KNOWN_CHUNK_SECTIONS) {
+            long key = keyObject.longValue();
+            int originX = originXFromKey(key);
+            int originY = originYFromKey(key);
+            int originZ = originZFromKey(key);
+            boolean shouldBeResident = RemixCaveCulling.isVisible(originX, originY, originZ)
+                    && RemixCameraState.shouldCaptureChunkSection(originX, originY, originZ);
+            boolean isResident = RESIDENT_CHUNK_SECTIONS.contains(keyObject);
+            if (shouldBeResident && !isResident) {
+                newlyVisibleSections.add(keyObject);
+            } else if (!shouldBeResident && isResident) {
+                newlyHiddenSections.add(keyObject);
+            }
+        }
+
+        for (Long keyObject : newlyHiddenSections) {
+            long key = keyObject.longValue();
+            int originX = originXFromKey(key);
+            int originY = originYFromKey(key);
+            int originZ = originZFromKey(key);
+            RESIDENT_CHUNK_SECTIONS.remove(keyObject);
+            MinecraftRenderHooks.setChunkSectionHidden(originX, originY, originZ, true);
+        }
+
+        for (Long keyObject : newlyVisibleSections) {
+            long key = keyObject.longValue();
+            int originX = originXFromKey(key);
+            int originY = originYFromKey(key);
+            int originZ = originZFromKey(key);
+            if (HAS_NATIVE_MESH_SECTIONS.contains(keyObject)) {
+                MinecraftRenderHooks.setChunkSectionHidden(originX, originY, originZ, false);
+                RESIDENT_CHUNK_SECTIONS.add(keyObject);
+            } else {
+                queueRecaptureRegion(originX, originY, originZ, originX + 15, originY + 15, originZ + 15);
+            }
+        }
+    }
+
     private static void clearPendingRecaptureForSection(int originX, int originY, int originZ) {
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             PENDING_RECAPTURE_SECTIONS.remove(new DirtyChunkSection(originX, originY, originZ));
@@ -77,6 +168,7 @@ public final class RemixChunkCapture {
 
     public static void onChunkSectionUnload(int originX, int originY, int originZ) {
         clearPendingRecaptureForSection(originX, originY, originZ);
+        forgetSection(originX, originY, originZ);
         MinecraftRenderHooks.unloadChunkSection(originX, originY, originZ);
         RemixCaveCulling.removeChunk(originX, originY, originZ);
     }
@@ -89,6 +181,9 @@ public final class RemixChunkCapture {
         synchronized (PENDING_RECAPTURE_SECTIONS) {
             PENDING_RECAPTURE_SECTIONS.clear();
         }
+        KNOWN_CHUNK_SECTIONS.clear();
+        HAS_NATIVE_MESH_SECTIONS.clear();
+        RESIDENT_CHUNK_SECTIONS.clear();
         MinecraftRenderHooks.clearWorldScene();
         RemixCaveCulling.clear();
 
@@ -122,10 +217,15 @@ public final class RemixChunkCapture {
 
         // A live vanilla rebuild for this section makes any queued recapture redundant.
         clearPendingRecaptureForSection(originX, originY, originZ);
+        rememberKnownSection(originX, originY, originZ);
 
         if (attachedWorld != null && renderPass == 0) {
             RemixCaveCulling.Pocket[] pockets = RemixCaveCulling.computePockets(attachedWorld, originX, originY, originZ);
             RemixCaveCulling.setPockets(originX, originY, originZ, pockets);
+        }
+
+        if (!RemixCameraState.shouldCaptureChunkSection(originX, originY, originZ)) {
+            return false;
         }
 
         if (!RemixCaveCulling.isVisible(originX, originY, originZ)) {
@@ -134,7 +234,11 @@ public final class RemixChunkCapture {
             return false;
         }
 
-        return MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        boolean captureActive = MinecraftRenderHooks.beginChunkBuild(originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
+        if (captureActive) {
+            markSectionResident(originX, originY, originZ);
+        }
+        return captureActive;
     }
 
     public static void onChunkBlock(
@@ -366,6 +470,7 @@ public final class RemixChunkCapture {
                 scanMaxZ)) {
             return false;
         }
+        markSectionResident(section.originX, section.originY, section.originZ);
         long beginBuildEndNanos = System.nanoTime();
         int capturedBlocks = 0;
 
@@ -452,6 +557,7 @@ public final class RemixChunkCapture {
         for (int originY = originMinY; originY <= originMaxY; originY += CHUNK_DIMENSION) {
             for (int originZ = originMinZ; originZ <= originMaxZ; originZ += CHUNK_DIMENSION) {
                 for (int originX = originMinX; originX <= originMaxX; originX += CHUNK_DIMENSION) {
+                    rememberKnownSection(originX, originY, originZ);
                     candidateSections.add(newDirtySectionForRegion(
                             originX,
                             originY,
@@ -640,27 +746,39 @@ public final class RemixChunkCapture {
             queuedSections.addAll(PENDING_RECAPTURE_SECTIONS.values());
         }
 
-        if (queuedSections.size() <= budget) {
-            return queuedSections;
+        List<DirtyChunkSection> visibleSections = new ArrayList<DirtyChunkSection>();
+        for (DirtyChunkSection section : queuedSections) {
+            if (RemixCameraState.shouldCaptureChunkSection(section.originX, section.originY, section.originZ)
+                    && RemixCaveCulling.isVisible(section.originX, section.originY, section.originZ)) {
+                visibleSections.add(section);
+            }
+        }
+
+        if (visibleSections.isEmpty()) {
+            return new ArrayList<DirtyChunkSection>();
+        }
+
+        if (visibleSections.size() <= budget) {
+            return visibleSections;
         }
 
         List<DirtyChunkSection> sectionsToRecapture = new ArrayList<DirtyChunkSection>(budget);
         int oldestReserve = 0;
         if (budget > 1) {
             oldestReserve = 1;
-            if (queuedSections.size() >= BACKLOG_CRITICAL_QUEUE_DEPTH) {
+            if (visibleSections.size() >= BACKLOG_CRITICAL_QUEUE_DEPTH) {
                 oldestReserve = Math.min(2, budget - 1);
             }
         }
 
         for (int index = 0; index < oldestReserve; index += 1) {
-            sectionsToRecapture.add(queuedSections.remove(0));
+            sectionsToRecapture.add(visibleSections.remove(0));
         }
 
-        sortSectionsByCameraDistance(queuedSections);
+        sortSectionsByCameraDistance(visibleSections);
 
         int nearestBudget = budget - sectionsToRecapture.size();
-        sectionsToRecapture.addAll(queuedSections.subList(0, nearestBudget));
+        sectionsToRecapture.addAll(visibleSections.subList(0, nearestBudget));
         return sectionsToRecapture;
     }
 
@@ -680,6 +798,7 @@ public final class RemixChunkCapture {
             int playerY = (int)Math.floor(RemixCameraState.cameraPositionY);
             int playerZ = (int)Math.floor(RemixCameraState.cameraPositionZ);
             RemixCaveCulling.updateGlobalCulling(playerX, playerY, playerZ);
+            syncSectionVisibility();
         }
 
         long flushStartNanos = System.nanoTime();

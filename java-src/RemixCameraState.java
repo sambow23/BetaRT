@@ -2,13 +2,20 @@ import java.nio.FloatBuffer;
 import mcrtx.bridge.CameraPose;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
+import mcrtx.bridge.McrtxRuntimeConfig;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
 
 public final class RemixCameraState {
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
+    private static final int FRUSTUM_PLANE_COUNT = 6;
+    private static final float CHUNK_SECTION_FRUSTUM_PADDING = 6.0f;
+    private static final double DEFAULT_NO_CULL_DISTANCE_BLOCKS = 200.0;
     private static final FloatBuffer VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
+    private static final float[] FRUSTUM_PLANES = new float[FRUSTUM_PLANE_COUNT * 4];
+    private static final double NO_CULL_DISTANCE_BLOCKS = loadNoCullDistanceBlocks();
+    private static final double NO_CULL_DISTANCE_SQ = NO_CULL_DISTANCE_BLOCKS * NO_CULL_DISTANCE_BLOCKS;
 
     static float cameraPositionX;
     static float cameraPositionY;
@@ -29,6 +36,7 @@ public final class RemixCameraState {
     private static float farPlane = 1024.0f;
 
     private static boolean frameViewCaptured;
+    private static boolean frustumReady;
     private static final float[] frameInverseViewMatrix = new float[16];
 
     private RemixCameraState() {
@@ -90,6 +98,7 @@ public final class RemixCameraState {
         RemixCameraState.aspect = aspect;
         RemixCameraState.nearPlane = 0.05f;
         RemixCameraState.farPlane = farPlane * 2.0f;
+        updateFrustumPlanes();
     }
 
     /**
@@ -160,6 +169,7 @@ public final class RemixCameraState {
         cameraPose.aspect = aspect;
         cameraPose.nearPlane = nearPlane;
         cameraPose.farPlane = farPlane;
+        updateFrustumPlanes();
         MinecraftRenderHooks.updateCamera(cameraPose);
         long submitCameraEndNanos = System.nanoTime();
 
@@ -193,5 +203,155 @@ public final class RemixCameraState {
         matrix[14] = cameraPositionZ;
         matrix[15] = 1.0f;
         return matrix;
+    }
+
+    static boolean shouldCaptureChunkSection(int originX, int originY, int originZ) {
+        return shouldCaptureBounds(
+                originX - CHUNK_SECTION_FRUSTUM_PADDING,
+                originY - CHUNK_SECTION_FRUSTUM_PADDING,
+                originZ - CHUNK_SECTION_FRUSTUM_PADDING,
+                originX + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING,
+                originY + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING,
+                originZ + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING);
+    }
+
+    public static boolean isWithinNoCullDistance(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+        double dx = axisDistance(cameraPositionX, minX, maxX);
+        double dy = axisDistance(cameraPositionY, minY, maxY);
+        double dz = axisDistance(cameraPositionZ, minZ, maxZ);
+        return dx * dx + dy * dy + dz * dz <= NO_CULL_DISTANCE_SQ;
+    }
+
+    static boolean shouldCaptureBounds(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+        return isWithinNoCullDistance(minX, minY, minZ, maxX, maxY, maxZ)
+                || isBoundsInFrustum(minX, minY, minZ, maxX, maxY, maxZ);
+    }
+
+    private static boolean isBoundsInFrustum(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {
+        if (!frustumReady) {
+            return true;
+        }
+
+        float centerX = (float) ((minX + maxX) * 0.5);
+        float centerY = (float) ((minY + maxY) * 0.5);
+        float centerZ = (float) ((minZ + maxZ) * 0.5);
+        float extentX = (float) ((maxX - minX) * 0.5);
+        float extentY = (float) ((maxY - minY) * 0.5);
+        float extentZ = (float) ((maxZ - minZ) * 0.5);
+
+        for (int planeIndex = 0; planeIndex < FRUSTUM_PLANE_COUNT; planeIndex += 1) {
+            int offset = planeIndex * 4;
+            float nx = FRUSTUM_PLANES[offset];
+            float ny = FRUSTUM_PLANES[offset + 1];
+            float nz = FRUSTUM_PLANES[offset + 2];
+            float planeD = FRUSTUM_PLANES[offset + 3];
+            float distance = nx * centerX + ny * centerY + nz * centerZ + planeD;
+            float radius = Math.abs(nx) * extentX + Math.abs(ny) * extentY + Math.abs(nz) * extentZ;
+            if (distance + radius < 0.0f) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static double loadNoCullDistanceBlocks() {
+        String configuredValue = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_NO_CULL_DISTANCE");
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return DEFAULT_NO_CULL_DISTANCE_BLOCKS;
+        }
+
+        try {
+            double configuredDistance = Double.parseDouble(configuredValue);
+            if (!Double.isFinite(configuredDistance) || configuredDistance < 0.0) {
+                return DEFAULT_NO_CULL_DISTANCE_BLOCKS;
+            }
+            return configuredDistance;
+        } catch (NumberFormatException exception) {
+            return DEFAULT_NO_CULL_DISTANCE_BLOCKS;
+        }
+    }
+
+    private static double axisDistance(double point, double min, double max) {
+        if (point < min) {
+            return min - point;
+        }
+        if (point > max) {
+            return point - max;
+        }
+        return 0.0;
+    }
+
+    private static void updateFrustumPlanes() {
+        float safeAspect = aspect > 0.0f ? aspect : 1.0f;
+        float safeNearPlane = nearPlane > 0.0f ? nearPlane : 0.05f;
+        float safeFarPlane = farPlane > safeNearPlane ? farPlane : safeNearPlane + 1.0f;
+        float clampedFovY = Math.max(1.0f, Math.min(179.0f, fovYDegrees));
+        float tanHalfY = (float) Math.tan(Math.toRadians(clampedFovY) * 0.5);
+        if (!Float.isFinite(tanHalfY) || tanHalfY <= 0.0f) {
+            tanHalfY = (float) Math.tan(Math.toRadians(70.0f) * 0.5);
+        }
+        float tanHalfX = tanHalfY * safeAspect;
+
+        float[] forward = normalizeVector(cameraForwardX, cameraForwardY, cameraForwardZ, 0.0f, 0.0f, 1.0f);
+        float[] right = normalizeVector(cameraRightX, cameraRightY, cameraRightZ, 1.0f, 0.0f, 0.0f);
+        float[] up = normalizeVector(cameraUpX, cameraUpY, cameraUpZ, 0.0f, 1.0f, 0.0f);
+
+        float positionDotForward = dot(forward[0], forward[1], forward[2], cameraPositionX, cameraPositionY, cameraPositionZ);
+        setPlane(0, forward[0], forward[1], forward[2], -(positionDotForward + safeNearPlane));
+        setPlane(1, -forward[0], -forward[1], -forward[2], positionDotForward + safeFarPlane);
+        setPlaneThroughCamera(2,
+                forward[0] * tanHalfX + right[0],
+                forward[1] * tanHalfX + right[1],
+                forward[2] * tanHalfX + right[2]);
+        setPlaneThroughCamera(3,
+                forward[0] * tanHalfX - right[0],
+                forward[1] * tanHalfX - right[1],
+                forward[2] * tanHalfX - right[2]);
+        setPlaneThroughCamera(4,
+                forward[0] * tanHalfY + up[0],
+                forward[1] * tanHalfY + up[1],
+                forward[2] * tanHalfY + up[2]);
+        setPlaneThroughCamera(5,
+                forward[0] * tanHalfY - up[0],
+                forward[1] * tanHalfY - up[1],
+                forward[2] * tanHalfY - up[2]);
+        frustumReady = true;
+    }
+
+    private static void setPlaneThroughCamera(int planeIndex, float nx, float ny, float nz) {
+        setPlane(planeIndex, nx, ny, nz, -dot(nx, ny, nz, cameraPositionX, cameraPositionY, cameraPositionZ));
+    }
+
+    private static void setPlane(int planeIndex, float nx, float ny, float nz, float planeD) {
+        float length = (float) Math.sqrt(nx * nx + ny * ny + nz * nz);
+        int offset = planeIndex * 4;
+        if (!Float.isFinite(length) || length <= 1.0e-6f) {
+            FRUSTUM_PLANES[offset] = 0.0f;
+            FRUSTUM_PLANES[offset + 1] = 0.0f;
+            FRUSTUM_PLANES[offset + 2] = 1.0f;
+            FRUSTUM_PLANES[offset + 3] = 0.0f;
+            return;
+        }
+
+        float inverseLength = 1.0f / length;
+        FRUSTUM_PLANES[offset] = nx * inverseLength;
+        FRUSTUM_PLANES[offset + 1] = ny * inverseLength;
+        FRUSTUM_PLANES[offset + 2] = nz * inverseLength;
+        FRUSTUM_PLANES[offset + 3] = planeD * inverseLength;
+    }
+
+    private static float[] normalizeVector(float x, float y, float z, float fallbackX, float fallbackY, float fallbackZ) {
+        float length = (float) Math.sqrt(x * x + y * y + z * z);
+        if (!Float.isFinite(length) || length <= 1.0e-6f) {
+            return new float[] {fallbackX, fallbackY, fallbackZ};
+        }
+
+        float inverseLength = 1.0f / length;
+        return new float[] {x * inverseLength, y * inverseLength, z * inverseLength};
+    }
+
+    private static float dot(float x0, float y0, float z0, float x1, float y1, float z1) {
+        return x0 * x1 + y0 * y1 + z0 * z1;
     }
 }
