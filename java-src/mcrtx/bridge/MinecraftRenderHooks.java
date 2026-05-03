@@ -280,6 +280,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetFirstPersonHeldItem(itemId);
     }
 
+    public static synchronized void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
+        if (!initialized || entityId < 0) {
+            return;
+        }
+        RemixBridgeNative.nSetEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
+    }
+
     public static synchronized void setDynamicEntityBoneTransform(
             int boneIndex,
             float m00,

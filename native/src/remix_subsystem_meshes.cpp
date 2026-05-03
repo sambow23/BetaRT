@@ -21,6 +21,22 @@ namespace mcrtx {
 
 using namespace mcrtx::detail;
 
+namespace {
+
+bool isTorchLightItemId(int itemId) {
+  return itemId == kTorchBlockId || itemId == kRedstoneTorchOnBlockId;
+}
+
+std::uint64_t makeEntityHeldTorchLightHash(int entityId) {
+  return kEntityHeldTorchLightHashSeed ^ static_cast<std::uint64_t>(static_cast<std::uint32_t>(entityId));
+}
+
+remixapi_Float3D entityHeldTorchRadiance(int itemId) {
+  return itemId == kRedstoneTorchOnBlockId ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
+}
+
+}  // namespace
+
 void RemixRenderer::updateCloudLayer(
     bool fancy,
     float cameraX,
@@ -82,6 +98,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
   clearDynamicEntityFrameInstances();
   activeDynamicEntity_ = {};
   heldItemId_ = -1;
+  entityHeldTorchLightsSeenThisFrame_.clear();
 }
 
 void RemixRenderer::beginDynamicEntity(int entityId) {
@@ -119,6 +136,91 @@ void RemixRenderer::setFirstPersonHeldItem(int itemId) {
   }
 
   heldItemId_ = itemId;
+}
+
+void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setEntityHeldTorch");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || entityId < 0) {
+    return;
+  }
+
+  const bool supportsLightCreation = remix_.CreateLight != nullptr || remix_.CreateLightBatched != nullptr;
+  if (!supportsLightCreation || !isTorchLightItemId(itemId)) {
+    destroyEntityHeldTorchLight(entityId);
+    return;
+  }
+
+  entityHeldTorchLightsSeenThisFrame_.insert(entityId);
+
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {
+      worldX,
+      worldY,
+      worldZ,
+  };
+  sphereInfo.radius = kTorchLightRadius;
+  sphereInfo.shaping_hasvalue = FALSE;
+  sphereInfo.volumetricRadianceScale = 1.0f;
+
+  remixapi_LightInfo lightInfo {};
+  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfo.pNext = &sphereInfo;
+  lightInfo.hash = makeEntityHeldTorchLightHash(entityId);
+  lightInfo.radiance = entityHeldTorchRadiance(itemId);
+  lightInfo.isDynamic = TRUE;
+  lightInfo.ignoreViewModel = FALSE;
+  lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
+
+  const auto createLight = [&](remixapi_LightHandle& lightHandle) {
+    if (remix_.CreateLightBatched != nullptr) {
+      return [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.entityHeldTorch");
+        return remix_.CreateLightBatched(&lightInfo, &lightHandle);
+      }();
+    }
+
+    return [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.entityHeldTorch");
+      return remix_.CreateLight(&lightInfo, &lightHandle);
+    }();
+  };
+
+  auto lightIt = entityHeldTorchLightHandles_.find(entityId);
+  if (lightIt == entityHeldTorchLightHandles_.end() || lightIt->second == nullptr) {
+    remixapi_LightHandle lightHandle = nullptr;
+    const remixapi_ErrorCode result = createLight(lightHandle);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("CreateLight failed: " + errorCodeToString(result));
+      return;
+    }
+
+    entityHeldTorchLightHandles_[entityId] = lightHandle;
+    return;
+  }
+
+  if (remix_.UpdateLightDefinition == nullptr) {
+    destroyEntityHeldTorchLight(entityId);
+    remixapi_LightHandle lightHandle = nullptr;
+    const remixapi_ErrorCode result = createLight(lightHandle);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("CreateLight failed: " + errorCodeToString(result));
+      return;
+    }
+
+    entityHeldTorchLightHandles_[entityId] = lightHandle;
+    return;
+  }
+
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.entityHeldTorch");
+    return remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("UpdateLightDefinition failed: " + errorCodeToString(result));
+  }
 }
 
 void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
@@ -332,6 +434,10 @@ void RemixRenderer::clearWorldScene() {
   clearDynamicEntityFrameInstances();
   destroyOverlayInstances_.clear();
   particleQuads_.clear();
+  while (!entityHeldTorchLightHandles_.empty()) {
+    destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+  }
+  entityHeldTorchLightsSeenThisFrame_.clear();
   activeDynamicEntity_ = {};
   activeChunkBlocks_.clear();
   activeChunkBuild_ = {};
@@ -788,6 +894,18 @@ void RemixRenderer::destroyHeldItemTorchLight() {
 
   destroyLightHandle(heldItemTorchLightHandle_);
   heldItemTorchLightHandle_ = nullptr;
+}
+
+void RemixRenderer::destroyEntityHeldTorchLight(int entityId) {
+  const auto lightIt = entityHeldTorchLightHandles_.find(entityId);
+  if (lightIt == entityHeldTorchLightHandles_.end()) {
+    return;
+  }
+
+  if (lightIt->second != nullptr) {
+    destroyLightHandle(lightIt->second);
+  }
+  entityHeldTorchLightHandles_.erase(lightIt);
 }
 
 void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {

@@ -325,6 +325,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetFirstPersonHeldIt
   RemixRenderer::instance().setFirstPersonHeldItem(itemId);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetEntityHeldTorch(
+    JNIEnv*, jclass, jint entityId, jfloat worldX, jfloat worldY, jfloat worldZ, jint itemId) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetEntityHeldTorch");
+  RemixRenderer::instance().setEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
     JNIEnv*, jclass,
     jint boneIndex,

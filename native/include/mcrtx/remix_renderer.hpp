@@ -322,6 +322,7 @@ public:
   void beginDynamicEntity(int entityId);
   void setDynamicEntityTexture(const std::string& texturePath);
   void setFirstPersonHeldItem(int itemId);
+  void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
   void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
   void captureDynamicEntityQuad(
       float x0,
@@ -485,6 +486,7 @@ private:
   bool updateTorchLight(const TorchLightPlacement& placement);
   bool reconcileChunkTorchLights(ChunkMeshData& meshData, const std::vector<TorchLightPlacement>& desiredTorchLights);
   bool reconcileHeldItemTorchLight();
+  void destroyEntityHeldTorchLight(int entityId);
   bool rebuildCloudMesh(
       bool fancy,
       float cameraX,
@@ -643,6 +645,8 @@ private:
   std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};
   std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
   remixapi_LightHandle heldItemTorchLightHandle_ {nullptr};
+  std::unordered_map<int, remixapi_LightHandle> entityHeldTorchLightHandles_ {};
+  std::unordered_set<int> entityHeldTorchLightsSeenThisFrame_ {};
   int heldItemId_ {-1};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};

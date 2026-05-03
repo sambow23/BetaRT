@@ -154,6 +154,7 @@ constexpr std::uint64_t kParticleMeshHashSeed = 0x4D43525458505100ull;
 constexpr std::uint64_t kFireMeshHashSeed = 0x4D43525458465200ull;
 constexpr std::uint64_t kTorchLightHashSeed = 0x4D435254584C4954ull;
 constexpr std::uint64_t kHeldTorchLightHash = 0x4D4352545848544Cull;
+constexpr std::uint64_t kEntityHeldTorchLightHashSeed = 0x4D4352545845544Cull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 constexpr std::uint32_t kRtTextureArgNone = 0;
 constexpr std::uint32_t kRtTextureArgTexture = 1;

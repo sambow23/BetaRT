@@ -43,6 +43,7 @@ public final class ClientPatchTool {
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
     private static final String BASE_RENDERER_CLASS = "bw";
+    private static final String PLAYER_RENDERER_CLASS = "ds";
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
     private static final String MINECART_RENDERER_CLASS = "tb";
@@ -84,6 +85,8 @@ public final class ClientPatchTool {
                     content = patchTh(content);
                 } else if (entryName.equals(BASE_RENDERER_CLASS + ".class")) {
                     content = patchBw(content);
+                } else if (entryName.equals(PLAYER_RENDERER_CLASS + ".class")) {
+                    content = patchDs(content);
                 } else if (entryName.equals(FIRST_PERSON_RENDERER_CLASS + ".class")) {
                     content = patchRa(content);
                 } else if (entryName.equals(MODEL_PART_CLASS + ".class")) {
@@ -234,6 +237,16 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchDs(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lgs;F)V")) {
+                patchPlayerEquippedItemRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchRa(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
@@ -356,6 +369,23 @@ public final class ClientPatchTool {
 
     private static void patchFirstPersonItemRender(MethodNode method) {
         method.instructions.insertBefore(method.instructions.getFirst(), firstPersonItemRenderCall());
+    }
+
+    private static void patchPlayerEquippedItemRender(MethodNode method) {
+        int renderItemCallCount = 0;
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(FIRST_PERSON_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lls;Liz;)V")) {
+                renderItemCallCount += 1;
+                if (renderItemCallCount == 2) {
+                    method.instructions.insertBefore(node, playerEquippedItemRenderCall());
+                    return;
+                }
+            }
+        }
     }
 
     private static void patchTessellatorDraw(MethodNode method) {
@@ -983,6 +1013,20 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onFirstPersonItemRender",
                 "(Liz;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList playerEquippedItemRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 4));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onPlayerEquippedItemRenderStart",
+            "(Lgs;Liz;F)V",
                 false));
         return instructions;
     }

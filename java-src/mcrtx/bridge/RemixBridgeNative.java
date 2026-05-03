@@ -175,6 +175,8 @@ public final class RemixBridgeNative {
 
             public static native void nSetFirstPersonHeldItem(int itemId);
 
+            public static native void nSetEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
+
             public static native void nSetDynamicEntityBoneTransform(
                 int boneIndex,
                 float m00, float m01, float m02, float m03,

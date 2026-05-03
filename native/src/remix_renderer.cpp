@@ -410,6 +410,9 @@ void RemixRenderer::shutdownLocked() {
       destroyTorchLight(torchLights_.begin()->first);
     }
     destroyHeldItemTorchLight();
+    while (!entityHeldTorchLightHandles_.empty()) {
+      destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+    }
     destroyTerrainMaterials();
     {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Shutdown");
@@ -435,6 +438,8 @@ void RemixRenderer::shutdownLocked() {
   activeDynamicEntity_ = {};
   torchLights_.clear();
   heldItemTorchLightHandle_ = nullptr;
+  entityHeldTorchLightHandles_.clear();
+  entityHeldTorchLightsSeenThisFrame_.clear();
   heldItemId_ = -1;
   deferredMeshDestroys_.clear();
   deferredLightDestroys_.clear();
@@ -895,9 +900,28 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     return false;
   }
 
-  snapshot.torchLights.reserve(torchLights_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
+  for (auto lightIt = entityHeldTorchLightHandles_.begin(); lightIt != entityHeldTorchLightHandles_.end(); ) {
+    if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
+      ++lightIt;
+      continue;
+    }
+
+    if (lightIt->second != nullptr) {
+      destroyLightHandle(lightIt->second);
+    }
+    lightIt = entityHeldTorchLightHandles_.erase(lightIt);
+  }
+
+  snapshot.torchLights.reserve(
+      torchLights_.size() + entityHeldTorchLightHandles_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
   for (const auto& [position, lightHandle] : torchLights_) {
     (void)position;
+    if (lightHandle != nullptr) {
+      snapshot.torchLights.push_back(lightHandle);
+    }
+  }
+  for (const auto& [entityId, lightHandle] : entityHeldTorchLightHandles_) {
+    (void)entityId;
     if (lightHandle != nullptr) {
       snapshot.torchLights.push_back(lightHandle);
     }

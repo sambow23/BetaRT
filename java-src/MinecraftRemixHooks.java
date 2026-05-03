@@ -456,6 +456,15 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onPlayerEquippedItemRenderStart(gs player, iz itemStack, float partialTicks) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onPlayerEquippedItemRenderStart(player, itemStack, partialTicks);
+        } finally {
+            HookProfiler.endHook("hook.onPlayerEquippedItemRenderStart", __perf);
+        }
+    }
+
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
         long __perf = HookProfiler.begin();
         try {

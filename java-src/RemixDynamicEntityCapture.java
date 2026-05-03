@@ -17,6 +17,7 @@ public final class RemixDynamicEntityCapture {
     private static final int TORCH_BLOCK_ID = 50;
     private static final int REDSTONE_TORCH_OFF_BLOCK_ID = 75;
     private static final int REDSTONE_TORCH_ON_BLOCK_ID = 76;
+    private static final float ENTITY_HELD_TORCH_RIGHT_NUDGE = 0.18f;
     private static final float FONT_GLYPH_SIZE = 7.99f;
     private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
@@ -26,6 +27,7 @@ public final class RemixDynamicEntityCapture {
     private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final String TERRAIN_TEXTURE_PATH = "/terrain.png";
+    private static final String GUI_ITEMS_TEXTURE_PATH = "/gui/items.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final float[] firstPersonShadowOverlayInverse = new float[] {
@@ -510,15 +512,57 @@ public final class RemixDynamicEntityCapture {
             return;
         }
 
-        activeFirstPersonTexture = itemStack.c < 256 ? "/terrain.png" : "/gui/items.png";
+        activeFirstPersonTexture = texturePathForItem(itemStack);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
         MinecraftRenderHooks.setFirstPersonHeldItem(isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
+    }
+
+    public static void onPlayerEquippedItemRenderStart(gs player, iz itemStack, float partialTicks) {
+        if (!MinecraftRenderHooks.isInitialized() || player == null) {
+            return;
+        }
+
+        syncEntityHeldTorch(player, itemStack, partialTicks);
+        if (!dynamicEntityActive || itemStack == null) {
+            return;
+        }
+
+        onEntityTextureBind(texturePathForItem(itemStack), null);
     }
 
     private static boolean isTorchLikeHeldItem(int itemId) {
         return itemId == TORCH_BLOCK_ID
                 || itemId == REDSTONE_TORCH_ON_BLOCK_ID
                 || itemId == REDSTONE_TORCH_OFF_BLOCK_ID;
+    }
+
+    private static String texturePathForItem(iz itemStack) {
+        return itemStack.c < 256 ? TERRAIN_TEXTURE_PATH : GUI_ITEMS_TEXTURE_PATH;
+    }
+
+    private static void syncEntityHeldTorch(gs player, iz heldItem, float partialTicks) {
+        if (firstPersonShadowCaptureActive) {
+            return;
+        }
+
+        int itemId = heldItem != null && isTorchLikeHeldItem(heldItem.c) ? heldItem.c : NO_HELD_ITEM;
+        if (itemId == NO_HELD_ITEM) {
+            MinecraftRenderHooks.setEntityHeldTorch(player.aD, 0.0f, 0.0f, 0.0f, NO_HELD_ITEM);
+            return;
+        }
+
+        float[] modelView = captureModelViewMatrix();
+        if (modelView == null) {
+            return;
+        }
+
+        float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+        float[] handPosition = MatrixMath.transformPointColumnMajor(modelToWorld, 0.0f, 0.0f, 0.0f);
+        float interpolatedYaw = player.aU + (player.aS - player.aU) * partialTicks;
+        double yawRadians = Math.toRadians(interpolatedYaw);
+        handPosition[0] += (float) (-Math.cos(yawRadians)) * ENTITY_HELD_TORCH_RIGHT_NUDGE;
+        handPosition[2] += (float) (-Math.sin(yawRadians)) * ENTITY_HELD_TORCH_RIGHT_NUDGE;
+        MinecraftRenderHooks.setEntityHeldTorch(player.aD, handPosition[0], handPosition[1], handPosition[2], itemId);
     }
 
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
