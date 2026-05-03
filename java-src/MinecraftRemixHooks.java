@@ -20,8 +20,10 @@ public final class MinecraftRemixHooks {
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final int WINDOWS_VK_MENU = 0x12;
     private static final int WINDOWS_VK_X = 0x58;
+    private static final long REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS = 150_000_000L;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
     private static final boolean VERBOSE_LOGGING = detectVerboseLoggingEnabled();
+    private static final boolean VERBOSE_INPUT_LOGGING = detectVerboseInputLoggingEnabled();
     private static final boolean NATIVE_INPUT_BACKEND = detectNativeInputBackend();
 
     private static boolean loggedDisplayCreate;
@@ -30,6 +32,10 @@ public final class MinecraftRemixHooks {
     private static boolean loggedPlatformBackend;
     private static boolean remixUiOpen;
     private static boolean remixUiHotkeyHeld;
+    private static boolean remixUiHotkeyLocked;
+    private static boolean remixUiLastAltHotkeyDown;
+    private static boolean remixUiLastXHotkeyDown;
+    private static long remixUiHotkeyReleaseStartedNanos;
     private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
     private static long perfFrameCount;
     private static long perfTotalFrameNanos;
@@ -545,6 +551,10 @@ public final class MinecraftRemixHooks {
     private static void resetRemixUiTracking() {
         remixUiOpen = false;
         remixUiHotkeyHeld = false;
+        remixUiHotkeyLocked = false;
+        remixUiLastAltHotkeyDown = false;
+        remixUiLastXHotkeyDown = false;
+        remixUiHotkeyReleaseStartedNanos = 0L;
         preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
         MinecraftRenderHooks.setRemixUiInputActive(false);
     }
@@ -693,9 +703,53 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeConfig.isTruthyEnvironmentValue("MCRTX_VERBOSE_LOG");
     }
 
+    private static boolean detectVerboseInputLoggingEnabled() {
+        String value = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_VERBOSE_INPUT_LOG");
+        if (value == null || value.isEmpty()) {
+            value = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_VERBOSE_LOG");
+        }
+        return McrtxRuntimeConfig.isTruthyValue(value);
+    }
+
     private static boolean detectNativeInputBackend() {
         String configuredBackend = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_INPUT_BACKEND");
         return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
+    }
+
+    private static void logRemixUiHotkeyEvent(
+            String reason,
+            boolean altDown,
+            boolean xDown,
+            boolean hotkeyHeld,
+            boolean allowHotkeyToggle,
+            int uiState,
+            long nowNanos) {
+        if (!VERBOSE_INPUT_LOGGING) {
+            return;
+        }
+
+        String releaseAgeMillis = remixUiHotkeyReleaseStartedNanos == 0L
+                ? "-"
+                : formatMillis(Math.max(0L, nowNanos - remixUiHotkeyReleaseStartedNanos));
+        System.out.println(
+                "[mcrtx][ui-hotkey] "
+                        + reason
+                        + " alt="
+                        + altDown
+                        + " x="
+                        + xDown
+                        + " held="
+                        + hotkeyHeld
+                        + " prevHeld="
+                        + remixUiHotkeyHeld
+                        + " allowToggle="
+                        + allowHotkeyToggle
+                        + " locked="
+                        + remixUiHotkeyLocked
+                        + " releaseMs="
+                        + releaseAgeMillis
+                        + " uiState="
+                        + uiState);
     }
 
     private static boolean currentWindowActive() {
@@ -728,22 +782,51 @@ public final class MinecraftRemixHooks {
     private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {
         MinecraftPlatform platform = MinecraftPlatformRuntime.current();
         int uiState = MinecraftRenderHooks.getUiState();
+        boolean manualHotkeyToggleEnabled = allowHotkeyToggle && !NATIVE_INPUT_BACKEND;
         boolean altDown = isAltHotkeyDown(platform);
         boolean xDown = isXHotkeyDown(platform);
         boolean hotkeyHeld = altDown && xDown;
+        boolean hotkeyFullyReleased = !altDown && !xDown;
+        long nowNanos = System.nanoTime();
 
-        if (allowHotkeyToggle && hotkeyHeld && !remixUiHotkeyHeld) {
+        if (altDown != remixUiLastAltHotkeyDown || xDown != remixUiLastXHotkeyDown || hotkeyHeld != remixUiHotkeyHeld) {
+            logRemixUiHotkeyEvent("poll-change", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
+        }
+
+        if (!hotkeyFullyReleased) {
+            if (remixUiHotkeyReleaseStartedNanos != 0L) {
+                logRemixUiHotkeyEvent("release-cancelled", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
+            }
+            remixUiHotkeyReleaseStartedNanos = 0L;
+        }
+
+        if (manualHotkeyToggleEnabled && hotkeyHeld && !remixUiHotkeyHeld && !remixUiHotkeyLocked) {
             int targetState = uiState == MinecraftRenderHooks.REMIX_UI_STATE_NONE
                     ? preferredRemixUiState
                     : MinecraftRenderHooks.REMIX_UI_STATE_NONE;
             if (MinecraftRenderHooks.setUiState(targetState)) {
                 uiState = targetState;
+                remixUiHotkeyLocked = true;
+                logRemixUiHotkeyEvent("toggle-success", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
                 System.out.println("[mcrtx] Remix UI hotkey toggled state=" + uiState);
             } else {
+                logRemixUiHotkeyEvent("toggle-failed", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
                 System.out.println("[mcrtx] Remix UI hotkey failed: " + MinecraftRenderHooks.lastError());
+            }
+        } else if (manualHotkeyToggleEnabled && hotkeyHeld && !remixUiHotkeyHeld && remixUiHotkeyLocked) {
+            logRemixUiHotkeyEvent("suppressed-rising-edge", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
+        } else if (hotkeyFullyReleased && remixUiHotkeyLocked) {
+            if (remixUiHotkeyReleaseStartedNanos == 0L) {
+                remixUiHotkeyReleaseStartedNanos = nowNanos;
+                logRemixUiHotkeyEvent("release-timer-start", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
+            } else if (nowNanos - remixUiHotkeyReleaseStartedNanos >= REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS) {
+                remixUiHotkeyLocked = false;
+                logRemixUiHotkeyEvent("release-unlocked", altDown, xDown, hotkeyHeld, manualHotkeyToggleEnabled, uiState, nowNanos);
             }
         }
 
+        remixUiLastAltHotkeyDown = altDown;
+        remixUiLastXHotkeyDown = xDown;
         remixUiHotkeyHeld = hotkeyHeld;
         if (uiState != MinecraftRenderHooks.REMIX_UI_STATE_NONE) {
             preferredRemixUiState = uiState;
@@ -755,7 +838,7 @@ public final class MinecraftRemixHooks {
             if (uiOpen) {
                 minecraft.h();
             } else if (remixUiOpen && minecraft.r == null) {
-                minecraft.g();
+                MinecraftRenderHooks.restoreIngameFocusIfNeeded();
             }
         }
 

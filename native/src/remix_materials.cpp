@@ -20,6 +20,55 @@
 namespace mcrtx {
 
 using namespace mcrtx::detail;
+
+namespace {
+
+struct OptionalPbrTextures {
+  std::filesystem::path normal {};
+  std::filesystem::path roughness {};
+  std::filesystem::path metallic {};
+};
+
+const wchar_t* optionalTexturePath(const std::filesystem::path& path) {
+  return path.empty() ? nullptr : path.c_str();
+}
+
+std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& texturePath, const wchar_t* suffix) {
+  if (texturePath.empty()) {
+    return {};
+  }
+
+  const std::filesystem::path parentPath = texturePath.parent_path();
+  const std::wstring stemWithSuffix = texturePath.stem().wstring() + suffix;
+  for (const wchar_t* extension : {L".dds", L".png"}) {
+    std::filesystem::path candidatePath = parentPath / stemWithSuffix;
+    candidatePath.replace_extension(extension);
+    if (std::filesystem::exists(candidatePath)) {
+      return candidatePath;
+    }
+  }
+
+  return {};
+}
+
+OptionalPbrTextures resolveOptionalPbrTextures(const std::filesystem::path& texturePath) {
+  return {
+      resolveOptionalPbrSibling(texturePath, L"_normal"),
+      resolveOptionalPbrSibling(texturePath, L"_roughness"),
+      resolveOptionalPbrSibling(texturePath, L"_metallic")};
+}
+
+void applyOptionalPbrTextures(
+    remixapi_MaterialInfo& materialInfo,
+    remixapi_MaterialInfoOpaqueEXT& opaqueInfo,
+    const OptionalPbrTextures& pbrTextures) {
+  materialInfo.normalTexture = optionalTexturePath(pbrTextures.normal);
+  opaqueInfo.roughnessTexture = optionalTexturePath(pbrTextures.roughness);
+  opaqueInfo.metallicTexture = optionalTexturePath(pbrTextures.metallic);
+}
+
+}  // namespace
+
 std::filesystem::path RemixRenderer::resolveRemixDllPath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
@@ -386,14 +435,18 @@ bool RemixRenderer::initializeTerrainMaterials() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::initializeTerrainMaterials");
   destroyTerrainMaterials();
   terrainAtlasPath_ = resolveTerrainAtlasPath();
+  const OptionalPbrTextures terrainPbrTextures = resolveOptionalPbrTextures(terrainAtlasPath_);
   terrainEmissiveTexturePath_ = resolveTerrainEmissiveTexturePath();
   cloudTexturePath_ = resolveCloudTexturePath();
   fireTexturePath_ = resolveFireTexturePath();
   waterTexturePath_ = resolveWaterTexturePath();
   lavaTexturePath_ = resolveLavaTexturePath();
+  const OptionalPbrTextures lavaPbrTextures = resolveOptionalPbrTextures(lavaTexturePath_);
   portalTexturePath_ = resolvePortalTexturePath();
   lavaEmissiveTexturePath_ = resolveLavaEmissiveTexturePath();
   redstoneEmissiveTexturePath_ = resolveRedstoneEmissiveTexturePath();
+  const OptionalPbrTextures firePbrTextures = resolveOptionalPbrTextures(fireTexturePath_);
+  const OptionalPbrTextures cloudPbrTextures = resolveOptionalPbrTextures(cloudTexturePath_);
   if (terrainAtlasPath_.empty()) {
     log("Terrain atlas asset not found; continuing without Remix materials");
     return false;
@@ -414,7 +467,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
                                        remixapi_Float3D emissiveColor,
                                        std::uint8_t spriteSheetColumns,
                                        std::uint8_t spriteSheetRows,
-                                       std::uint8_t spriteSheetFps) {
+                                       std::uint8_t spriteSheetFps,
+                                       const OptionalPbrTextures& pbrTextures) {
     remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
     remixapi_MaterialInfoTranslucentEXT translucentInfo {};
     void* pNext = nullptr;
@@ -454,6 +508,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
     materialInfo.filterMode = 0;
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
+    if (!isTranslucent) {
+      applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+    }
 
     remixapi_MaterialHandle materialHandle = nullptr;
     const remixapi_ErrorCode result = [&]() {
@@ -494,7 +551,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
       terrainEmissiveColor,
       0,
       0,
-      0);
+        0,
+        terrainPbrTextures);
   const bool cutoutCreated = createTerrainMaterial(
       kCutoutTerrainMaterialClass,
       true,
@@ -510,7 +568,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
       terrainEmissiveColor,
       0,
       0,
-      0);
+      0,
+      terrainPbrTextures);
       const bool poweredRedstoneCreated = createTerrainMaterial(
         kPoweredRedstoneTerrainMaterialClass,
         true,
@@ -526,7 +585,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
         redstoneEmissiveTexturePath_.empty() ? remixapi_Float3D {0.0f, 0.0f, 0.0f} : kTerrainEmissiveColor,
         0,
         0,
-        0);
+        0,
+        terrainPbrTextures);
   const bool waterCreated = !waterTexturePath_.empty() && createTerrainMaterial(
       kWaterTerrainMaterialClass,
       false,
@@ -542,7 +602,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
       {0.0f, 0.0f, 0.0f},
       kLiquidAnimationFrameCount,
       1,
-      kLiquidAnimationFramesPerSecond);
+        kLiquidAnimationFramesPerSecond,
+        {});
   const bool lavaCreated = !lavaTexturePath_.empty() && createTerrainMaterial(
       kLavaTerrainMaterialClass,
       false,
@@ -558,7 +619,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kLavaEmissiveColor,
       kLiquidAnimationFrameCount,
       1,
-      kLiquidAnimationFramesPerSecond);
+      kLiquidAnimationFramesPerSecond,
+      lavaPbrTextures);
       const bool iceCreated = createTerrainMaterial(
         kIceTerrainMaterialClass,
         false,
@@ -574,7 +636,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
         {0.0f, 0.0f, 0.0f},
         0,
         0,
-        0);
+        0,
+        {});
   const bool portalCreated = !portalTexturePath_.empty() && createTerrainMaterial(
       kPortalTerrainMaterialClass,
       false,
@@ -590,9 +653,19 @@ bool RemixRenderer::initializeTerrainMaterials() {
       kPortalEmissiveColor,
       kPortalAnimationFrameCount,
       1,
-      kPortalAnimationFramesPerSecond);
+      kPortalAnimationFramesPerSecond,
+      {});
   if (opaqueCreated) {
     log("Initialized terrain atlas materials from " + terrainAtlasPath_.string());
+  }
+  if (!terrainPbrTextures.normal.empty()) {
+    log("Terrain normal map loaded from " + terrainPbrTextures.normal.string());
+  }
+  if (!terrainPbrTextures.roughness.empty()) {
+    log("Terrain roughness map loaded from " + terrainPbrTextures.roughness.string());
+  }
+  if (!terrainPbrTextures.metallic.empty()) {
+    log("Terrain metallic map loaded from " + terrainPbrTextures.metallic.string());
   }
   if (!terrainEmissiveTexturePath_.empty()) {
     log("Terrain emissive map loaded from " + terrainEmissiveTexturePath_.string());
@@ -662,6 +735,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     fireMaterialInfo.filterMode = 0;
     fireMaterialInfo.wrapModeU = 1;
     fireMaterialInfo.wrapModeV = 1;
+    applyOptionalPbrTextures(fireMaterialInfo, fireOpaqueInfo, firePbrTextures);
 
     const remixapi_ErrorCode fireResult = [&]() {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.fire");
@@ -700,6 +774,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   cloudMaterialInfo.filterMode = 0;
   cloudMaterialInfo.wrapModeU = 1;
   cloudMaterialInfo.wrapModeV = 1;
+  applyOptionalPbrTextures(cloudMaterialInfo, cloudOpaqueInfo, cloudPbrTextures);
 
   const remixapi_ErrorCode cloudResult = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.cloud");
@@ -810,6 +885,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   const remixapi_Float3D emissiveColor = emissiveTexture == nullptr
       ? remixapi_Float3D {0.0f, 0.0f, 0.0f}
       : kTerrainEmissiveColor;
+  const OptionalPbrTextures pbrTextures = resolveOptionalPbrTextures(resolvedTexturePath);
 
   remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
   opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
@@ -832,6 +908,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   materialInfo.filterMode = 0;
   materialInfo.wrapModeU = 1;
   materialInfo.wrapModeV = 1;
+  applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
 
   remixapi_MaterialHandle materialHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
@@ -862,6 +939,7 @@ remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t tex
   if (resolvedTexturePath.empty()) {
     return nullptr;
   }
+  const OptionalPbrTextures pbrTextures = resolveOptionalPbrTextures(resolvedTexturePath);
 
   remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
   opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
@@ -883,6 +961,7 @@ remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t tex
   materialInfo.filterMode = 0;
   materialInfo.wrapModeU = 1;
   materialInfo.wrapModeV = 1;
+  applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
 
   remixapi_MaterialHandle materialHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {

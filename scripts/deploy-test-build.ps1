@@ -14,7 +14,7 @@ param(
     [switch]$Build,
     [switch]$Restore,
     [switch]$OverwriteAssets,
-    [double]$NoCullDistance = 20,
+    [double]$NoCullDistance = 40,
     [switch]$ForceRequestedLaunchConfig,
     [switch]$VerboseInputLogging
 )

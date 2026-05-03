@@ -97,8 +97,14 @@ public final class MinecraftRenderHooks {
             return false;
         }
 
+        if (RemixBridgeNative.isAvailable()) {
+            long hwnd = MinecraftPlatformRuntime.current().resolveCurrentWindowHandle();
+            if (hwnd != 0L) {
+                RemixBridgeNative.nFocusWindow(hwnd);
+            }
+        }
         currentMinecraft.g();
-        return true;
+        return currentMinecraft.N;
     }
 
     public static synchronized void setRemixUiInputActive(boolean active) {
