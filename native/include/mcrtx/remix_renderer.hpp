@@ -480,6 +480,7 @@ private:
   void destroyTerrainMaterials();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
+  bool createPrimingMesh();
   remixapi_MaterialHandle acquireDynamicEntityMaterial(const std::string& texturePath);
   remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
   bool createTorchLight(const TorchLightPlacement& placement);
@@ -639,6 +640,7 @@ private:
   std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
+  remixapi_MeshHandle primingMeshHandle_ {nullptr};
   int evictRadiusChunks_ {20};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};

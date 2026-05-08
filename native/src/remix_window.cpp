@@ -58,6 +58,98 @@ void syncNativeCursorVisibility(HWND mouseWindow, bool hidden) {
   }
 }
 
+  std::string formatWindowHandle(HWND window) {
+    std::ostringstream stream;
+    stream << "0x" << std::hex << reinterpret_cast<std::uintptr_t>(window) << std::dec;
+    return stream.str();
+  }
+
+  std::string describeWindow(HWND window) {
+    if (window == nullptr) {
+      return "<null>";
+    }
+
+    std::ostringstream stream;
+    stream << formatWindowHandle(window);
+    if (!IsWindow(window)) {
+      stream << " invalid";
+      return stream.str();
+    }
+
+    char className[128] {};
+    char title[256] {};
+    GetClassNameA(window, className, static_cast<int>(std::size(className)));
+    GetWindowTextA(window, title, static_cast<int>(std::size(title)));
+
+    DWORD processId = 0;
+    const DWORD threadId = GetWindowThreadProcessId(window, &processId);
+    const HWND rootWindow = GetAncestor(window, GA_ROOT);
+    const HWND ownerWindow = GetWindow(window, GW_OWNER);
+
+    stream << " class='" << className << "'";
+    if (title[0] != '\0') {
+      stream << " title='" << title << "'";
+    }
+    stream << " pid=" << processId << " tid=" << threadId;
+    if (rootWindow != nullptr && rootWindow != window) {
+      stream << " root=" << formatWindowHandle(rootWindow);
+    }
+    if (ownerWindow != nullptr) {
+      stream << " owner=" << formatWindowHandle(ownerWindow);
+    }
+    return stream.str();
+  }
+
+  std::string describeStartupWindowHandoff(const char* phase, HWND sourceWindow, HWND outputWindow) {
+    std::ostringstream stream;
+    stream << "Startup window handoff " << phase
+           << ": source=" << describeWindow(sourceWindow)
+           << " output=" << describeWindow(outputWindow)
+           << " foreground=" << describeWindow(GetForegroundWindow());
+    return stream.str();
+  }
+
+  void bringWindowToForeground(HWND window) {
+    if (window == nullptr || !IsWindow(window)) {
+      return;
+    }
+
+    const HWND rootWindow = GetAncestor(window, GA_ROOT);
+    const HWND targetWindow = rootWindow != nullptr ? rootWindow : window;
+    const HWND foregroundWindow = GetForegroundWindow();
+    const DWORD currentThreadId = GetCurrentThreadId();
+    const DWORD foregroundThreadId = foregroundWindow != nullptr
+        ? GetWindowThreadProcessId(foregroundWindow, nullptr)
+        : 0;
+    const bool attachedInput = foregroundThreadId != 0 && foregroundThreadId != currentThreadId
+        && AttachThreadInput(foregroundThreadId, currentThreadId, TRUE);
+
+    ShowWindow(targetWindow, SW_SHOW);
+    BringWindowToTop(targetWindow);
+    SetForegroundWindow(targetWindow);
+    SetActiveWindow(targetWindow);
+    SetFocus(targetWindow);
+
+    if (attachedInput) {
+      AttachThreadInput(foregroundThreadId, currentThreadId, FALSE);
+    }
+  }
+
+  void raiseOverlayWindow(HWND window) {
+    if (window == nullptr || !IsWindow(window)) {
+      return;
+    }
+
+    SetWindowPos(
+        window,
+        HWND_TOPMOST,
+        0,
+        0,
+        0,
+        0,
+        SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_SHOWWINDOW);
+  }
+
 }  // namespace
 
 bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
@@ -144,6 +236,20 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   }
   ShowWindow(outputHwnd_, (standaloneOutputWindow_ || singleNativeOutputWindow_) ? SW_SHOW : SW_SHOWNOACTIVATE);
   UpdateWindow(outputHwnd_);
+  if (overlayOutputWindow_) {
+    log(describeStartupWindowHandoff("before", sourceHwnd, outputHwnd_));
+    bringWindowToForeground(sourceHwnd);
+    raiseOverlayWindow(outputHwnd_);
+    log(describeStartupWindowHandoff("after", sourceHwnd, outputHwnd_));
+  } else if (singleNativeOutputWindow_) {
+    log(describeStartupWindowHandoff("before", sourceHwnd, outputHwnd_));
+    bringWindowToForeground(outputHwnd_);
+    log(describeStartupWindowHandoff("after", sourceHwnd, outputHwnd_));
+  } else if (!standaloneOutputWindow_ && !singleNativeOutputWindow_) {
+    log(describeStartupWindowHandoff("before", sourceHwnd, outputHwnd_));
+    bringWindowToForeground(outputHwnd_);
+    log(describeStartupWindowHandoff("after", sourceHwnd, outputHwnd_));
+  }
   log(overlayOutputWindow_
       ? "Created Remix client-area overlay window"
       : (singleNativeOutputWindow_

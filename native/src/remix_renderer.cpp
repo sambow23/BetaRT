@@ -208,6 +208,7 @@ bool RemixRenderer::initialize(
   applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
+  createPrimingMesh();
 
   initialized_ = true;
   log(overlayOutputWindow_
@@ -290,6 +291,7 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
   applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
+  createPrimingMesh();
   {
     std::unique_lock<std::mutex> lock(mutex_);
     initialized_ = true;
@@ -405,6 +407,7 @@ void RemixRenderer::shutdownLocked() {
     destroyFireMesh();
     destroyDestroyOverlayMesh();
     destroyParticleMesh();
+    destroyMeshHandle(primingMeshHandle_);
     destroyDynamicEntityMeshes();
     while (!torchLights_.empty()) {
       destroyTorchLight(torchLights_.begin()->first);
@@ -933,6 +936,9 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
   if (!snapshot.hasScene()) {
     logNoCapturedScene = presentedFrames_ < 4;
+    if (primingMeshHandle_ != nullptr) {
+      renderSubmissionInFlight_ = true;
+    }
     return true;
   }
 
@@ -1187,8 +1193,97 @@ bool RemixRenderer::startup(HWND hwnd) {
   return true;
 }
 
+bool RemixRenderer::createPrimingMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::createPrimingMesh");
+
+  destroyMeshHandle(primingMeshHandle_);
+
+  const remixapi_MaterialHandle materialHandle = terrainMaterialHandles_[kOpaqueTerrainMaterialClass];
+  if (materialHandle == nullptr) {
+    log("Skipping priming mesh creation because the opaque terrain material is unavailable");
+    return false;
+  }
+
+  constexpr std::uint64_t kPrimingMeshHash = 0x5052494D494E4700ull;
+  const auto makePrimingVertex = [](float x, float y, float z, float u, float v) {
+    remixapi_HardcodedVertex vertex {};
+    vertex.position[0] = x;
+    vertex.position[1] = y;
+    vertex.position[2] = z;
+    vertex.normal[0] = 0.0f;
+    vertex.normal[1] = 1.0f;
+    vertex.normal[2] = 0.0f;
+    vertex.texcoord[0] = u;
+    vertex.texcoord[1] = v;
+    vertex.color = 0xffffffffu;
+    return vertex;
+  };
+  const std::array<remixapi_HardcodedVertex, 3> kPrimingVertices {
+      makePrimingVertex(0.0f, 0.0f, 0.0f, 0.0f, 0.0f),
+      makePrimingVertex(0.01f, 0.0f, 0.0f, 1.0f, 0.0f),
+      makePrimingVertex(0.0f, 0.0f, 0.01f, 0.0f, 1.0f),
+  };
+  constexpr std::array<std::uint32_t, 3> kPrimingIndices {0u, 1u, 2u};
+
+  remixapi_MeshInfoSurfaceTriangles surfaceInfo {};
+  surfaceInfo.vertices_values = kPrimingVertices.data();
+  surfaceInfo.vertices_count = kPrimingVertices.size();
+  surfaceInfo.indices_values = kPrimingIndices.data();
+  surfaceInfo.indices_count = kPrimingIndices.size();
+  surfaceInfo.skinning_hasvalue = FALSE;
+  surfaceInfo.material = materialHandle;
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = kPrimingMeshHash;
+  meshInfo.surfaces_values = &surfaceInfo;
+  meshInfo.surfaces_count = 1;
+
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.priming");
+    return remix_.CreateMesh(&meshInfo, &primingMeshHandle_);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    primingMeshHandle_ = nullptr;
+    log("Failed to create priming mesh: " + errorCodeToString(result));
+    return false;
+  }
+
+  log("Created priming mesh for empty-scene overlay presentation");
+  return true;
+}
+
 bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::drawCapturedGeometry");
+  if (!snapshot.hasScene() && primingMeshHandle_ != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = primingMeshHandle_;
+    instanceInfo.transform = makeTranslationTransform(0.0f, -10000.0f, 0.0f);
+    instanceInfo.doubleSided = FALSE;
+
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.priming");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance(priming) failed: " + errorCodeToString(result));
+      return false;
+    }
+  }
+
   for (const ChunkRenderInstance& chunkInstance : snapshot.chunkMeshes) {
     if (chunkInstance.meshHandle == nullptr) {
       continue;
