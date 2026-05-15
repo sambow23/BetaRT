@@ -10,6 +10,10 @@ public final class RemixParticleCapture {
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final int WEATHER_TEXTURE_KIND_NONE = -1;
     private static final int WEATHER_TEXTURE_KIND_RAIN = 4;
+    private static final float PARTICLE_TEXTURE_GRID_SIZE = 16.0f;
+    private static final float PARTICLE_UV_SIZE = 0.0624375f;
+    private static final float ANIMATED_PARTICLE_UV_SIZE = 0.015609375f;
+    private static final float ANIMATED_PARTICLE_FRAME_DIVISOR = 4.0f;
     private static final String RAIN_TEXTURE_PATH = "/environment/rain.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
@@ -28,47 +32,120 @@ public final class RemixParticleCapture {
     }
 
     public static void onParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
-        if (!MinecraftRenderHooks.isInitialized() || particle == null) {
+        int textureKind = validateParticleTextureKind(particle);
+        if (textureKind == WEATHER_TEXTURE_KIND_NONE) {
             return;
+        }
+
+        float minU = (float) (particle.b % 16) / PARTICLE_TEXTURE_GRID_SIZE;
+        float maxU = minU + PARTICLE_UV_SIZE;
+        float minV = (float) (particle.b / 16) / PARTICLE_TEXTURE_GRID_SIZE;
+        float maxV = minV + PARTICLE_UV_SIZE;
+        captureParticleQuad(
+                particle,
+                partialTicks,
+                f3,
+                f4,
+                f5,
+                f6,
+                f7,
+                maxU,
+                maxV,
+                maxU,
+                minV,
+                minU,
+                minV,
+                minU,
+                maxV,
+                textureKind);
+    }
+
+    public static void onAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+        int textureKind = validateParticleTextureKind(particle);
+        if (textureKind == WEATHER_TEXTURE_KIND_NONE) {
+            return;
+        }
+
+        float minU = ((float) (particle.b % 16) + particle.c / ANIMATED_PARTICLE_FRAME_DIVISOR) / PARTICLE_TEXTURE_GRID_SIZE;
+        float maxU = minU + ANIMATED_PARTICLE_UV_SIZE;
+        float minV = ((float) (particle.b / 16) + particle.d / ANIMATED_PARTICLE_FRAME_DIVISOR) / PARTICLE_TEXTURE_GRID_SIZE;
+        float maxV = minV + ANIMATED_PARTICLE_UV_SIZE;
+        captureParticleQuad(
+                particle,
+                partialTicks,
+                f3,
+                f4,
+                f5,
+                f6,
+                f7,
+                minU,
+                maxV,
+                minU,
+                minV,
+                maxU,
+                minV,
+                maxU,
+                maxV,
+                textureKind);
+    }
+
+    private static int validateParticleTextureKind(xw particle) {
+        if (!MinecraftRenderHooks.isInitialized() || particle == null) {
+            return WEATHER_TEXTURE_KIND_NONE;
         }
 
         int textureKind = particle.c_();
         if (textureKind < 0 || textureKind > 3) {
-            return;
+            return WEATHER_TEXTURE_KIND_NONE;
         }
 
-        float minU = (float) (particle.b % 16) / 16.0f;
-        float maxU = minU + 0.0624375f;
-        float minV = (float) (particle.b / 16) / 16.0f;
-        float maxV = minV + 0.0624375f;
+        return textureKind;
+    }
+
+    private static void captureParticleQuad(
+            xw particle,
+            float partialTicks,
+            float f3,
+            float f4,
+            float f5,
+            float f6,
+            float f7,
+            float p0u,
+            float p0v,
+            float p1u,
+            float p1v,
+            float p2u,
+            float p2v,
+            float p3u,
+            float p3v,
+            int textureKind) {
         float particleScale = 0.1f * particle.g;
         float originX = (float) (particle.aJ + (particle.aM - particle.aJ) * (double) partialTicks);
         float originY = (float) (particle.aK + (particle.aN - particle.aK) * (double) partialTicks);
         float originZ = (float) (particle.aL + (particle.aO - particle.aL) * (double) partialTicks);
-        float brightness = particle.a(partialTicks);
-        int colorRgba = ColorMath.packColor(particle.i * brightness, particle.j * brightness, particle.k * brightness, 1.0f);
+        int colorRgba = ColorMath.packColor(particle.i, particle.j, particle.k, 1.0f);
 
         MinecraftRenderHooks.captureParticleQuad(
                 originX - f3 * particleScale - f6 * particleScale,
                 originY - f4 * particleScale,
                 originZ - f5 * particleScale - f7 * particleScale,
-                maxU,
-                maxV,
+            p0u,
+            p0v,
                 originX - f3 * particleScale + f6 * particleScale,
                 originY + f4 * particleScale,
                 originZ - f5 * particleScale + f7 * particleScale,
-                maxU,
-                minV,
+            p1u,
+            p1v,
                 originX + f3 * particleScale + f6 * particleScale,
                 originY + f4 * particleScale,
                 originZ + f5 * particleScale + f7 * particleScale,
-                minU,
-                minV,
+            p2u,
+            p2v,
                 originX + f3 * particleScale - f6 * particleScale,
                 originY - f4 * particleScale,
                 originZ + f5 * particleScale - f7 * particleScale,
-                minU,
-                maxV,
+            p3u,
+            p3v,
                 colorRgba,
                 textureKind);
     }

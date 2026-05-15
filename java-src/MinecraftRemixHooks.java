@@ -348,6 +348,15 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixParticleCapture.onAnimatedParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+        } finally {
+            HookProfiler.endHook("hook.onAnimatedParticleRender", __perf);
+        }
+    }
+
     public static void onLivingEntityRenderStart(sn entity) {
         long __perf = HookProfiler.begin();
         try {

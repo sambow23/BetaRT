@@ -39,6 +39,8 @@ public final class ClientPatchTool {
     private static final String MODEL_PART_CLASS = "ps";
     private static final String TESSELLATOR_CLASS = "nw";
     private static final String PARTICLE_CLASS = "xw";
+    private static final String BLOCK_PARTICLE_CLASS = "qm";
+    private static final String ITEM_PARTICLE_CLASS = "pb";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
@@ -94,7 +96,10 @@ public final class ClientPatchTool {
                 } else if (entryName.equals(TESSELLATOR_CLASS + ".class")) {
                     content = patchNw(content);
                 } else if (entryName.equals(PARTICLE_CLASS + ".class")) {
-                    content = patchXw(content);
+                    content = patchParticle(content, "onParticleRender");
+                } else if (entryName.equals(BLOCK_PARTICLE_CLASS + ".class")
+                        || entryName.equals(ITEM_PARTICLE_CLASS + ".class")) {
+                    content = patchParticle(content, "onAnimatedParticleRender");
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
                 } else if (entryName.equals(MINECART_RENDERER_CLASS + ".class")) {
@@ -281,11 +286,11 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
-    private static byte[] patchXw(byte[] content) {
+    private static byte[] patchParticle(byte[] content, String helperMethodName) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall());
+                method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall(helperMethodName));
             }
         }
         return writeClass(classNode);
@@ -1066,7 +1071,7 @@ public final class ClientPatchTool {
         return instructions;
     }
 
-    private static InsnList particleRenderCall() {
+    private static InsnList particleRenderCall(String helperMethodName) {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
@@ -1078,7 +1083,7 @@ public final class ClientPatchTool {
         instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
-                "onParticleRender",
+            helperMethodName,
                 "(Lxw;FFFFFF)V",
                 false));
         return instructions;
