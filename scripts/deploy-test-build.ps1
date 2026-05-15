@@ -31,6 +31,41 @@ function Get-FileHashString {
     return (Get-FileHash -Algorithm SHA256 -Path $Path).Hash
 }
 
+function Sync-DirectoryFiles {
+    param(
+        [string]$SourcePath,
+        [string]$DestinationPath
+    )
+
+    $destinationRoot = $DestinationPath
+    New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
+
+    $sourceFiles = Get-ChildItem -Path $SourcePath -Recurse -File
+    $relativePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
+    $trimChars = [char[]]@('\', '/')
+
+    foreach ($sourceFile in $sourceFiles) {
+        $relativePath = $sourceFile.FullName.Substring($SourcePath.Length).TrimStart($trimChars)
+        $relativePaths.Add($relativePath) | Out-Null
+
+        $targetFilePath = Join-Path $destinationRoot $relativePath
+        $destinationDir = Split-Path $targetFilePath -Parent
+        if ($destinationDir -and -not (Test-Path $destinationDir)) {
+            New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
+        }
+
+        Copy-Item $sourceFile.FullName $targetFilePath -Force
+    }
+
+    $destinationFiles = Get-ChildItem -Path $destinationRoot -Recurse -File
+    foreach ($destinationFile in $destinationFiles) {
+        $relativePath = $destinationFile.FullName.Substring($destinationRoot.Length).TrimStart($trimChars)
+        if (-not $relativePaths.Contains($relativePath)) {
+            Remove-Item $destinationFile.FullName -Force
+        }
+    }
+}
+
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 if (-not $BundleRoot) {
     $BundleRoot = Join-Path $repoRoot "out\patched-client"
@@ -721,21 +756,8 @@ foreach ($assetsTarget in @($sharedAssetsDir, $instanceAssetsDir)) {
         }
     }
 
-    if ($PSCmdlet.ShouldProcess($assetsTarget, "Deploy mcrtx atlas assets (preserving existing files)")) {
-        New-Item -ItemType Directory -Force -Path $assetsTarget | Out-Null
-        $sourceItems = Get-ChildItem -Path $bundleAssetsDir -Recurse -File
-        foreach ($sourceItem in $sourceItems) {
-            $relativePath = $sourceItem.FullName.Substring($bundleAssetsDir.Length).TrimStart('\', '/')
-            $destinationPath = Join-Path $assetsTarget $relativePath
-            if (-not $OverwriteAssets -and (Test-Path $destinationPath)) {
-                continue
-            }
-            $destinationDir = Split-Path $destinationPath -Parent
-            if ($destinationDir -and -not (Test-Path $destinationDir)) {
-                New-Item -ItemType Directory -Force -Path $destinationDir | Out-Null
-            }
-            Copy-Item $sourceItem.FullName $destinationPath -Force
-        }
+    if ($PSCmdlet.ShouldProcess($assetsTarget, "Sync mcrtx atlas assets")) {
+        Sync-DirectoryFiles -SourcePath $bundleAssetsDir -DestinationPath $assetsTarget
     }
 }
 
