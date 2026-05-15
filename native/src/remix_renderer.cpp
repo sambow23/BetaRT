@@ -1453,6 +1453,16 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   if (snapshot.destroyOverlayMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.alphaTestEnabled = TRUE;
+    blendInfo.alphaTestReferenceValue = 1;
+    blendInfo.alphaTestCompareOp = 4;
+    blendInfo.alphaBlendEnabled = TRUE;
+    blendInfo.srcColorBlendFactor = 6;
+    blendInfo.dstColorBlendFactor = 7;
+    blendInfo.colorBlendOp = 0;
+    blendInfo.srcAlphaBlendFactor = 1;
+    blendInfo.dstAlphaBlendFactor = 0;
+    blendInfo.alphaBlendOp = 0;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
     blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
     blendInfo.textureColorOperation = kRtTextureOpModulate;

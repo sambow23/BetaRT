@@ -29,6 +29,41 @@ struct OptionalPbrTextures {
   std::filesystem::path metallic {};
 };
 
+bool prefersDdsTerrainAtlas() {
+  const std::string configuredPreference = readEnvironmentVariable("MCRTX_TERRAIN_ATLAS_SOURCE");
+  if (configuredPreference.empty()) {
+    return true;
+  }
+
+  std::string normalizedPreference;
+  normalizedPreference.reserve(configuredPreference.size());
+  for (const unsigned char ch : configuredPreference) {
+    normalizedPreference.push_back(static_cast<char>(std::tolower(ch)));
+  }
+
+  return normalizedPreference == "dds";
+}
+
+void appendAtlasCandidates(
+    std::vector<std::filesystem::path>& attemptedPaths,
+    const std::filesystem::path& baseDirectory,
+    const wchar_t* stem,
+    bool preferDds) {
+  if (baseDirectory.empty()) {
+    return;
+  }
+
+  const std::filesystem::path ddsPath = baseDirectory / (std::wstring(stem) + L".dds");
+  const std::filesystem::path pngPath = baseDirectory / (std::wstring(stem) + L".png");
+  if (preferDds) {
+    attemptedPaths.push_back(ddsPath);
+    attemptedPaths.push_back(pngPath);
+  } else {
+    attemptedPaths.push_back(pngPath);
+    attemptedPaths.push_back(ddsPath);
+  }
+}
+
 const wchar_t* optionalTexturePath(const std::filesystem::path& path) {
   return path.empty() ? nullptr : path.c_str();
 }
@@ -110,19 +145,16 @@ std::filesystem::path RemixRenderer::resolveRemixDllPath() {
 
 std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
   std::vector<std::filesystem::path> attemptedPaths;
+  const bool preferDds = prefersDdsTerrainAtlas();
 
   const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
   if (!moduleDirectory.empty()) {
-    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain.dds");
-    attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / L"terrain.png");
-    attemptedPaths.push_back(moduleDirectory / L"terrain.dds");
-    attemptedPaths.push_back(moduleDirectory / L"terrain.png");
+    appendAtlasCandidates(attemptedPaths, moduleDirectory / L"mcrtx_assets", L"terrain", preferDds);
+    appendAtlasCandidates(attemptedPaths, moduleDirectory, L"terrain", preferDds);
   }
 
-  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain.dds");
-  attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_assets" / L"terrain.png");
-  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain.dds");
-  attemptedPaths.push_back(std::filesystem::current_path() / L"terrain.png");
+  appendAtlasCandidates(attemptedPaths, std::filesystem::current_path() / L"mcrtx_assets", L"terrain", preferDds);
+  appendAtlasCandidates(attemptedPaths, std::filesystem::current_path(), L"terrain", preferDds);
 
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {
@@ -452,6 +484,10 @@ bool RemixRenderer::initializeTerrainMaterials() {
     return false;
   }
 
+  log(
+      std::string("Terrain atlas selected: ") + terrainAtlasPath_.string()
+      + " sourcePreference=" + (prefersDdsTerrainAtlas() ? std::string("dds") : std::string("png")));
+
   const auto createTerrainMaterial = [this](
                                        std::size_t materialClass,
                                        bool cutout,
@@ -523,6 +559,13 @@ bool RemixRenderer::initializeTerrainMaterials() {
     }
 
     terrainMaterialHandles_[materialClass] = materialHandle;
+    if (cutout && !isTranslucent) {
+      log(
+          std::string("Initialized cutout terrain material from ") + texturePath.string()
+          + " alphaTestType=" + std::to_string(opaqueInfo.alphaTestType)
+          + " alphaReferenceValue=" + std::to_string(opaqueInfo.alphaReferenceValue)
+          + " useDrawCallAlphaState=" + (opaqueInfo.useDrawCallAlphaState == TRUE ? std::string("true") : std::string("false")));
+    }
     return true;
   };
 
@@ -570,6 +613,40 @@ bool RemixRenderer::initializeTerrainMaterials() {
       0,
       0,
       terrainPbrTextures);
+  remixapi_MaterialInfoOpaqueEXT destroyOverlayOpaqueInfo {};
+  destroyOverlayOpaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+  destroyOverlayOpaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+  destroyOverlayOpaqueInfo.opacityConstant = 1.0f;
+  destroyOverlayOpaqueInfo.roughnessConstant = 1.0f;
+  destroyOverlayOpaqueInfo.metallicConstant = 0.0f;
+  destroyOverlayOpaqueInfo.useDrawCallAlphaState = TRUE;
+  destroyOverlayOpaqueInfo.alphaTestType = 4;
+  destroyOverlayOpaqueInfo.alphaReferenceValue = 1;
+
+  remixapi_MaterialInfo destroyOverlayMaterialInfo {};
+  destroyOverlayMaterialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+  destroyOverlayMaterialInfo.pNext = &destroyOverlayOpaqueInfo;
+  destroyOverlayMaterialInfo.hash = kDestroyOverlayMaterialHash;
+  destroyOverlayMaterialInfo.albedoTexture = terrainAtlasPath_.c_str();
+  destroyOverlayMaterialInfo.emissiveTexture = terrainEmissiveTexture;
+  destroyOverlayMaterialInfo.emissiveIntensity = terrainEmissiveIntensity;
+  destroyOverlayMaterialInfo.emissiveColorConstant = terrainEmissiveColor;
+  destroyOverlayMaterialInfo.filterMode = 0;
+  destroyOverlayMaterialInfo.wrapModeU = 1;
+  destroyOverlayMaterialInfo.wrapModeV = 1;
+  applyOptionalPbrTextures(destroyOverlayMaterialInfo, destroyOverlayOpaqueInfo, terrainPbrTextures);
+
+  const remixapi_ErrorCode destroyOverlayMaterialResult = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.destroyOverlay");
+    return remix_.CreateMaterial(&destroyOverlayMaterialInfo, &destroyOverlayMaterialHandle_);
+  }();
+  if (destroyOverlayMaterialResult != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMaterial failed: " + errorCodeToString(destroyOverlayMaterialResult));
+    log("Destroy overlay material unavailable; falling back to cutout terrain material");
+    destroyOverlayMaterialHandle_ = nullptr;
+  } else {
+    log("Initialized destroy overlay material from " + terrainAtlasPath_.string() + " using draw-call alpha state");
+  }
       const bool poweredRedstoneCreated = createTerrainMaterial(
         kPoweredRedstoneTerrainMaterialClass,
         true,
@@ -825,6 +902,12 @@ void RemixRenderer::destroyTerrainMaterials() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.cloud");
     remix_.DestroyMaterial(cloudMaterialHandle_);
     cloudMaterialHandle_ = nullptr;
+  }
+
+  if (remix_.DestroyMaterial != nullptr && destroyOverlayMaterialHandle_ != nullptr) {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.destroyOverlay");
+    remix_.DestroyMaterial(destroyOverlayMaterialHandle_);
+    destroyOverlayMaterialHandle_ = nullptr;
   }
 
   if (remix_.DestroyMaterial == nullptr) {

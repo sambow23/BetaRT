@@ -142,6 +142,7 @@ constexpr std::uint64_t kLavaTerrainMaterialHash = 0x4D435254584C4156ull;
 constexpr std::uint64_t kPoweredRedstoneTerrainMaterialHash = 0x4D43525458524453ull;
 constexpr std::uint64_t kPortalTerrainMaterialHash = 0x4D4352545850544Cull;
 constexpr std::uint64_t kIceTerrainMaterialHash = 0x4D43525458494345ull;
+constexpr std::uint64_t kDestroyOverlayMaterialHash = 0x4D43525458444F4Dull;
 constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
 constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;

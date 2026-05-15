@@ -613,6 +613,7 @@ private:
   std::filesystem::path redstoneEmissiveTexturePath_ {};
   std::array<remixapi_MaterialHandle, 7> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
+  remixapi_MaterialHandle destroyOverlayMaterialHandle_ {nullptr};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
   remixapi_MeshHandle fireMeshHandle_ {nullptr};

@@ -946,8 +946,12 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
     return true;
   }
 
-  remixapi_MaterialHandle overlayMaterial = terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  remixapi_MaterialHandle overlayMaterial = destroyOverlayMaterialHandle_;
   if (overlayMaterial == nullptr) {
+    overlayMaterial = terrainMaterialHandles_[kCutoutTerrainMaterialClass];
+  }
+  if (overlayMaterial == nullptr) {
+    log("Destroy overlay skipped because the cutout terrain material handle is null");
     destroyDestroyOverlayMesh();
     return true;
   }
@@ -1318,6 +1322,10 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   destroyDestroyOverlayMesh();
   destroyOverlayMeshHandle_ = newMeshHandle;
   destroyOverlayCount_ = overlayCount;
+  log(
+      std::string("Rebuilt destroy overlay mesh overlays=") + std::to_string(overlayCount)
+      + " vertices=" + std::to_string(vertices.size())
+      + " indices=" + std::to_string(indices.size()));
   return true;
 }
 
