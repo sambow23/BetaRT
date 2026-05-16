@@ -48,8 +48,16 @@ public final class McrtxRuntimeConfig {
                 || firstCharacter == 'Y';
     }
 
+    static File resolveConfigFile() {
+        return new File(System.getProperty("user.dir"), CONFIG_FILE_NAME);
+    }
+
+    static Map<String, String> loadFileValuesSnapshot() {
+        return loadFileValues();
+    }
+
     private static Map<String, String> loadFileValues() {
-        File configFile = new File(System.getProperty("user.dir"), CONFIG_FILE_NAME);
+        File configFile = resolveConfigFile();
         if (!configFile.isFile()) {
             return Collections.emptyMap();
         }

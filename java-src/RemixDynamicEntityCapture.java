@@ -47,6 +47,8 @@ public final class RemixDynamicEntityCapture {
     private static String activeFirstPersonTexture = "";
     private static boolean firstPersonShadowCaptureActive = false;
     private static boolean firstPersonShadowCaptureAvailable = true;
+    private static volatile boolean playerShadowsEnabled = true;
+    private static volatile boolean heldTorchLightsEnabled = true;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedFirstPersonShadowCaptureFailure;
@@ -406,7 +408,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
-        if (!firstPersonShadowCaptureAvailable || !MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
+        if (!playerShadowsEnabled || !firstPersonShadowCaptureAvailable || !MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
             return;
         }
 
@@ -502,6 +504,17 @@ public final class RemixDynamicEntityCapture {
         nextDynamicBoneIndex = 0;
     }
 
+    public static void setPlayerShadowsEnabled(boolean enabled) {
+        playerShadowsEnabled = enabled;
+        if (!enabled) {
+            firstPersonShadowCaptureActive = false;
+        }
+    }
+
+    public static void setHeldTorchLightsEnabled(boolean enabled) {
+        heldTorchLightsEnabled = enabled;
+    }
+
     public static void onFramePresented() {
         dynamicCaptureFrameActive = false;
         signRenderActive = false;
@@ -514,7 +527,8 @@ public final class RemixDynamicEntityCapture {
 
         activeFirstPersonTexture = texturePathForItem(itemStack);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
-        MinecraftRenderHooks.setFirstPersonHeldItem(isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
+    MinecraftRenderHooks.setFirstPersonHeldItem(
+        heldTorchLightsEnabled && isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
     }
 
     public static void onPlayerEquippedItemRenderStart(gs player, iz itemStack, float partialTicks) {
@@ -542,6 +556,11 @@ public final class RemixDynamicEntityCapture {
 
     private static void syncEntityHeldTorch(gs player, iz heldItem, float partialTicks) {
         if (firstPersonShadowCaptureActive) {
+            return;
+        }
+
+        if (!heldTorchLightsEnabled) {
+            MinecraftRenderHooks.setEntityHeldTorch(player.aD, 0.0f, 0.0f, 0.0f, NO_HELD_ITEM);
             return;
         }
 

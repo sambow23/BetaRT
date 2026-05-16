@@ -48,11 +48,13 @@ public final class ClientPatchTool {
     private static final String PLAYER_RENDERER_CLASS = "ds";
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
+    private static final String OPTIONS_SCREEN_CLASS = "co";
     private static final String MINECART_RENDERER_CLASS = "tb";
     private static final String PAINTING_RENDERER_CLASS = "dy";
     private static final String SIGN_RENDERER_CLASS = "po";
     private static final String MOVING_PISTON_RENDERER_CLASS = "hy";
     private static final String FONT_RENDERER_CLASS = "sj";
+    private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
 
     private ClientPatchTool() {
     }
@@ -100,6 +102,8 @@ public final class ClientPatchTool {
                 } else if (entryName.equals(BLOCK_PARTICLE_CLASS + ".class")
                         || entryName.equals(ITEM_PARTICLE_CLASS + ".class")) {
                     content = patchParticle(content, "onAnimatedParticleRender");
+                } else if (entryName.equals(OPTIONS_SCREEN_CLASS + ".class")) {
+                    content = patchCo(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
                     content = patchN(content);
                 } else if (entryName.equals(MINECART_RENDERER_CLASS + ".class")) {
@@ -213,6 +217,18 @@ public final class ClientPatchTool {
                 patchCloudRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
                 patchDestroyOverlayRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchCo(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("b") && method.desc.equals("()V")) {
+                patchCoBuild(method);
+            } else if (method.name.equals("a") && method.desc.equals("(Lke;)V")) {
+                patchCoAction(method);
             }
         }
         return writeClass(classNode);
@@ -747,6 +763,33 @@ public final class ClientPatchTool {
         method.instructions.insertBefore(method.instructions.getFirst(), signTextRenderCall());
     }
 
+    private static void patchCoBuild(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, configureMcrtxOptionsScreenCall());
+            }
+            node = next;
+        }
+    }
+
+    private static void patchCoAction(MethodNode method) {
+        LabelNode continueLabel = new LabelNode();
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "handleMcrtxOptionsButton",
+                "(Lco;Lke;)Z",
+                false));
+        instructions.add(new JumpInsnNode(Opcodes.IFEQ, continueLabel));
+        instructions.add(new InsnNode(Opcodes.RETURN));
+        instructions.add(continueLabel);
+        method.instructions.insertBefore(method.instructions.getFirst(), instructions);
+    }
+
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {
         if (!(node instanceof MethodInsnNode methodInsnNode)) {
             return false;
@@ -995,6 +1038,18 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onModelPartRender",
                 "([Ltz;F)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList configureMcrtxOptionsScreenCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "configureMcrtxOptionsScreen",
+                "(Lco;)V",
                 false));
         return instructions;
     }

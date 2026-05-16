@@ -323,6 +323,8 @@ public:
   void setDynamicEntityTexture(const std::string& texturePath);
   void setFirstPersonHeldItem(int itemId);
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
+  void setPlayerShadowsEnabled(bool enabled);
+  void setHeldTorchLightsEnabled(bool enabled);
   void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
   void captureDynamicEntityQuad(
       float x0,
@@ -528,6 +530,7 @@ private:
   void destroyChunkTorchLights(ChunkMeshData& meshData);
   void destroyTorchLight(const WorldBlockPosition& position);
   void destroyHeldItemTorchLight();
+  void clearHeldTorchLightsLocked();
   void clearDynamicEntityFrameInstances();
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
@@ -651,6 +654,8 @@ private:
   std::unordered_map<int, remixapi_LightHandle> entityHeldTorchLightHandles_ {};
   std::unordered_set<int> entityHeldTorchLightsSeenThisFrame_ {};
   int heldItemId_ {-1};
+  bool playerShadowsEnabled_ {true};
+  bool heldTorchLightsEnabled_ {true};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};

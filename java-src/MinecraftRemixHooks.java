@@ -1,5 +1,6 @@
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.McrtxRuntimeConfig;
+import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftPlatform;
 import mcrtx.bridge.MinecraftPlatformKey;
 import mcrtx.bridge.MinecraftPlatformRuntime;
@@ -20,6 +21,7 @@ public final class MinecraftRemixHooks {
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final int WINDOWS_VK_MENU = 0x12;
     private static final int WINDOWS_VK_X = 0x58;
+    private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
     private static final long REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS = 150_000_000L;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
     private static final boolean VERBOSE_LOGGING = detectVerboseLoggingEnabled();
@@ -86,6 +88,7 @@ public final class MinecraftRemixHooks {
             resetPerfTracking();
             UiOverlayCapture.reset();
             MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
+            applySavedMcrtxSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayCreated", __perf);
         }
@@ -116,6 +119,7 @@ public final class MinecraftRemixHooks {
             resetPerfTracking();
             UiOverlayCapture.reset();
             MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
+            applySavedMcrtxSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayReset", __perf);
         }
@@ -566,6 +570,74 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void configureMcrtxOptionsScreen(co screen) {
+        if (screen == null) {
+            return;
+        }
+
+        ke doneButton = null;
+        for (Object entry : screen.e) {
+            if (!(entry instanceof ke)) {
+                continue;
+            }
+
+            ke button = (ke) entry;
+            if (button.f == MCRTX_OPTIONS_BUTTON_ID) {
+                return;
+            }
+            if (button.f == 200) {
+                doneButton = button;
+            }
+        }
+
+        if (doneButton != null) {
+            doneButton.d += 24;
+        }
+
+        screen.e.add(new ke(
+                MCRTX_OPTIONS_BUTTON_ID,
+                screen.c / 2 - 100,
+                screen.d / 6 + 168,
+                "BetaRT"));
+    }
+
+    public static boolean handleMcrtxOptionsButton(co screen, ke button) {
+        if (screen == null || button == null || !button.g || button.f != MCRTX_OPTIONS_BUTTON_ID) {
+            return false;
+        }
+
+        screen.b.a(new McrtxOptionsScreen(screen));
+        return true;
+    }
+
+    public static boolean isPlayerShadowsEnabled() {
+        return McrtxRuntimeSettings.isPlayerShadowsEnabled();
+    }
+
+    public static boolean isHeldTorchLightsEnabled() {
+        return McrtxRuntimeSettings.isHeldTorchLightsEnabled();
+    }
+
+    public static String getPlayerShadowsButtonLabel() {
+        return "Player Shadows: " + formatToggleState(isPlayerShadowsEnabled());
+    }
+
+    public static String getHeldTorchLightsButtonLabel() {
+        return "Held Torch Lights: " + formatToggleState(isHeldTorchLightsEnabled());
+    }
+
+    public static void setPlayerShadowsEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
+        RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
+        MinecraftRenderHooks.setPlayerShadowsEnabled(enabled);
+    }
+
+    public static void setHeldTorchLightsEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setHeldTorchLightsEnabled(enabled);
+        RemixDynamicEntityCapture.setHeldTorchLightsEnabled(enabled);
+        MinecraftRenderHooks.setHeldTorchLightsEnabled(enabled);
+    }
+
     private static void resetRemixUiTracking() {
         remixUiOpen = false;
         remixUiHotkeyHeld = false;
@@ -732,6 +804,19 @@ public final class MinecraftRemixHooks {
     private static boolean detectNativeInputBackend() {
         String configuredBackend = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_INPUT_BACKEND");
         return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
+    }
+
+    private static void applySavedMcrtxSettings() {
+        boolean playerShadowsEnabled = McrtxRuntimeSettings.isPlayerShadowsEnabled();
+        boolean heldTorchLightsEnabled = McrtxRuntimeSettings.isHeldTorchLightsEnabled();
+        RemixDynamicEntityCapture.setPlayerShadowsEnabled(playerShadowsEnabled);
+        RemixDynamicEntityCapture.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+        MinecraftRenderHooks.setPlayerShadowsEnabled(playerShadowsEnabled);
+        MinecraftRenderHooks.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+    }
+
+    private static String formatToggleState(boolean enabled) {
+        return enabled ? "ON" : "OFF";
     }
 
     private static void logRemixUiHotkeyEvent(

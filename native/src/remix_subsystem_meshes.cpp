@@ -135,7 +135,7 @@ void RemixRenderer::setFirstPersonHeldItem(int itemId) {
     return;
   }
 
-  heldItemId_ = itemId;
+  heldItemId_ = heldTorchLightsEnabled_ ? itemId : -1;
 }
 
 void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
@@ -143,6 +143,11 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || entityId < 0) {
+    return;
+  }
+
+  if (!heldTorchLightsEnabled_) {
+    destroyEntityHeldTorchLight(entityId);
     return;
   }
 
@@ -221,6 +226,34 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("UpdateLightDefinition failed: " + errorCodeToString(result));
   }
+}
+
+void RemixRenderer::setPlayerShadowsEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setPlayerShadowsEnabled");
+  std::scoped_lock lock(mutex_);
+
+  playerShadowsEnabled_ = enabled;
+  if (!initialized_) {
+    return;
+  }
+
+  setConfigVariableLocked(
+      "rtx.playerModel.enablePrimaryShadows",
+      enabled ? "True" : "False",
+      true,
+      true);
+}
+
+void RemixRenderer::setHeldTorchLightsEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setHeldTorchLightsEnabled");
+  std::scoped_lock lock(mutex_);
+
+  heldTorchLightsEnabled_ = enabled;
+  if (!initialized_ || enabled) {
+    return;
+  }
+
+  clearHeldTorchLightsLocked();
 }
 
 void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
@@ -894,6 +927,15 @@ void RemixRenderer::destroyHeldItemTorchLight() {
 
   destroyLightHandle(heldItemTorchLightHandle_);
   heldItemTorchLightHandle_ = nullptr;
+}
+
+void RemixRenderer::clearHeldTorchLightsLocked() {
+  heldItemId_ = -1;
+  destroyHeldItemTorchLight();
+  while (!entityHeldTorchLightHandles_.empty()) {
+    destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+  }
+  entityHeldTorchLightsSeenThisFrame_.clear();
 }
 
 void RemixRenderer::destroyEntityHeldTorchLight(int entityId) {

@@ -520,6 +520,11 @@ void RemixRenderer::applyRemixConfigPostStartupLocked() {
   setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
   setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "True", true, true);
   setConfigVariableLocked("rtx.di.enableDenoiserGradient", "True", true, true);
+  setConfigVariableLocked(
+      "rtx.playerModel.enablePrimaryShadows",
+      playerShadowsEnabled_ ? "True" : "False",
+      true,
+      true);
 }
 
 void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {
@@ -899,20 +904,24 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.submittedDestroyOverlays = destroyOverlayMeshHandle_ != nullptr ? destroyOverlayCount_ : 0;
   snapshot.submittedParticleQuads = particleMeshHandle_ != nullptr ? particleQuadCount_ : 0;
 
-  if (!reconcileHeldItemTorchLight()) {
-    return false;
-  }
-
-  for (auto lightIt = entityHeldTorchLightHandles_.begin(); lightIt != entityHeldTorchLightHandles_.end(); ) {
-    if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
-      ++lightIt;
-      continue;
+  if (heldTorchLightsEnabled_) {
+    if (!reconcileHeldItemTorchLight()) {
+      return false;
     }
 
-    if (lightIt->second != nullptr) {
-      destroyLightHandle(lightIt->second);
+    for (auto lightIt = entityHeldTorchLightHandles_.begin(); lightIt != entityHeldTorchLightHandles_.end(); ) {
+      if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
+        ++lightIt;
+        continue;
+      }
+
+      if (lightIt->second != nullptr) {
+        destroyLightHandle(lightIt->second);
+      }
+      lightIt = entityHeldTorchLightHandles_.erase(lightIt);
     }
-    lightIt = entityHeldTorchLightHandles_.erase(lightIt);
+  } else {
+    clearHeldTorchLightsLocked();
   }
 
   snapshot.torchLights.reserve(
@@ -1351,8 +1360,10 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     instanceInfo.pNext = &boneTransformsInfo;
     instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
-      ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
+      ? (playerShadowsEnabled_
+        ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
           | REMIXAPI_INSTANCE_CATEGORY_BIT_FIRST_PERSON_PLAYER_SHADOW)
+        : REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL)
       : (frameInstance.entityId == kFirstPersonDynamicEntityId
           ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
           : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);

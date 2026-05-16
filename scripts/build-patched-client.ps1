@@ -1283,6 +1283,7 @@ $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
 
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
+    (Join-Path $repoRoot "java-src\McrtxOptionsScreen.java"),
     (Join-Path $repoRoot "java-src\cb.java"),
     (Join-Path $repoRoot "java-src\RemixCameraState.java"),
     (Join-Path $repoRoot "java-src\RemixCaveCulling.java"),
@@ -1298,6 +1299,7 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\mcrtx\bridge\ColorMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MatrixMath.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeConfig.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettings.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\HookProfiler.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformKey.java"),

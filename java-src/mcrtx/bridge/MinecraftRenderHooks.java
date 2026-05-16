@@ -287,6 +287,20 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
     }
 
+    public static synchronized void setPlayerShadowsEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetPlayerShadowsEnabled(enabled);
+    }
+
+    public static synchronized void setHeldTorchLightsEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetHeldTorchLightsEnabled(enabled);
+    }
+
     public static synchronized void setDynamicEntityBoneTransform(
             int boneIndex,
             float m00,

@@ -331,6 +331,18 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetEntityHeldTorch(
   RemixRenderer::instance().setEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetPlayerShadowsEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetPlayerShadowsEnabled");
+  RemixRenderer::instance().setPlayerShadowsEnabled(enabled == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetHeldTorchLightsEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetHeldTorchLightsEnabled");
+  RemixRenderer::instance().setHeldTorchLightsEnabled(enabled == JNI_TRUE);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
     JNIEnv*, jclass,
     jint boneIndex,
