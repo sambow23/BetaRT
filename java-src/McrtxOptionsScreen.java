@@ -1,6 +1,13 @@
 public final class McrtxOptionsScreen extends da {
+    private static final int COLUMN_BUTTON_WIDTH = 150;
+    private static final int COLUMN_BUTTON_HEIGHT = 20;
+    private static final int COLUMN_BUTTON_GAP = 4;
     private static final int PLAYER_SHADOWS_BUTTON_ID = 1;
     private static final int HELD_TORCH_LIGHTS_BUTTON_ID = 2;
+    private static final int UPSCALER_BUTTON_ID = 3;
+    private static final int UPSCALER_PRESET_BUTTON_ID = 4;
+    private static final int RAY_RECONSTRUCTION_BUTTON_ID = 5;
+    private static final int RT_QUALITY_BUTTON_ID = 6;
     private static final int DONE_BUTTON_ID = 200;
 
     private final da parent;
@@ -11,11 +18,18 @@ public final class McrtxOptionsScreen extends da {
 
     public void b() {
         this.e.clear();
-        int centerX = this.c / 2 - 100;
-        int baseY = this.d / 6;
-        this.e.add(new ke(PLAYER_SHADOWS_BUTTON_ID, centerX, baseY + 48, MinecraftRemixHooks.getPlayerShadowsButtonLabel()));
-        this.e.add(new ke(HELD_TORCH_LIGHTS_BUTTON_ID, centerX, baseY + 72, MinecraftRemixHooks.getHeldTorchLightsButtonLabel()));
-        this.e.add(new ke(DONE_BUTTON_ID, centerX, baseY + 168, "Done"));
+        int leftColumnX = getLeftColumnX();
+        int rightColumnX = getRightColumnX();
+        int firstRowY = getFirstRowY();
+        int secondRowY = getSecondRowY();
+        this.e.add(new ke(PLAYER_SHADOWS_BUTTON_ID, leftColumnX, firstRowY, COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getPlayerShadowsButtonLabel()));
+        this.e.add(new ke(UPSCALER_BUTTON_ID, rightColumnX, firstRowY, COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getUpscalerButtonLabel()));
+        this.e.add(new ke(HELD_TORCH_LIGHTS_BUTTON_ID, leftColumnX, secondRowY, COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getHeldTorchLightsButtonLabel()));
+        this.e.add(new ke(UPSCALER_PRESET_BUTTON_ID, rightColumnX, secondRowY, COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getUpscalerPresetButtonLabel()));
+        this.e.add(new ke(RT_QUALITY_BUTTON_ID, leftColumnX, getThirdRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getRtQualityButtonLabel()));
+        this.e.add(new ke(RAY_RECONSTRUCTION_BUTTON_ID, rightColumnX, getThirdRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getRayReconstructionButtonLabel()));
+        this.e.add(new ke(DONE_BUTTON_ID, this.c / 2 - 100, getThirdRowY() + 48, "Done"));
+        refreshButtons();
     }
 
     protected void a(ke button) {
@@ -35,6 +49,30 @@ public final class McrtxOptionsScreen extends da {
             return;
         }
 
+        if (button.f == RT_QUALITY_BUTTON_ID) {
+            MinecraftRemixHooks.cycleRtQuality();
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == UPSCALER_BUTTON_ID) {
+            MinecraftRemixHooks.cycleUpscalerType();
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == UPSCALER_PRESET_BUTTON_ID) {
+            MinecraftRemixHooks.cycleUpscalerPreset();
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == RAY_RECONSTRUCTION_BUTTON_ID) {
+            MinecraftRemixHooks.toggleRayReconstructionEnabled();
+            refreshButtons();
+            return;
+        }
+
         if (button.f == DONE_BUTTON_ID) {
             this.b.a(this.parent);
         }
@@ -50,7 +88,69 @@ public final class McrtxOptionsScreen extends da {
 
     public void a(int mouseX, int mouseY, float partialTicks) {
         this.i();
-        this.a(this.g, "BetaRT settings", this.c / 2, 20, 0xFFFFFF);
+        this.a(this.g, "BetaRT Settings", this.c / 2, 20, 0xFFFFFF);
         super.a(mouseX, mouseY, partialTicks);
+    }
+
+    private ke findButton(int buttonId) {
+        for (Object entry : this.e) {
+            if (entry instanceof ke) {
+                ke button = (ke) entry;
+                if (button.f == buttonId) {
+                    return button;
+                }
+            }
+        }
+        return null;
+    }
+
+    private void refreshButtons() {
+        ke rtQualityButton = findButton(RT_QUALITY_BUTTON_ID);
+        if (rtQualityButton != null) {
+            rtQualityButton.e = MinecraftRemixHooks.getRtQualityButtonLabel();
+        }
+
+        ke upscalerButton = findButton(UPSCALER_BUTTON_ID);
+        if (upscalerButton != null) {
+            upscalerButton.e = MinecraftRemixHooks.getUpscalerButtonLabel();
+        }
+
+        ke presetButton = findButton(UPSCALER_PRESET_BUTTON_ID);
+        if (presetButton != null) {
+            presetButton.e = MinecraftRemixHooks.getUpscalerPresetButtonLabel();
+        }
+
+        boolean showRayReconstruction = MinecraftRemixHooks.shouldShowRayReconstructionOption();
+        ke rayReconstructionButton = findButton(RAY_RECONSTRUCTION_BUTTON_ID);
+        if (rayReconstructionButton != null) {
+            rayReconstructionButton.e = MinecraftRemixHooks.getRayReconstructionButtonLabel();
+            rayReconstructionButton.g = showRayReconstruction;
+            rayReconstructionButton.h = showRayReconstruction;
+        }
+
+        ke doneButton = findButton(DONE_BUTTON_ID);
+        if (doneButton != null) {
+            doneButton.d = getThirdRowY() + 48;
+        }
+    }
+
+    private int getLeftColumnX() {
+        return this.c / 2 - COLUMN_BUTTON_WIDTH - COLUMN_BUTTON_GAP / 2;
+    }
+
+    private int getRightColumnX() {
+        return this.c / 2 + COLUMN_BUTTON_GAP / 2;
+    }
+
+    private int getFirstRowY() {
+        return this.d / 6 + 64;
+    }
+
+    private int getSecondRowY() {
+        return getFirstRowY() + 24;
+    }
+
+    private int getThirdRowY() {
+        return getSecondRowY() + 24;
     }
 }

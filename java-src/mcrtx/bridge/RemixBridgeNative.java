@@ -181,6 +181,10 @@ public final class RemixBridgeNative {
 
             public static native void nSetHeldTorchLightsEnabled(boolean enabled);
 
+            public static native void nSetRtQuality(int rtQuality);
+
+            public static native void nSetUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, boolean rayReconstructionEnabled);
+
             public static native void nSetDynamicEntityBoneTransform(
                 int boneIndex,
                 float m00, float m01, float m02, float m03,

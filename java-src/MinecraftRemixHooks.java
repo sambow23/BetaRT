@@ -626,6 +626,33 @@ public final class MinecraftRemixHooks {
         return "Held Torch Lights: " + formatToggleState(isHeldTorchLightsEnabled());
     }
 
+    public static String getRtQualityButtonLabel() {
+        return "PT Quality: " + describeRtQuality(McrtxRuntimeSettings.getRtQuality());
+    }
+
+    public static String getUpscalerButtonLabel() {
+        return "Upscaler: " + describeUpscalerType(McrtxRuntimeSettings.getUpscalerType());
+    }
+
+    public static String getUpscalerPresetButtonLabel() {
+        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
+        switch (upscalerType) {
+            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
+                return "Preset: " + describeDlssPreset(McrtxRuntimeSettings.getDlssPreset());
+            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
+                return "Preset: " + describeXessPreset(McrtxRuntimeSettings.getXessPreset());
+            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
+                return "Preset: " + describeTaauPreset(McrtxRuntimeSettings.getTaauPreset());
+            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
+            default:
+                return "Preset: N/A";
+        }
+    }
+
+    public static String getRayReconstructionButtonLabel() {
+        return "Ray Reconstruction: " + formatToggleState(McrtxRuntimeSettings.isRayReconstructionEnabled());
+    }
+
     public static void setPlayerShadowsEnabled(boolean enabled) {
         McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
         RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
@@ -636,6 +663,79 @@ public final class MinecraftRemixHooks {
         McrtxRuntimeSettings.setHeldTorchLightsEnabled(enabled);
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(enabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(enabled);
+    }
+
+    public static void cycleRtQuality() {
+        int rtQuality = McrtxRuntimeSettings.getRtQuality();
+        switch (rtQuality) {
+            case McrtxRuntimeSettings.RT_QUALITY_LOW:
+                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_MEDIUM);
+                break;
+            case McrtxRuntimeSettings.RT_QUALITY_MEDIUM:
+                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_HIGH);
+                break;
+            case McrtxRuntimeSettings.RT_QUALITY_HIGH:
+                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_ULTRA);
+                break;
+            case McrtxRuntimeSettings.RT_QUALITY_ULTRA:
+                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_POTATO);
+                break;
+            case McrtxRuntimeSettings.RT_QUALITY_POTATO:
+            default:
+                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_LOW);
+                break;
+        }
+        applyRtQualitySettings();
+    }
+
+    public static void cycleUpscalerType() {
+        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
+        switch (upscalerType) {
+            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
+                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_DLSS);
+                break;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
+                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_XESS);
+                break;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
+                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_TAAU);
+                break;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
+            default:
+                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_NONE);
+                break;
+        }
+        applyUpscalerSettings();
+    }
+
+    public static void cycleUpscalerPreset() {
+        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
+        switch (upscalerType) {
+            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
+                cycleDlssPreset();
+                return;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
+                cycleXessPreset();
+                return;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
+                cycleTaauPreset();
+                return;
+            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
+            default:
+                return;
+        }
+    }
+
+    public static boolean shouldShowRayReconstructionOption() {
+        return McrtxRuntimeSettings.getUpscalerType() == McrtxRuntimeSettings.UPSCALER_TYPE_DLSS;
+    }
+
+    public static void toggleRayReconstructionEnabled() {
+        if (!shouldShowRayReconstructionOption()) {
+            return;
+        }
+        McrtxRuntimeSettings.setRayReconstructionEnabled(!McrtxRuntimeSettings.isRayReconstructionEnabled());
+        applyUpscalerSettings();
     }
 
     private static void resetRemixUiTracking() {
@@ -813,10 +913,187 @@ public final class MinecraftRemixHooks {
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
         MinecraftRenderHooks.setPlayerShadowsEnabled(playerShadowsEnabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+        applyRtQualitySettings();
+        applyUpscalerSettings();
     }
 
     private static String formatToggleState(boolean enabled) {
         return enabled ? "ON" : "OFF";
+    }
+
+    private static void cycleDlssPreset() {
+        int preset = McrtxRuntimeSettings.getDlssPreset();
+        switch (preset) {
+            case McrtxRuntimeSettings.DLSS_PRESET_AUTO:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_QUALITY);
+                break;
+            case McrtxRuntimeSettings.DLSS_PRESET_QUALITY:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_BALANCED);
+                break;
+            case McrtxRuntimeSettings.DLSS_PRESET_BALANCED:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE);
+                break;
+            case McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE);
+                break;
+            case McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_DLAA);
+                break;
+            case McrtxRuntimeSettings.DLSS_PRESET_DLAA:
+            default:
+                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_AUTO);
+                break;
+        }
+        applyUpscalerSettings();
+    }
+
+    private static void cycleXessPreset() {
+        int preset = McrtxRuntimeSettings.getXessPreset();
+        switch (preset) {
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_BALANCED);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_BALANCED:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_QUALITY);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_QUALITY:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA);
+                break;
+            case McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA:
+            default:
+                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE);
+                break;
+        }
+        applyUpscalerSettings();
+    }
+
+    private static void cycleTaauPreset() {
+        int preset = McrtxRuntimeSettings.getTaauPreset();
+        switch (preset) {
+            case McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE:
+                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE);
+                break;
+            case McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE:
+                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_BALANCED);
+                break;
+            case McrtxRuntimeSettings.TAAU_PRESET_BALANCED:
+                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_QUALITY);
+                break;
+            case McrtxRuntimeSettings.TAAU_PRESET_QUALITY:
+                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN);
+                break;
+            case McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN:
+            default:
+                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE);
+                break;
+        }
+        applyUpscalerSettings();
+    }
+
+    private static void applyRtQualitySettings() {
+        MinecraftRenderHooks.setRtQuality(McrtxRuntimeSettings.getRtQuality());
+    }
+
+    private static void applyUpscalerSettings() {
+        MinecraftRenderHooks.setUpscalerConfig(
+                McrtxRuntimeSettings.getUpscalerType(),
+                McrtxRuntimeSettings.getDlssPreset(),
+                McrtxRuntimeSettings.getXessPreset(),
+                McrtxRuntimeSettings.getTaauPreset(),
+                McrtxRuntimeSettings.isRayReconstructionEnabled());
+    }
+
+    private static String describeRtQuality(int rtQuality) {
+        switch (rtQuality) {
+            case McrtxRuntimeSettings.RT_QUALITY_POTATO:
+                return "Potato";
+            case McrtxRuntimeSettings.RT_QUALITY_LOW:
+                return "Low";
+            case McrtxRuntimeSettings.RT_QUALITY_MEDIUM:
+                return "Medium";
+            case McrtxRuntimeSettings.RT_QUALITY_ULTRA:
+                return "Ultra";
+            case McrtxRuntimeSettings.RT_QUALITY_HIGH:
+            default:
+                return "High";
+        }
+    }
+
+    private static String describeUpscalerType(int upscalerType) {
+        switch (upscalerType) {
+            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
+                return "None";
+            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
+                return "XeSS";
+            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
+                return "TAAU";
+            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
+            default:
+                return "DLSS";
+        }
+    }
+
+    private static String describeDlssPreset(int preset) {
+        switch (preset) {
+            case McrtxRuntimeSettings.DLSS_PRESET_QUALITY:
+                return "Quality";
+            case McrtxRuntimeSettings.DLSS_PRESET_BALANCED:
+                return "Balanced";
+            case McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE:
+                return "Performance";
+            case McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE:
+                return "Ultra Performance";
+            case McrtxRuntimeSettings.DLSS_PRESET_DLAA:
+                return "DLAA";
+            case McrtxRuntimeSettings.DLSS_PRESET_AUTO:
+            default:
+                return "Auto";
+        }
+    }
+
+    private static String describeXessPreset(int preset) {
+        switch (preset) {
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE:
+                return "Ultra Performance";
+            case McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE:
+                return "Performance";
+            case McrtxRuntimeSettings.XESS_PRESET_QUALITY:
+                return "Quality";
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY:
+                return "Ultra Quality";
+            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS:
+                return "Ultra Quality Plus";
+            case McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA:
+                return "Native AA";
+            case McrtxRuntimeSettings.XESS_PRESET_BALANCED:
+            default:
+                return "Balanced";
+        }
+    }
+
+    private static String describeTaauPreset(int preset) {
+        switch (preset) {
+            case McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE:
+                return "Ultra Performance";
+            case McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE:
+                return "Performance";
+            case McrtxRuntimeSettings.TAAU_PRESET_QUALITY:
+                return "Quality";
+            case McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN:
+                return "Fullscreen";
+            case McrtxRuntimeSettings.TAAU_PRESET_BALANCED:
+            default:
+                return "Balanced";
+        }
     }
 
     private static void logRemixUiHotkeyEvent(

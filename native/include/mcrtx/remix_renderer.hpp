@@ -325,6 +325,8 @@ public:
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
   void setPlayerShadowsEnabled(bool enabled);
   void setHeldTorchLightsEnabled(bool enabled);
+  void setRtQuality(int rtQuality);
+  void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
   void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
   void captureDynamicEntityQuad(
       float x0,
@@ -465,6 +467,8 @@ private:
   static std::filesystem::path resolveRemixDllPath();
   bool setConfigVariableLocked(std::string_view key, const std::string& value, bool logChange, bool force = false);
   bool setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force = false);
+  void applyRtQualityConfigLocked();
+  void applyUpscalerConfigLocked();
   void applyRemixConfigPreStartupLocked();
   void applyRemixConfigPostStartupLocked();
   void updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere);
@@ -656,6 +660,17 @@ private:
   int heldItemId_ {-1};
   bool playerShadowsEnabled_ {true};
   bool heldTorchLightsEnabled_ {true};
+  static constexpr int kRtQualityLow = 0;
+  static constexpr int kRtQualityMedium = 1;
+  static constexpr int kRtQualityHigh = 2;
+  static constexpr int kRtQualityUltra = 3;
+  static constexpr int kRtQualityPotato = 4;
+  int upscalerType_ {1};
+  int dlssPreset_ {4};
+  int xessPreset_ {2};
+  int taauPreset_ {2};
+  bool rayReconstructionEnabled_ {true};
+  int rtQuality_ {kRtQualityHigh};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};

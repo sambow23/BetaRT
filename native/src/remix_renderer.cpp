@@ -81,6 +81,60 @@ std::string formatConfigFloat(float value, int precision) {
   return stream.str();
 }
 
+const char* dlssQualityConfigValue(int preset) {
+  switch (preset) {
+    case 3:
+      return "3";
+    case 2:
+      return "2";
+    case 1:
+      return "1";
+    case 0:
+      return "0";
+    case 5:
+      return "5";
+    case 4:
+    default:
+      return "4";
+  }
+}
+
+const char* xessPresetConfigValue(int preset) {
+  switch (preset) {
+    case 0:
+      return "0";
+    case 1:
+      return "1";
+    case 3:
+      return "3";
+    case 4:
+      return "4";
+    case 5:
+      return "5";
+    case 6:
+      return "6";
+    case 2:
+    default:
+      return "2";
+  }
+}
+
+const char* taauPresetConfigValue(int preset) {
+  switch (preset) {
+    case 0:
+      return "0";
+    case 1:
+      return "1";
+    case 3:
+      return "3";
+    case 4:
+      return "4";
+    case 2:
+    default:
+      return "2";
+  }
+}
+
 }  // namespace
 
 std::size_t ChunkKeyHash::operator()(const ChunkKey& key) const noexcept {
@@ -511,15 +565,133 @@ bool RemixRenderer::setConfigFloatLocked(std::string_view key, float value, int 
 
 void RemixRenderer::applyRemixConfigPreStartupLocked() {
   setConfigVariableLocked("rtx.sceneScale", "0.01", true);
-  setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "32", true);
+  applyRtQualityConfigLocked();
+}
+
+void RemixRenderer::applyRtQualityConfigLocked() {
+  switch (rtQuality_) {
+    case kRtQualityPotato:
+      setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "1", true, true);
+      setConfigVariableLocked("rtx.di.initialSampleCount", "1", true, true);
+      setConfigVariableLocked("rtx.di.enableBestLightSampling", "False", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "False", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserGradient", "False", true, true);
+      setConfigVariableLocked("rtx.pathMinBounces", "0", true, true);
+      setConfigVariableLocked("rtx.pathMaxBounces", "1", true, true);
+      setConfigVariableLocked("rtx.risLightSampleCount", "1", true, true);
+      setConfigVariableLocked("rtx.denoiseDirectAndIndirectLightingSeparately", "False", true, true);
+      setConfigVariableLocked("rtx.integrateIndirectMode", "0", true, true);
+      setConfigVariableLocked("rtx.postfx.enable", "False", true, true);
+      setConfigVariableLocked("rtx.useRTXDI", "False", true, true);
+      setConfigVariableLocked("rtx.neeCache.enable", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedResolveInIndirectRays", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "False", true, true);
+      break;
+    case kRtQualityLow:
+      setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "8", true, true);
+      setConfigVariableLocked("rtx.di.initialSampleCount", "4", true, true);
+      setConfigVariableLocked("rtx.di.enableBestLightSampling", "False", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "False", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserGradient", "False", true, true);
+      setConfigVariableLocked("rtx.pathMinBounces", "0", true, true);
+      setConfigVariableLocked("rtx.pathMaxBounces", "1", true, true);
+      setConfigVariableLocked("rtx.risLightSampleCount", "4", true, true);
+      setConfigVariableLocked("rtx.denoiseDirectAndIndirectLightingSeparately", "False", true, true);
+      setConfigVariableLocked("rtx.integrateIndirectMode", "0", true, true);
+      setConfigVariableLocked("rtx.postfx.enable", "True", true, true);
+      setConfigVariableLocked("rtx.useRTXDI", "False", true, true);
+      setConfigVariableLocked("rtx.neeCache.enable", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedResolveInIndirectRays", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "False", true, true);
+      break;
+    case kRtQualityMedium:
+      setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "16", true, true);
+      setConfigVariableLocked("rtx.di.initialSampleCount", "8", true, true);
+      setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "False", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserGradient", "False", true, true);
+      setConfigVariableLocked("rtx.pathMinBounces", "1", true, true);
+      setConfigVariableLocked("rtx.pathMaxBounces", "2", true, true);
+      setConfigVariableLocked("rtx.risLightSampleCount", "8", true, true);
+      setConfigVariableLocked("rtx.denoiseDirectAndIndirectLightingSeparately", "False", true, true);
+      setConfigVariableLocked("rtx.integrateIndirectMode", "1", true, true);
+      setConfigVariableLocked("rtx.postfx.enable", "True", true, true);
+      setConfigVariableLocked("rtx.useRTXDI", "True", true, true);
+      setConfigVariableLocked("rtx.neeCache.enable", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedResolveInIndirectRays", "True", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "False", true, true);
+      break;
+    case kRtQualityUltra:
+      setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "64", true, true);
+      setConfigVariableLocked("rtx.di.initialSampleCount", "32", true, true);
+      setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "True", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserGradient", "True", true, true);
+      setConfigVariableLocked("rtx.pathMinBounces", "1", true, true);
+      setConfigVariableLocked("rtx.pathMaxBounces", "8", true, true);
+      setConfigVariableLocked("rtx.risLightSampleCount", "32", true, true);
+      setConfigVariableLocked("rtx.denoiseDirectAndIndirectLightingSeparately", "True", true, true);
+      setConfigVariableLocked("rtx.integrateIndirectMode", "2", true, true);
+      setConfigVariableLocked("rtx.postfx.enable", "True", true, true);
+      setConfigVariableLocked("rtx.useRTXDI", "True", true, true);
+      setConfigVariableLocked("rtx.neeCache.enable", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedResolveInIndirectRays", "True", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "True", true, true);
+      break;
+    case kRtQualityHigh:
+    default:
+      setConfigVariableLocked("rtx.volumetrics.initialRISSampleCount", "32", true, true);
+      setConfigVariableLocked("rtx.di.initialSampleCount", "16", true, true);
+      setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "True", true, true);
+      setConfigVariableLocked("rtx.di.enableDenoiserGradient", "True", true, true);
+      setConfigVariableLocked("rtx.pathMinBounces", "1", true, true);
+      setConfigVariableLocked("rtx.pathMaxBounces", "4", true, true);
+      setConfigVariableLocked("rtx.risLightSampleCount", "16", true, true);
+      setConfigVariableLocked("rtx.denoiseDirectAndIndirectLightingSeparately", "True", true, true);
+      setConfigVariableLocked("rtx.integrateIndirectMode", "2", true, true);
+      setConfigVariableLocked("rtx.postfx.enable", "True", true, true);
+      setConfigVariableLocked("rtx.useRTXDI", "True", true, true);
+      setConfigVariableLocked("rtx.neeCache.enable", "False", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedResolveInIndirectRays", "True", true, true);
+      setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "False", true, true);
+      break;
+  }
+}
+
+void RemixRenderer::applyUpscalerConfigLocked() {
+  switch (upscalerType_) {
+    case 0:
+      setConfigVariableLocked("rtx.upscalerType", "0", true, true);
+      setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+      break;
+    case 4:
+      setConfigVariableLocked("rtx.upscalerType", "4", true, true);
+      setConfigVariableLocked("rtx.xess.preset", xessPresetConfigValue(xessPreset_), true, true);
+      setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+      break;
+    case 3:
+      setConfigVariableLocked("rtx.upscalerType", "3", true, true);
+      setConfigVariableLocked("rtx.taauPreset", taauPresetConfigValue(taauPreset_), true, true);
+      setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+      break;
+    case 1:
+    default:
+      setConfigVariableLocked("rtx.upscalerType", "1", true, true);
+      setConfigVariableLocked("rtx.qualityDLSS", dlssQualityConfigValue(dlssPreset_), true, true);
+      setConfigVariableLocked("rtx.enableRayReconstruction", rayReconstructionEnabled_ ? "True" : "False", true, true);
+      setConfigVariableLocked("rtx.reflexMode", "1", true, true);
+      break;
+  }
 }
 
 void RemixRenderer::applyRemixConfigPostStartupLocked() {
   setConfigVariableLocked("rtx.skyMode", "1", true, true);
-  setConfigVariableLocked("rtx.di.initialSampleCount", "32", true, true);
-  setConfigVariableLocked("rtx.di.enableBestLightSampling", "True", true, true);
-  setConfigVariableLocked("rtx.di.enableDenoiserConfidence", "True", true, true);
-  setConfigVariableLocked("rtx.di.enableDenoiserGradient", "True", true, true);
+  applyRtQualityConfigLocked();
+  applyUpscalerConfigLocked();
   setConfigVariableLocked(
       "rtx.playerModel.enablePrimaryShadows",
       playerShadowsEnabled_ ? "True" : "False",

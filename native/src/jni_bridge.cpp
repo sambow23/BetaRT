@@ -343,6 +343,23 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetHeldTorchLightsEn
   RemixRenderer::instance().setHeldTorchLightsEnabled(enabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetRtQuality(
+    JNIEnv*, jclass, jint rtQuality) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRtQuality");
+  RemixRenderer::instance().setRtQuality(static_cast<int>(rtQuality));
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetUpscalerConfig(
+    JNIEnv*, jclass, jint upscalerType, jint dlssPreset, jint xessPreset, jint taauPreset, jboolean rayReconstructionEnabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetUpscalerConfig");
+  RemixRenderer::instance().setUpscalerConfig(
+      static_cast<int>(upscalerType),
+      static_cast<int>(dlssPreset),
+      static_cast<int>(xessPreset),
+      static_cast<int>(taauPreset),
+      rayReconstructionEnabled == JNI_TRUE);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
     JNIEnv*, jclass,
     jint boneIndex,

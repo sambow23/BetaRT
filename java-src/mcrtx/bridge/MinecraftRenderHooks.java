@@ -301,6 +301,20 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetHeldTorchLightsEnabled(enabled);
     }
 
+    public static synchronized void setRtQuality(int rtQuality) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetRtQuality(rtQuality);
+    }
+
+    public static synchronized void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, boolean rayReconstructionEnabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetUpscalerConfig(upscalerType, dlssPreset, xessPreset, taauPreset, rayReconstructionEnabled);
+    }
+
     public static synchronized void setDynamicEntityBoneTransform(
             int boneIndex,
             float m00,

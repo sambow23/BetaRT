@@ -507,16 +507,55 @@ function Set-McrtxRuntimeConfig {
         [bool]$ConfiguredVerboseInputLogging
     )
 
-    $lines = [System.Collections.Generic.List[string]]::new()
-    $lines.Add("MCRTX_WINDOW_MODE=$Mode")
-    $lines.Add("MCRTX_PLATFORM_BACKEND=$ConfiguredPlatformBackend")
-    $lines.Add("MCRTX_INPUT_BACKEND=$ConfiguredInputBackend")
-    $lines.Add("MCRTX_NO_CULL_DISTANCE=$($ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture))")
-    if ($ConfiguredVerboseInputLogging) {
-        $lines.Add("MCRTX_VERBOSE_INPUT_LOG=1")
+    $contentLines = [System.Collections.Generic.List[string]]::new()
+    if (Test-Path $Path) {
+        foreach ($contentLine in Get-Content -Path $Path) {
+            $contentLines.Add($contentLine)
+        }
     }
 
-    Set-Content -Path $Path -Value $lines -Encoding ASCII
+    $managedEntries = @(
+        [pscustomobject]@{ Key = "MCRTX_WINDOW_MODE"; Value = $Mode; Remove = $false }
+        [pscustomobject]@{ Key = "MCRTX_PLATFORM_BACKEND"; Value = $ConfiguredPlatformBackend; Remove = $false }
+        [pscustomobject]@{ Key = "MCRTX_INPUT_BACKEND"; Value = $ConfiguredInputBackend; Remove = $false }
+        [pscustomobject]@{
+            Key = "MCRTX_NO_CULL_DISTANCE"
+            Value = $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture)
+            Remove = $false
+        }
+        [pscustomobject]@{ Key = "MCRTX_VERBOSE_INPUT_LOG"; Value = "1"; Remove = -not $ConfiguredVerboseInputLogging }
+    )
+
+    foreach ($managedEntry in $managedEntries) {
+        $escapedKey = [regex]::Escape($managedEntry.Key)
+        $pattern = "^\s*$escapedKey\s*=.*$"
+        $matchingIndices = [System.Collections.Generic.List[int]]::new()
+
+        for ($lineIndex = 0; $lineIndex -lt $contentLines.Count; $lineIndex += 1) {
+            if ($contentLines[$lineIndex] -match $pattern) {
+                $matchingIndices.Add($lineIndex)
+            }
+        }
+
+        if ($managedEntry.Remove) {
+            for ($matchIndex = $matchingIndices.Count - 1; $matchIndex -ge 0; $matchIndex -= 1) {
+                $contentLines.RemoveAt($matchingIndices[$matchIndex])
+            }
+            continue
+        }
+
+        $replacement = "$($managedEntry.Key)=$($managedEntry.Value)"
+        if ($matchingIndices.Count -gt 0) {
+            $contentLines[$matchingIndices[0]] = $replacement
+            for ($matchIndex = $matchingIndices.Count - 1; $matchIndex -gt 0; $matchIndex -= 1) {
+                $contentLines.RemoveAt($matchingIndices[$matchIndex])
+            }
+        } else {
+            $contentLines.Add($replacement)
+        }
+    }
+
+    Set-Content -Path $Path -Value $contentLines -Encoding ASCII
 }
 
 function Remove-LegacyMcrtxJavaOverrides {
