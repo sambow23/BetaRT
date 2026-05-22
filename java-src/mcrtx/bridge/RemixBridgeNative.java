@@ -197,6 +197,7 @@ public final class RemixBridgeNative {
                 float x2, float y2, float z2, float u2, float v2,
                 float x3, float y3, float z3, float u3, float v3,
                 int colorRgba,
+                boolean blendEnabled,
                 int boneIndex);
 
             public static native void nEndDynamicEntity();

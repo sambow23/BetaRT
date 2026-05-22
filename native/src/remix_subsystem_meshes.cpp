@@ -27,6 +27,16 @@ bool isTorchLightItemId(int itemId) {
   return itemId == kTorchBlockId || itemId == kRedstoneTorchOnBlockId;
 }
 
+std::uint8_t dynamicEntityQuadAlpha(std::uint32_t colorRgba) {
+  return static_cast<std::uint8_t>((colorRgba >> 24) & 0xFFu);
+}
+
+DynamicEntityMaterialClass dynamicEntityMaterialClassForQuad(const DynamicEntityQuad& quad) {
+  return quad.blendEnabled || dynamicEntityQuadAlpha(quad.color) < 0xFFu
+      ? DynamicEntityMaterialClass::Translucent
+      : DynamicEntityMaterialClass::Cutout;
+}
+
 std::uint64_t makeEntityHeldTorchLightHash(int entityId) {
   return kEntityHeldTorchLightHashSeed ^ static_cast<std::uint64_t>(static_cast<std::uint32_t>(entityId));
 }
@@ -337,6 +347,7 @@ void RemixRenderer::captureDynamicEntityQuad(
     float u3,
     float v3,
     std::uint32_t colorRgba,
+    bool blendEnabled,
     std::uint32_t boneIndex) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDynamicEntityQuad");
   std::scoped_lock lock(mutex_);
@@ -364,6 +375,7 @@ void RemixRenderer::captureDynamicEntityQuad(
   };
   quad.color = colorRgba;
   quad.texturePath = activeDynamicEntity_.currentTexturePath;
+  quad.blendEnabled = blendEnabled;
   quad.boneIndex = boneIndex;
   activeDynamicEntity_.quads.push_back(std::move(quad));
 }
@@ -847,7 +859,8 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
 
   std::size_t quadCount = 0;
   for (const DynamicEntityQuad& quad : buildState.quads) {
-    remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(quad.texturePath);
+    const DynamicEntityMaterialClass materialClass = dynamicEntityMaterialClassForQuad(quad);
+    remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(quad.texturePath, materialClass);
     if (materialHandle == nullptr) {
       continue;
     }

@@ -188,6 +188,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchDkChunkUnload(MethodNode method) {
+        if (hasHelperCall(method, "onChunkSectionUnload", "(III)V")) {
+            return;
+        }
+
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
         hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "c", "I")); // originX
@@ -208,9 +212,13 @@ public final class ClientPatchTool {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lfd;)V")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
+                if (!hasHelperCall(method, "onWorldChanged", "(Lfd;)V")) {
+                    method.instructions.insertBefore(method.instructions.getFirst(), worldChangedCall());
+                }
             } else if (method.name.equals("a") && method.desc.equals("()V")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), clearWorldSceneCall());
+                if (!hasHelperCall(method, "clearWorldScene", "()V")) {
+                    method.instructions.insertBefore(method.instructions.getFirst(), clearWorldSceneCall());
+                }
             } else if (method.name.equals("a") && method.desc.equals("(Lbt;Lyn;F)V")) {
                 patchWorldEntityVisibility(method);
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
@@ -250,9 +258,13 @@ public final class ClientPatchTool {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;)V")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallSingle());
+                if (!hasHelperCall(method, "onEntityTextureBind", "(Ljava/lang/String;Ljava/lang/String;)V")) {
+                    method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallSingle());
+                }
             } else if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;Ljava/lang/String;)Z")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallFallback());
+                if (!hasHelperCall(method, "onEntityTextureBind", "(Ljava/lang/String;Ljava/lang/String;)V")) {
+                    method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallFallback());
+                }
             }
         }
         return writeClass(classNode);
@@ -306,7 +318,9 @@ public final class ClientPatchTool {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
-                method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall(helperMethodName));
+                if (!hasHelperCall(method, helperMethodName, "(Lxw;FFFFFF)V")) {
+                    method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall(helperMethodName));
+                }
             }
         }
         return writeClass(classNode);
@@ -363,6 +377,11 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecraftStartup(MethodNode method) {
+        if (hasHelperCall(method, "onDisplayCreated", "(II)V")
+                && hasMethodCall(method, RENDER_HOOKS_CLASS, "rememberMinecraftInstance", "(Lnet/minecraft/client/Minecraft;)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, DISPLAY_CLASS, "create", "()V")) {
                 InsnList startupInstructions = new InsnList();
@@ -374,6 +393,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchFirstPersonRender(MethodNode method) {
+        if (hasHelperCall(method, "onFirstPersonRenderStart", "()V")) {
+            return;
+        }
+
         InsnList beginInstructions = new InsnList();
         beginInstructions.add(firstPersonShadowPlayerRenderCall());
         beginInstructions.add(staticHelperCall("onFirstPersonRenderStart", "()V"));
@@ -389,10 +412,18 @@ public final class ClientPatchTool {
     }
 
     private static void patchFirstPersonItemRender(MethodNode method) {
+        if (hasHelperCall(method, "onFirstPersonItemRender", "(Liz;)V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), firstPersonItemRenderCall());
     }
 
     private static void patchPlayerEquippedItemRender(MethodNode method) {
+        if (hasHelperCall(method, "onPlayerEquippedItemRenderStart", "(Lgs;Liz;F)V")) {
+            return;
+        }
+
         int renderItemCallCount = 0;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
@@ -410,6 +441,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchTessellatorDraw(MethodNode method) {
+        if (hasHelperCall(method, "onFirstPersonTessellatorDraw", "([IIIZZ)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, GL11_CLASS, "glDrawArrays", "(III)V")) {
                 method.instructions.insertBefore(node, firstPersonTessellatorDrawCall());
@@ -418,6 +453,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecraftShutdown(MethodNode method) {
+        if (hasHelperCall(method, "onShutdown", "()V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, MOUSE_CLASS, "destroy", "()V")) {
                 method.instructions.insertBefore(node, staticHelperCall("onShutdown", "()V"));
@@ -427,6 +466,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecraftDisplayReset(MethodNode method) {
+        if (hasHelperCall(method, "onDisplayReset", "(II)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, DISPLAY_CLASS, "update", "()V")) {
                 method.instructions.insert(node, onDisplayResetCall());
@@ -436,6 +479,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecraftResize(MethodNode method) {
+        if (hasHelperCall(method, "onResize", "(II)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof FieldInsnNode field && node.getOpcode() == Opcodes.PUTFIELD) {
                 if (field.owner.equals(MINECRAFT_CLASS) && field.name.equals("e") && field.desc.equals("I")) {
@@ -464,6 +511,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchPxRender(MethodNode method) {
+        if (hasHelperCall(method, "onFrameViewCaptured", "()V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && (methodInsnNode.getOpcode() == Opcodes.INVOKESPECIAL
@@ -478,6 +529,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchPxFrame(MethodNode method) {
+        if (hasHelperCall(method, "onFrameRenderStart", "()V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onFrameRenderStart", "()V"));
         method.instructions.insert(cameraUpdateCall());
 
@@ -523,6 +578,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchPxWeatherRender(MethodNode method) {
+        if (hasHelperCall(method, "onWeatherTextureBind", "(Ljava/lang/String;)V")) {
+            return;
+        }
+
         boolean insertedWeatherBind = false;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof LdcInsnNode ldcInsnNode && "/environment/rain.png".equals(ldcInsnNode.cst)) {
@@ -552,6 +611,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchPxFogSetup(MethodNode method) {
+        if (hasHelperCall(method, "onFogState", "(Lls;ZIZFFFF)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
             AbstractInsnNode next = node.getNext();
             if (node.getOpcode() == Opcodes.RETURN) {
@@ -562,6 +625,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchDkChunkBuild(MethodNode method) {
+        if (hasHelperCall(method, "onChunkBuildBegin", "(IIIIIII)Z")) {
+            return;
+        }
+
         final int chunkBuildEnabledLocal = 21;
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
@@ -597,6 +664,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchCloudRender(MethodNode method) {
+        if (hasHelperCall(method, "onCloudRender", "(Lnet/minecraft/client/Minecraft;Lfd;IFZ)V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall());
     }
 
@@ -621,10 +692,18 @@ public final class ClientPatchTool {
     }
 
     private static void patchLivingEntityFrameBegin(MethodNode method) {
+        if (hasHelperCall(method, "onLivingEntityFrameBegin", "()V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onLivingEntityFrameBegin", "()V"));
     }
 
     private static void patchLivingEntityRender(MethodNode method) {
+        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
@@ -639,6 +718,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchModelPartRender(MethodNode method) {
+        if (hasHelperCall(method, "onModelPartRender", "([Ltz;F)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, GL11_CLASS, "glCallList", "(I)V")) {
                 method.instructions.insertBefore(node, modelPartRenderCall());
@@ -669,6 +752,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchDestroyOverlayRender(MethodNode method) {
+        if (hasHelperCall(method, "onDestroyOverlayRender", "(IIIF)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
@@ -682,6 +769,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecartRender(MethodNode method) {
+        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;)V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), livingEntityRenderStartCall());
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
@@ -694,6 +785,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchPaintingRender(MethodNode method) {
+        if (hasHelperCall(method, "onPaintingRender", "(Lqv;)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.owner.equals(PAINTING_RENDERER_CLASS)
@@ -706,6 +801,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchSignRender(MethodNode method) {
+        if (hasHelperCall(method, "onSignRenderStart", "(Lyk;)V")) {
+            return;
+        }
+
         boolean insertedStart = false;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
@@ -733,6 +832,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchMovingPistonRender(MethodNode method) {
+        if (hasHelperCall(method, "onMovingPistonRenderStart", "(Luk;)V")) {
+            return;
+        }
+
         boolean insertedStart = false;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
@@ -760,10 +863,18 @@ public final class ClientPatchTool {
     }
 
     private static void patchFontRender(MethodNode method) {
+        if (hasHelperCall(method, "onSignTextRender", "(Ljava/lang/String;IIIZ[I)V")) {
+            return;
+        }
+
         method.instructions.insertBefore(method.instructions.getFirst(), signTextRenderCall());
     }
 
     private static void patchCoBuild(MethodNode method) {
+        if (hasHelperCall(method, "configureMcrtxOptionsScreen", "(Lco;)V")) {
+            return;
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
             AbstractInsnNode next = node.getNext();
             if (node.getOpcode() == Opcodes.RETURN) {
@@ -774,6 +885,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchCoAction(MethodNode method) {
+        if (hasHelperCall(method, "handleMcrtxOptionsButton", "(Lco;Lke;)Z")) {
+            return;
+        }
+
         LabelNode continueLabel = new LabelNode();
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
@@ -798,6 +913,22 @@ public final class ClientPatchTool {
                 && methodInsnNode.owner.equals(owner)
                 && methodInsnNode.name.equals(name)
                 && methodInsnNode.desc.equals(desc);
+    }
+
+    private static boolean hasMethodCall(MethodNode method, String owner, String name, String desc) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.owner.equals(owner)
+                    && methodInsnNode.name.equals(name)
+                    && methodInsnNode.desc.equals(desc)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean hasHelperCall(MethodNode method, String name, String desc) {
+        return hasMethodCall(method, REMIX_HELPER_CLASS, name, desc);
     }
 
     private static boolean isStore(AbstractInsnNode node, int localIndex) {

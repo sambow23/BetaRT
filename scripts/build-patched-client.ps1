@@ -1,6 +1,9 @@
 [CmdletBinding()]
 param(
     [string]$MinecraftJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar",
+    [string]$PatchSourceJar,
+    [string]$ModdedMinecraftJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\instances\b1.7.3\libraries\customjar-1.jar",
+    [switch]$DisableModdedPatchSource,
     [string]$LwjglJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\lwjgl\lwjgl\lwjgl\2.9.4-nightly-20150209\lwjgl-2.9.4-nightly-20150209.jar",
     [string]$LwjglUtilJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\lwjgl\lwjgl\lwjgl_util\2.9.4-nightly-20150209\lwjgl_util-2.9.4-nightly-20150209.jar",
     [string]$AsmJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\ow2\asm\asm\9.9\asm-9.9.jar",
@@ -1270,6 +1273,13 @@ if (Test-Path $backupMinecraftJar) {
     $MinecraftJar = $backupMinecraftJar
 }
 
+if (-not $PatchSourceJar) {
+    $PatchSourceJar = $MinecraftJar
+    if (-not $DisableModdedPatchSource -and (Test-Path $ModdedMinecraftJar)) {
+        $PatchSourceJar = $ModdedMinecraftJar
+    }
+}
+
 if (-not $OutputRoot) {
     $OutputRoot = Join-Path $repoRoot "out\patched-client"
 }
@@ -1338,7 +1348,7 @@ $toolSourceFiles = @(
     (Join-Path $repoRoot "tools-src\mcrtx\tools\ClientPatchTool.java")
 )
 
-$requiredPaths = @($MinecraftJar, $LwjglJar, $LwjglUtilJar, $AsmJar, $AsmTreeJar, $JavacPath, $JavaPath, $JarPath) + $runtimeSourceFiles + $compatSourceFiles + $toolSourceFiles
+$requiredPaths = @($MinecraftJar, $PatchSourceJar, $LwjglJar, $LwjglUtilJar, $AsmJar, $AsmTreeJar, $JavacPath, $JavaPath, $JarPath) + $runtimeSourceFiles + $compatSourceFiles + $toolSourceFiles
 foreach ($path in $requiredPaths) {
     if (-not (Test-Path $path)) {
         throw "Required path not found: $path"
@@ -1371,7 +1381,7 @@ if ($LASTEXITCODE -ne 0) {
     throw "javac tool compile failed with exit code $LASTEXITCODE"
 }
 
-& $JavaPath -cp ($toolClassesDir + ';' + $toolClasspath) mcrtx.tools.ClientPatchTool $MinecraftJar $patchedJarTemp
+& $JavaPath -cp ($toolClassesDir + ';' + $toolClasspath) mcrtx.tools.ClientPatchTool $PatchSourceJar $patchedJarTemp
 if ($LASTEXITCODE -ne 0) {
     throw "bytecode patch tool failed with exit code $LASTEXITCODE"
 }
@@ -1382,8 +1392,8 @@ if ($LASTEXITCODE -ne 0) {
     throw "jar update failed with exit code $LASTEXITCODE"
 }
 
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
+Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
+Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
 Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
 New-PortalAtlas -PortalPngPath (Join-Path $assetsDir "portal.png")
@@ -1396,16 +1406,16 @@ Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationD
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "lava_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
+Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "gui/items.png" -DestinationPath (Join-Path $assetsDir "gui\items.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "gui\items.png") -DestinationDdsPath (Join-Path $assetsDir "gui\items.dds")
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/rain.png" -DestinationPath (Join-Path $assetsDir "rain.png")
+Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "environment/rain.png" -DestinationPath (Join-Path $assetsDir "rain.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "rain.png") -DestinationDdsPath (Join-Path $assetsDir "rain.dds")
-Export-ZipEntryFile -ArchivePath $MinecraftJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
+Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "environment/clouds.png" -DestinationPath (Join-Path $assetsDir "clouds.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "clouds.png") -DestinationDdsPath (Join-Path $assetsDir "clouds.dds")
-Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
-Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('art/') -DestinationRoot $assetsDir -ConvertToDds
-Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('item/') -DestinationRoot $assetsDir -ConvertToDds
-Export-ZipEntriesByPrefix -ArchivePath $MinecraftJar -Prefixes @('font/') -DestinationRoot $assetsDir -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $PatchSourceJar -Prefixes @('mob/', 'armor/') -DestinationRoot (Join-Path $assetsDir 'entities') -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $PatchSourceJar -Prefixes @('art/') -DestinationRoot $assetsDir -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $PatchSourceJar -Prefixes @('item/') -DestinationRoot $assetsDir -ConvertToDds
+Export-ZipEntriesByPrefix -ArchivePath $PatchSourceJar -Prefixes @('font/') -DestinationRoot $assetsDir -ConvertToDds
 
 if (-not (Test-Path $nativeDll)) {
     throw "Native DLL not found at $nativeDll. Build it first with: cmake --build build --config $Configuration --target mcrtx_jni"
@@ -1415,7 +1425,8 @@ Copy-Item $nativeDll (Join-Path $OutputRoot "mcrtx_jni.dll") -Force
 
 Write-Host "Patched client bundle ready: $OutputRoot"
 Write-Host "Patched jar: $patchedJar"
-Write-Host "Patch source jar: $MinecraftJar"
+Write-Host "Compile baseline jar: $MinecraftJar"
+Write-Host "Patch source jar: $PatchSourceJar"
 Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"
 Write-Host "Replaced terrain fire placeholder tiles with generated Beta fire texels"
 Write-Host "Converted terrain atlas DDS: $(Join-Path $assetsDir 'terrain.dds')"

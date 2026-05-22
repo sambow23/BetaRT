@@ -815,6 +815,8 @@ std::uint64_t computeDynamicEntityFingerprint(
     }
     fingerprint ^= static_cast<std::uint64_t>(quad.color);
     fingerprint *= 1099511628211ull;
+    fingerprint ^= quad.blendEnabled ? 1ull : 0ull;
+    fingerprint *= 1099511628211ull;
     hashDynamicEntityString(fingerprint, quad.texturePath);
   }
   return fingerprint;

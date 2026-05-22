@@ -23,6 +23,12 @@ using namespace mcrtx::detail;
 
 namespace {
 
+constexpr std::uint64_t kDynamicEntityTranslucentMaterialHashMask = 0x54524E5300000000ull;
+
+std::size_t dynamicEntityMaterialClassIndex(DynamicEntityMaterialClass materialClass) {
+  return materialClass == DynamicEntityMaterialClass::Translucent ? 1u : 0u;
+}
+
 struct OptionalPbrTextures {
   std::filesystem::path normal {};
   std::filesystem::path roughness {};
@@ -875,10 +881,13 @@ void RemixRenderer::destroyTerrainMaterials() {
   destroyDynamicEntityMeshes();
 
   if (remix_.DestroyMaterial != nullptr) {
-    for (auto& [texturePath, materialHandle] : dynamicEntityMaterialHandles_) {
-      if (materialHandle != nullptr) {
-        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.entity");
-        remix_.DestroyMaterial(materialHandle);
+    for (auto& [texturePath, materialHandles] : dynamicEntityMaterialHandles_) {
+      (void)texturePath;
+      for (remixapi_MaterialHandle& materialHandle : materialHandles) {
+        if (materialHandle != nullptr) {
+          MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyMaterial.entity");
+          remix_.DestroyMaterial(materialHandle);
+        }
       }
     }
     for (auto& [textureKind, materialHandle] : particleMaterialHandles_) {
@@ -932,11 +941,16 @@ void RemixRenderer::destroyTerrainMaterials() {
   redstoneEmissiveTexturePath_.clear();
 }
 
-remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::string& texturePath) {
+remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
+    const std::string& texturePath,
+    DynamicEntityMaterialClass materialClass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::acquireDynamicEntityMaterial");
+  const std::size_t materialIndex = dynamicEntityMaterialClassIndex(materialClass);
   const auto existing = dynamicEntityMaterialHandles_.find(texturePath);
   if (existing != dynamicEntityMaterialHandles_.end()) {
-    return existing->second;
+    if (existing->second[materialIndex] != nullptr) {
+      return existing->second[materialIndex];
+    }
   }
 
   const std::filesystem::path resolvedTexturePath = resolveDynamicEntityTexturePath(texturePath);
@@ -971,19 +985,13 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   const OptionalPbrTextures pbrTextures = resolveOptionalPbrTextures(resolvedTexturePath);
 
   remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
-  opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
-  opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
-  opaqueInfo.opacityConstant = 1.0f;
-  opaqueInfo.roughnessConstant = 1.0f;
-  opaqueInfo.metallicConstant = 0.0f;
-  opaqueInfo.useDrawCallAlphaState = FALSE;
-  opaqueInfo.alphaTestType = 4;
-  opaqueInfo.alphaReferenceValue = 1;
+  remixapi_MaterialInfoTranslucentEXT translucentInfo {};
 
   remixapi_MaterialInfo materialInfo {};
   materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
-  materialInfo.pNext = &opaqueInfo;
-  materialInfo.hash = kDynamicEntityMaterialHashSeed ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath));
+  materialInfo.hash = kDynamicEntityMaterialHashSeed
+      ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath))
+      ^ (materialClass == DynamicEntityMaterialClass::Translucent ? kDynamicEntityTranslucentMaterialHashMask : 0ull);
   materialInfo.albedoTexture = resolvedTexturePath.c_str();
   materialInfo.emissiveTexture = emissiveTexture;
   materialInfo.emissiveIntensity = emissiveIntensity;
@@ -991,7 +999,28 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
   materialInfo.filterMode = 0;
   materialInfo.wrapModeU = 1;
   materialInfo.wrapModeV = 1;
-  applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+
+  if (materialClass == DynamicEntityMaterialClass::Translucent) {
+    translucentInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT;
+    translucentInfo.refractiveIndex = 1.0f;
+    translucentInfo.transmittanceColor = {1.0f, 1.0f, 1.0f};
+    translucentInfo.transmittanceMeasurementDistance = 1.0f;
+    translucentInfo.thinWallThickness_hasvalue = FALSE;
+    translucentInfo.useDiffuseLayer = TRUE;
+    translucentInfo.transmittanceTexture = resolvedTexturePath.c_str();
+    materialInfo.pNext = &translucentInfo;
+  } else {
+    opaqueInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+    opaqueInfo.albedoConstant = {1.0f, 1.0f, 1.0f};
+    opaqueInfo.opacityConstant = 1.0f;
+    opaqueInfo.roughnessConstant = 1.0f;
+    opaqueInfo.metallicConstant = 0.0f;
+    opaqueInfo.useDrawCallAlphaState = FALSE;
+    opaqueInfo.alphaTestType = 4;
+    opaqueInfo.alphaReferenceValue = 1;
+    materialInfo.pNext = &opaqueInfo;
+    applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+  }
 
   remixapi_MaterialHandle materialHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
@@ -1003,7 +1032,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(const std::s
     return nullptr;
   }
 
-  dynamicEntityMaterialHandles_.emplace(texturePath, materialHandle);
+  dynamicEntityMaterialHandles_[texturePath][materialIndex] = materialHandle;
   return materialHandle;
 }
 

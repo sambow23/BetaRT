@@ -394,6 +394,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntity
     jfloat x2, jfloat y2, jfloat z2, jfloat u2, jfloat v2,
     jfloat x3, jfloat y3, jfloat z3, jfloat u3, jfloat v3,
     jint colorRgba,
+    jboolean blendEnabled,
     jint boneIndex) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureDynamicEntityQuad");
   if (boneIndex < 0) {
@@ -406,6 +407,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntity
       x2, y2, z2, u2, v2,
       x3, y3, z3, u3, v3,
       static_cast<std::uint32_t>(colorRgba),
+      blendEnabled == JNI_TRUE,
       static_cast<std::uint32_t>(boneIndex));
 }
 

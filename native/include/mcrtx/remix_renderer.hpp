@@ -207,7 +207,13 @@ struct DynamicEntityQuad {
   std::array<float, 8> texcoords {};
   std::uint32_t color {0xFFFFFFFFu};
   std::string texturePath {};
+  bool blendEnabled {false};
   std::uint32_t boneIndex {0};
+};
+
+enum class DynamicEntityMaterialClass : std::uint8_t {
+  Cutout = 0,
+  Translucent = 1,
 };
 
 struct DynamicEntityBuildState {
@@ -349,8 +355,9 @@ public:
       float z3,
       float u3,
       float v3,
-        std::uint32_t colorRgba,
-        std::uint32_t boneIndex);
+      std::uint32_t colorRgba,
+      bool blendEnabled,
+      std::uint32_t boneIndex);
   void endDynamicEntity();
   void beginDestroyOverlayFrame();
   void captureDestroyOverlay(
@@ -487,7 +494,9 @@ private:
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   bool createPrimingMesh();
-  remixapi_MaterialHandle acquireDynamicEntityMaterial(const std::string& texturePath);
+  remixapi_MaterialHandle acquireDynamicEntityMaterial(
+      const std::string& texturePath,
+      DynamicEntityMaterialClass materialClass);
   remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
   bool createTorchLight(const TorchLightPlacement& placement);
   bool updateTorchLight(const TorchLightPlacement& placement);
@@ -645,7 +654,7 @@ private:
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
   std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
   std::vector<ParticleQuad> particleQuads_ {};
-  std::unordered_map<std::string, remixapi_MaterialHandle> dynamicEntityMaterialHandles_ {};
+  std::unordered_map<std::string, std::array<remixapi_MaterialHandle, 2>> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
   remixapi_MeshHandle primingMeshHandle_ {nullptr};

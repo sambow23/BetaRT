@@ -2,6 +2,7 @@ package mcrtx.bridge;
 
 import java.nio.ByteBuffer;
 import net.minecraft.client.Minecraft;
+import org.lwjgl.opengl.GL11;
 
 public final class MinecraftRenderHooks {
     private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
@@ -365,12 +366,14 @@ public final class MinecraftRenderHooks {
         if (!initialized) {
             return;
         }
+        boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
         RemixBridgeNative.nCaptureDynamicEntityQuad(
                 x0, y0, z0, u0, v0,
                 x1, y1, z1, u1, v1,
                 x2, y2, z2, u2, v2,
                 x3, y3, z3, u3, v3,
                 colorRgba,
+                blendEnabled,
                 boneIndex);
     }
 
