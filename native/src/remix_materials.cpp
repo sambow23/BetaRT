@@ -32,6 +32,7 @@ inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f
 inline constexpr remixapi_Float3D kDynamicEntityCreeperFuseEmissiveColor = {1.0f, 0.98f, 0.95f};
 constexpr std::string_view kFirstPersonShadowTextureAliasPrefix = "mcrtx_alias/firstperson_shadow/";
 constexpr std::string_view kEntityFireOverlayTextureAliasPrefix = "mcrtx_alias/entity_fire_overlay/";
+constexpr std::string_view kSignTextTextureAliasPrefix = "mcrtx_alias/sign_text/";
 
 bool stripDynamicEntityTextureAliasPrefix(std::string& texturePath, std::string_view prefix) {
   if (texturePath.rfind(prefix, 0) != 0) {
@@ -545,6 +546,7 @@ std::filesystem::path RemixRenderer::resolveDynamicEntityTexturePath(const std::
 
   stripDynamicEntityTextureAliasPrefix(normalized, kFirstPersonShadowTextureAliasPrefix);
   stripDynamicEntityTextureAliasPrefix(normalized, kEntityFireOverlayTextureAliasPrefix);
+  stripDynamicEntityTextureAliasPrefix(normalized, kSignTextTextureAliasPrefix);
 
   std::filesystem::path relativePath(normalized);
   relativePath.make_preferred();
@@ -1139,6 +1141,9 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
   const bool isEntityFireOverlay = stripDynamicEntityTextureAliasPrefix(
       normalizedTexturePath,
       kEntityFireOverlayTextureAliasPrefix);
+    const bool isSignText = stripDynamicEntityTextureAliasPrefix(
+      normalizedTexturePath,
+      kSignTextTextureAliasPrefix);
 
   const std::filesystem::path* emissiveTexturePath = nullptr;
   const std::filesystem::path* materialTexturePath = &resolvedTexturePath;
@@ -1209,7 +1214,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     opaqueInfo.metallicConstant = 0.0f;
     opaqueInfo.useDrawCallAlphaState = FALSE;
     opaqueInfo.alphaTestType = 4;
-    opaqueInfo.alphaReferenceValue = 1;
+    opaqueInfo.alphaReferenceValue = isSignText ? 64 : 1;
     materialInfo.pNext = &opaqueInfo;
     applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
   }

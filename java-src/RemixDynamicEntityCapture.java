@@ -30,12 +30,15 @@ public final class RemixDynamicEntityCapture {
     private static final float ENTITY_HELD_TORCH_RIGHT_NUDGE = 0.18f;
     private static final float FONT_GLYPH_SIZE = 7.99f;
     private static final float FONT_ATLAS_SIZE = 128.0f;
+    private static final float FONT_GLYPH_TEXEL_SIZE = 8.0f;
+    private static final float SIGN_TEXT_DEPTH_OFFSET = -0.30f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final String FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/firstperson_shadow/";
     private static final String ENTITY_FIRE_OVERLAY_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/entity_fire_overlay/";
     private static final String ENTITY_FIRE_OVERLAY_TEXTURE_PATH = "/mcrtx_alias/entity_fire_overlay/terrain.png";
     private static final String FONT_TEXTURE_PATH = "/font/default.png";
+    private static final String SIGN_TEXT_TEXTURE_PATH = "/mcrtx_alias/sign_text/font/default.png";
     private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final String TERRAIN_TEXTURE_PATH = "/terrain.png";
@@ -80,6 +83,7 @@ public final class RemixDynamicEntityCapture {
     private static final java.util.Map<Integer, Integer> textureWidthCache = new java.util.HashMap<Integer, Integer>();
     private static final java.util.Map<Integer, Integer> textureHeightCache = new java.util.HashMap<Integer, Integer>();
     private static java.nio.ByteBuffer textureReadBuffer = null;
+    private static int cachedFontTextureId = -1;
 
     private static float[] captureModelViewMatrix() {
         MODEL_VIEW_BUFFER.clear();
@@ -143,6 +147,73 @@ public final class RemixDynamicEntityCapture {
         int px = (logicalX * width) / 256;
         int py = (logicalY * height) / 256;
         return alphaMap[py * width + px];
+    }
+
+    private static boolean isTexturePixelOpaque(boolean[] alphaMap, int width, int height, int pixelX, int pixelY) {
+        if (pixelX < 0 || pixelX >= width || pixelY < 0 || pixelY >= height) {
+            return false;
+        }
+        if (alphaMap.length == 0) {
+            return true;
+        }
+        return alphaMap[pixelY * width + pixelX];
+    }
+
+    private static int resolveSignTextTextureId() {
+        final int boundTextureId = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
+        if (boundTextureId > 0) {
+            boolean[] alphaMap = getTextureAlphaMap(boundTextureId);
+            Integer textureWidth = textureWidthCache.get(boundTextureId);
+            Integer textureHeight = textureHeightCache.get(boundTextureId);
+            if (textureWidth != null
+                    && textureHeight != null
+                    && textureWidth.intValue() == 128
+                    && textureHeight.intValue() == 128
+                    && alphaMap.length != 0) {
+                cachedFontTextureId = boundTextureId;
+            }
+        }
+
+        return cachedFontTextureId > 0 ? cachedFontTextureId : boundTextureId;
+    }
+
+    private static void captureSignGlyph(
+            float glyphMinX,
+            float glyphMinY,
+            float atlasX,
+            float atlasY,
+            int colorRgba,
+            int boneIndex,
+            boolean[] alphaMap,
+            int textureWidth,
+            int textureHeight) {
+        final float pixelSpan = FONT_GLYPH_SIZE / FONT_GLYPH_TEXEL_SIZE;
+        final int atlasPixelBaseX = Math.round(atlasX);
+        final int atlasPixelBaseY = Math.round(atlasY);
+
+        for (int pixelY = 0; pixelY < 8; pixelY++) {
+            for (int pixelX = 0; pixelX < 8; pixelX++) {
+                if (!isTexturePixelOpaque(alphaMap, textureWidth, textureHeight, atlasPixelBaseX + pixelX, atlasPixelBaseY + pixelY)) {
+                    continue;
+                }
+
+                final float quadMinX = glyphMinX + pixelX * pixelSpan;
+                final float quadMaxX = quadMinX + pixelSpan;
+                final float quadMinY = glyphMinY + pixelY * pixelSpan;
+                final float quadMaxY = quadMinY + pixelSpan;
+                final float centerU = (atlasPixelBaseX + pixelX + 0.5f) / FONT_ATLAS_SIZE;
+                final float centerV = (atlasPixelBaseY + pixelY + 0.5f) / FONT_ATLAS_SIZE;
+
+                MinecraftRenderHooks.captureDynamicEntityQuad(
+                        quadMinX, quadMaxY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
+                        quadMaxX, quadMaxY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
+                        quadMaxX, quadMinY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
+                        quadMinX, quadMinY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
+                        colorRgba,
+                        false,
+                        boneIndex);
+            }
+        }
     }
 
     private static void generateVoxelMesh(int[] rawVertexData, boolean hasColor, int fallbackColorRgba, int boneIndex) {
@@ -604,15 +675,30 @@ public final class RemixDynamicEntityCapture {
         if (!signRenderActive || !dynamicEntityActive || text == null || text.isEmpty() || characterWidths == null || characterWidths.length == 0) {
             return;
         }
+        if (shadow) {
+            return;
+        }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
             return;
         }
 
         try {
-            if (!FONT_TEXTURE_PATH.equals(activeDynamicEntityTexture)) {
-                activeDynamicEntityTexture = FONT_TEXTURE_PATH;
+            if (!SIGN_TEXT_TEXTURE_PATH.equals(activeDynamicEntityTexture)) {
+                activeDynamicEntityTexture = SIGN_TEXT_TEXTURE_PATH;
                 MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
             }
+
+                int textureId = resolveSignTextTextureId();
+            boolean[] alphaMap = getTextureAlphaMap(textureId);
+            Integer textureWidthBoxed = textureWidthCache.get(textureId);
+            Integer textureHeightBoxed = textureHeightCache.get(textureId);
+            boolean canCapturePerPixel = textureWidthBoxed != null
+                    && textureHeightBoxed != null
+                    && textureWidthBoxed.intValue() == 128
+                    && textureHeightBoxed.intValue() == 128
+                    && alphaMap.length != 0;
+            int textureWidth = canCapturePerPixel ? textureWidthBoxed.intValue() : 0;
+            int textureHeight = canCapturePerPixel ? textureHeightBoxed.intValue() : 0;
 
             float[] modelView = captureModelViewMatrix();
             if (modelView == null) {
@@ -620,8 +706,7 @@ public final class RemixDynamicEntityCapture {
             }
 
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
-            int packedColor = shadow ? applyFontShadow(colorRgba) : colorRgba;
-            int sanitizedColor = ColorMath.sanitizePackedColor(packedColor);
+            int sanitizedColor = ColorMath.forceOpaqueAlpha(ColorMath.sanitizePackedColor(colorRgba));
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {
                 return;
@@ -658,13 +743,27 @@ public final class RemixDynamicEntityCapture {
                 float u1 = (atlasX + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
                 float v1 = (atlasY + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
 
-                MinecraftRenderHooks.captureDynamicEntityQuad(
-                        glyphMinX, glyphMaxY, 0.0f, u0, v1,
-                        glyphMaxX, glyphMaxY, 0.0f, u1, v1,
-                        glyphMaxX, glyphMinY, 0.0f, u1, v0,
-                        glyphMinX, glyphMinY, 0.0f, u0, v0,
+                if (canCapturePerPixel) {
+                    captureSignGlyph(
+                        glyphMinX,
+                        glyphMinY,
+                        atlasX,
+                        atlasY,
                         sanitizedColor,
+                        boneIndex,
+                        alphaMap,
+                        textureWidth,
+                        textureHeight);
+                } else {
+                    MinecraftRenderHooks.captureDynamicEntityQuad(
+                        glyphMinX, glyphMaxY, SIGN_TEXT_DEPTH_OFFSET, u0, v1,
+                        glyphMaxX, glyphMaxY, SIGN_TEXT_DEPTH_OFFSET, u1, v1,
+                        glyphMaxX, glyphMinY, SIGN_TEXT_DEPTH_OFFSET, u1, v0,
+                        glyphMinX, glyphMinY, SIGN_TEXT_DEPTH_OFFSET, u0, v0,
+                        sanitizedColor,
+                        false,
                         boneIndex);
+                }
 
                 cursorX += characterWidths[glyphId];
             }

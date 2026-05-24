@@ -43,6 +43,10 @@ public final class ColorMath {
         return packColor(sanitizedColor[0], sanitizedColor[1], sanitizedColor[2], sanitizedColor[3]);
     }
 
+    public static int forceOpaqueAlpha(int packedColorRgba) {
+        return packedColorRgba | 0xFF000000;
+    }
+
     public static float[] sanitizeDynamicEntityColor(float red, float green, float blue, float alpha) {
         float maxChannelDelta = Math.max(Math.abs(red - green), Math.max(Math.abs(red - blue), Math.abs(green - blue)));
         if (alpha >= 0.999f && maxChannelDelta <= 0.01f) {
