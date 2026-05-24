@@ -318,12 +318,12 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
-        if (!MinecraftRenderHooks.isInitialized() || entity == null || !isTrackedLivingEntity(entity)) {
+        if (!MinecraftRenderHooks.isInitialized() || entity == null) {
             return;
         }
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
-        activeDynamicEntityHurtStage = resolveLivingEntityHurtStage(entity);
+        activeDynamicEntityHurtStage = isTrackedLivingEntity(entity) ? resolveLivingEntityHurtStage(entity) : 0;
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
         MinecraftRenderHooks.beginDynamicEntity(entity.aD, activeDynamicEntityHurtStage);
