@@ -48,6 +48,7 @@ public final class ClientPatchTool {
     private static final String BASE_RENDERER_CLASS = "bw";
     private static final String ITEM_ENTITY_RENDERER_CLASS = "bb";
     private static final String PLAYER_RENDERER_CLASS = "ds";
+    private static final String HUMANOID_MOB_RENDERER_CLASS = "v";
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
     private static final String OPTIONS_SCREEN_CLASS = "co";
@@ -95,6 +96,8 @@ public final class ClientPatchTool {
                     content = patchBb(content);
                 } else if (entryName.equals(PLAYER_RENDERER_CLASS + ".class")) {
                     content = patchDs(content);
+                } else if (entryName.equals(HUMANOID_MOB_RENDERER_CLASS + ".class")) {
+                    content = patchV(content);
                 } else if (entryName.equals(FIRST_PERSON_RENDERER_CLASS + ".class")) {
                     content = patchRa(content);
                 } else if (entryName.equals(MODEL_PART_CLASS + ".class")) {
@@ -300,6 +303,16 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchV(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("b") && method.desc.equals("(Lls;F)V")) {
+                patchLivingEquippedItemRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchRa(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
@@ -466,6 +479,23 @@ public final class ClientPatchTool {
                     method.instructions.insertBefore(node, playerEquippedItemRenderCall());
                     return;
                 }
+            }
+        }
+    }
+
+    private static void patchLivingEquippedItemRender(MethodNode method) {
+        if (hasHelperCall(method, "onLivingEquippedItemRenderStart", "(Lls;Liz;)V")) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(FIRST_PERSON_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lls;Liz;)V")) {
+                method.instructions.insertBefore(node, livingEquippedItemRenderCall());
+                return;
             }
         }
     }
@@ -1326,6 +1356,19 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onPlayerEquippedItemRenderStart",
             "(Lgs;Liz;F)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList livingEquippedItemRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 3));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onLivingEquippedItemRenderStart",
+                "(Lls;Liz;)V",
                 false));
         return instructions;
     }

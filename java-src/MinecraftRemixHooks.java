@@ -554,6 +554,15 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onLivingEquippedItemRenderStart(ls entity, iz itemStack) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onLivingEquippedItemRenderStart(entity, itemStack);
+        } finally {
+            HookProfiler.endHook("hook.onLivingEquippedItemRenderStart", __perf);
+        }
+    }
+
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
         long __perf = HookProfiler.begin();
         try {

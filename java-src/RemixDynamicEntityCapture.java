@@ -702,6 +702,18 @@ public final class RemixDynamicEntityCapture {
         onEntityTextureBind(texturePathForItem(itemStack), null);
     }
 
+    public static void onLivingEquippedItemRenderStart(ls entity, iz itemStack) {
+        if (!MinecraftRenderHooks.isInitialized() || entity == null || itemStack == null) {
+            return;
+        }
+
+        if (!dynamicEntityActive) {
+            return;
+        }
+
+        onEntityTextureBind(texturePathForItem(itemStack), null);
+    }
+
     private static boolean isTorchLikeHeldItem(int itemId) {
         return itemId == TORCH_BLOCK_ID
                 || itemId == REDSTONE_TORCH_ON_BLOCK_ID
