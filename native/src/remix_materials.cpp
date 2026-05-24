@@ -25,7 +25,7 @@ namespace {
 
 constexpr std::uint64_t kDynamicEntityTranslucentMaterialHashMask = 0x54524E5300000000ull;
 constexpr std::uint64_t kDynamicEntityHurtMaterialHashMask = 0x4852540000000000ull;
-constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 4.0f;
+constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 0.1f;
 inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
 
 std::size_t dynamicEntityMaterialClassIndex(DynamicEntityMaterialClass materialClass) {
