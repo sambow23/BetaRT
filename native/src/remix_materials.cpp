@@ -25,8 +25,11 @@ namespace {
 
 constexpr std::uint64_t kDynamicEntityTranslucentMaterialHashMask = 0x54524E5300000000ull;
 constexpr std::uint64_t kDynamicEntityHurtMaterialHashMask = 0x4852540000000000ull;
+constexpr std::uint64_t kDynamicEntityCreeperFuseMaterialHashMask = 0x4655534500000000ull;
 constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 0.1f;
+constexpr float kDynamicEntityCreeperFuseMaxEmissiveIntensity = 0.06f;
 inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
+inline constexpr remixapi_Float3D kDynamicEntityCreeperFuseEmissiveColor = {1.0f, 0.98f, 0.95f};
 constexpr std::string_view kFirstPersonShadowTextureAliasPrefix = "mcrtx_alias/firstperson_shadow/";
 constexpr std::string_view kEntityFireOverlayTextureAliasPrefix = "mcrtx_alias/entity_fire_overlay/";
 
@@ -47,11 +50,18 @@ std::uint32_t clampDynamicEntityHurtStage(std::uint32_t hurtStage) {
   return std::min(hurtStage, kDynamicEntityMaxHurtStage);
 }
 
+std::uint32_t clampDynamicEntityCreeperFuseStage(std::uint32_t creeperFuseStage) {
+  return std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage);
+}
+
 std::size_t dynamicEntityMaterialVariantIndex(
     DynamicEntityMaterialClass materialClass,
-    std::uint32_t hurtStage) {
+    std::uint32_t hurtStage,
+    std::uint32_t creeperFuseStage) {
   const std::size_t hurtIndex = static_cast<std::size_t>(clampDynamicEntityHurtStage(hurtStage));
-  return (hurtIndex * 2u) + dynamicEntityMaterialClassIndex(materialClass);
+  const std::size_t creeperFuseIndex = static_cast<std::size_t>(clampDynamicEntityCreeperFuseStage(creeperFuseStage));
+  return ((hurtIndex * (static_cast<std::size_t>(kDynamicEntityMaxCreeperFuseStage) + 1u)) + creeperFuseIndex) * 2u
+      + dynamicEntityMaterialClassIndex(materialClass);
 }
 
 float dynamicEntityHurtEmissiveIntensity(std::uint32_t hurtStage) {
@@ -62,6 +72,16 @@ float dynamicEntityHurtEmissiveIntensity(std::uint32_t hurtStage) {
 
   return kDynamicEntityHurtMaxEmissiveIntensity
       * (static_cast<float>(clampedHurtStage) / static_cast<float>(kDynamicEntityMaxHurtStage));
+}
+
+float dynamicEntityCreeperFuseEmissiveIntensity(std::uint32_t creeperFuseStage) {
+  const std::uint32_t clampedCreeperFuseStage = clampDynamicEntityCreeperFuseStage(creeperFuseStage);
+  if (clampedCreeperFuseStage == 0) {
+    return 0.0f;
+  }
+
+  return kDynamicEntityCreeperFuseMaxEmissiveIntensity
+      * (static_cast<float>(clampedCreeperFuseStage) / static_cast<float>(kDynamicEntityMaxCreeperFuseStage));
 }
 
 struct OptionalPbrTextures {
@@ -1089,10 +1109,15 @@ void RemixRenderer::destroyTerrainMaterials() {
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     const std::string& texturePath,
     DynamicEntityMaterialClass materialClass,
-    std::uint32_t hurtStage) {
+    std::uint32_t hurtStage,
+    std::uint32_t creeperFuseStage) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::acquireDynamicEntityMaterial");
   const std::uint32_t clampedHurtStage = clampDynamicEntityHurtStage(hurtStage);
-  const std::size_t materialIndex = dynamicEntityMaterialVariantIndex(materialClass, clampedHurtStage);
+  const std::uint32_t clampedCreeperFuseStage = clampDynamicEntityCreeperFuseStage(creeperFuseStage);
+  const std::size_t materialIndex = dynamicEntityMaterialVariantIndex(
+      materialClass,
+      clampedHurtStage,
+      clampedCreeperFuseStage);
   const auto existing = dynamicEntityMaterialHandles_.find(texturePath);
   if (existing != dynamicEntityMaterialHandles_.end()) {
     if (existing->second[materialIndex] != nullptr) {
@@ -1142,6 +1167,10 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     emissiveTexture = nullptr;
     emissiveIntensity = dynamicEntityHurtEmissiveIntensity(clampedHurtStage);
     emissiveColor = kDynamicEntityHurtEmissiveColor;
+  } else if (clampedCreeperFuseStage != 0) {
+    emissiveTexture = nullptr;
+    emissiveIntensity = dynamicEntityCreeperFuseEmissiveIntensity(clampedCreeperFuseStage);
+    emissiveColor = kDynamicEntityCreeperFuseEmissiveColor;
   }
   const OptionalPbrTextures pbrTextures = resolveOptionalPbrTextures(*materialTexturePath);
 
@@ -1153,7 +1182,8 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
   materialInfo.hash = kDynamicEntityMaterialHashSeed
       ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath))
       ^ (materialClass == DynamicEntityMaterialClass::Translucent ? kDynamicEntityTranslucentMaterialHashMask : 0ull)
-      ^ (static_cast<std::uint64_t>(clampedHurtStage) * kDynamicEntityHurtMaterialHashMask);
+      ^ (static_cast<std::uint64_t>(clampedHurtStage) * kDynamicEntityHurtMaterialHashMask)
+      ^ (static_cast<std::uint64_t>(clampedCreeperFuseStage) * kDynamicEntityCreeperFuseMaterialHashMask);
   materialInfo.albedoTexture = materialTexturePath->c_str();
   materialInfo.emissiveTexture = emissiveTexture;
   materialInfo.emissiveIntensity = emissiveIntensity;

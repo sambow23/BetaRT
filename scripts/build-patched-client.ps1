@@ -1275,7 +1275,7 @@ if (Test-Path $backupMinecraftJar) {
 
 if (-not $PatchSourceJar) {
     $PatchSourceJar = $MinecraftJar
-    if (-not $DisableModdedPatchSource -and (Test-Path $ModdedMinecraftJar)) {
+    if (-not $DisableModdedPatchSource -and $env:MCRTX_USE_MODDED_PATCH_SOURCE -eq '1' -and (Test-Path $ModdedMinecraftJar)) {
         $PatchSourceJar = $ModdedMinecraftJar
     }
 }

@@ -383,10 +383,10 @@ public final class MinecraftRemixHooks {
         }
     }
 
-    public static void onLivingEntityRenderStart(sn entity) {
+    public static void onLivingEntityRenderStart(sn entity, float partialTicks) {
         long __perf = HookProfiler.begin();
         try {
-            RemixDynamicEntityCapture.onLivingEntityRenderStart(entity);
+            RemixDynamicEntityCapture.onLivingEntityRenderStart(entity, partialTicks);
         } finally {
             HookProfiler.endHook("hook.onLivingEntityRenderStart", __perf);
         }

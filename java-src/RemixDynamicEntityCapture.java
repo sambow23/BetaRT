@@ -11,6 +11,7 @@ import org.lwjgl.opengl.GL11;
 
 public final class RemixDynamicEntityCapture {
     private static final int MAX_HURT_STAGE = 10;
+    private static final int MAX_CREEPER_FUSE_STAGE = 10;
     private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID = Integer.MAX_VALUE - 2;
@@ -55,9 +56,14 @@ public final class RemixDynamicEntityCapture {
     private static boolean entityFireOverlayActive;
     private static int activeDynamicEntityId = -1;
     private static int activeDynamicEntityHurtStage;
+    private static int activeDynamicEntityCreeperFuseStage;
+    private static float activeDynamicEntityCreeperFuseProgress;
     private static String activeDynamicEntityTexture = "";
     private static Class<?> livingEntityBaseClass;
+    private static Class<?> creeperEntityClass;
     private static Field livingEntityHurtTimeField;
+    private static Field creeperFuseTimeField;
+    private static Field creeperPreviousFuseTimeField;
     private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
@@ -236,6 +242,10 @@ public final class RemixDynamicEntityCapture {
         return Math.max(0, Math.min(MAX_HURT_STAGE, hurtStage));
     }
 
+    private static int clampCreeperFuseStage(int fuseStage) {
+        return Math.max(0, Math.min(MAX_CREEPER_FUSE_STAGE, fuseStage));
+    }
+
     private static Class<?> resolveLivingEntityBaseClass(sn entity) {
         if (entity == null) {
             return null;
@@ -310,6 +320,99 @@ public final class RemixDynamicEntityCapture {
         }
     }
 
+    private static Class<?> resolveCreeperEntityClass(sn entity) {
+        if (entity == null) {
+            return null;
+        }
+
+        Class<?> cachedCreeperClass = creeperEntityClass;
+        if (cachedCreeperClass != null && cachedCreeperClass.isInstance(entity)) {
+            return cachedCreeperClass;
+        }
+
+        Class<?> type = entity.getClass();
+        while (type != null) {
+            if ("gb".equals(type.getName())) {
+                creeperEntityClass = type;
+                return type;
+            }
+            type = type.getSuperclass();
+        }
+
+        return null;
+    }
+
+    private static boolean isTrackedCreeper(sn entity) {
+        Class<?> trackedCreeperClass = resolveCreeperEntityClass(entity);
+        return trackedCreeperClass != null && trackedCreeperClass.isInstance(entity);
+    }
+
+    private static Field resolveIntField(Class<?> startClass, String fieldName) {
+        Class<?> type = startClass;
+        while (type != null) {
+            try {
+                Field field = type.getDeclaredField(fieldName);
+                if (field.getType() == Integer.TYPE) {
+                    field.setAccessible(true);
+                    return field;
+                }
+            } catch (NoSuchFieldException missingField) {
+                // Continue up the hierarchy.
+            }
+            type = type.getSuperclass();
+        }
+
+        return null;
+    }
+
+    private static float resolveCreeperFuseProgress(sn entity, float partialTicks) {
+        if (entity == null) {
+            return 0.0f;
+        }
+
+        Class<?> trackedCreeperClass = resolveCreeperEntityClass(entity);
+        if (trackedCreeperClass == null || !trackedCreeperClass.isInstance(entity)) {
+            return 0.0f;
+        }
+
+        try {
+            Field currentFuseField = creeperFuseTimeField;
+            if (currentFuseField == null || !currentFuseField.getDeclaringClass().isInstance(entity)) {
+                currentFuseField = resolveIntField(entity.getClass(), "a");
+                creeperFuseTimeField = currentFuseField;
+            }
+
+            Field previousFuseField = creeperPreviousFuseTimeField;
+            if (previousFuseField == null || !previousFuseField.getDeclaringClass().isInstance(entity)) {
+                previousFuseField = resolveIntField(entity.getClass(), "b");
+                creeperPreviousFuseTimeField = previousFuseField;
+            }
+
+            if (currentFuseField == null || previousFuseField == null) {
+                return 0.0f;
+            }
+
+            float previousFuse = previousFuseField.getInt(entity);
+            float currentFuse = currentFuseField.getInt(entity);
+            float progress = (previousFuse + ((currentFuse - previousFuse) * partialTicks)) / 28.0f;
+            if (progress <= 0.0f) {
+                return 0.0f;
+            }
+            if (progress >= 1.0f) {
+                return 1.0f;
+            }
+            return progress;
+        } catch (IllegalAccessException exception) {
+            return 0.0f;
+        } catch (IllegalArgumentException exception) {
+            return 0.0f;
+        }
+    }
+
+    private static int fuseStageForProgress(float fuseProgress) {
+        return clampCreeperFuseStage(Math.round(fuseProgress * MAX_CREEPER_FUSE_STAGE));
+    }
+
     public static void onLivingEntityFrameBegin() {
         long beginNanos = System.nanoTime();
         ensureDynamicCaptureFrame();
@@ -317,16 +420,21 @@ public final class RemixDynamicEntityCapture {
                 System.nanoTime() - beginNanos);
     }
 
-    public static void onLivingEntityRenderStart(sn entity) {
+    public static void onLivingEntityRenderStart(sn entity, float partialTicks) {
         if (!MinecraftRenderHooks.isInitialized() || entity == null) {
             return;
         }
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
         activeDynamicEntityHurtStage = isTrackedLivingEntity(entity) ? resolveLivingEntityHurtStage(entity) : 0;
+        activeDynamicEntityCreeperFuseProgress = isTrackedCreeper(entity) ? resolveCreeperFuseProgress(entity, partialTicks) : 0.0f;
+        activeDynamicEntityCreeperFuseStage = fuseStageForProgress(activeDynamicEntityCreeperFuseProgress);
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(entity.aD, activeDynamicEntityHurtStage);
+        MinecraftRenderHooks.beginDynamicEntity(
+                entity.aD,
+                activeDynamicEntityHurtStage,
+                activeDynamicEntityCreeperFuseStage);
     }
 
     public static void onLivingEntityRenderEnd() {
@@ -338,6 +446,8 @@ public final class RemixDynamicEntityCapture {
         entityFireOverlayActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
     }
@@ -360,9 +470,11 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0);
+        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0, 0);
     }
 
     public static void onItemEntityRenderEnd() {
@@ -384,9 +496,11 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = ENTITY_FIRE_OVERLAY_TEXTURE_PATH;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0);
+        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0, 0);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
     }
 
@@ -409,9 +523,14 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(sign.e, sign.f, sign.g, 0x5349474E);
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = SIGN_TEXTURE_PATH;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId, activeDynamicEntityHurtStage);
+        MinecraftRenderHooks.beginDynamicEntity(
+            activeDynamicEntityId,
+            activeDynamicEntityHurtStage,
+            activeDynamicEntityCreeperFuseStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
     }
 
@@ -429,9 +548,14 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(piston.e, piston.f, piston.g, 0x50495354);
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = TERRAIN_TEXTURE_PATH;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId, activeDynamicEntityHurtStage);
+        MinecraftRenderHooks.beginDynamicEntity(
+            activeDynamicEntityId,
+            activeDynamicEntityHurtStage,
+            activeDynamicEntityCreeperFuseStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
     }
 
@@ -458,7 +582,7 @@ public final class RemixDynamicEntityCapture {
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             long stateReadEndNanos = System.nanoTime();
 
-            MinecraftRenderHooks.beginDynamicEntity(painting.aD, 0);
+            MinecraftRenderHooks.beginDynamicEntity(painting.aD, 0, 0);
             MinecraftRenderHooks.setDynamicEntityTexture(PAINTING_TEXTURE_PATH);
             submitDynamicBoneTransform(0, modelToWorld);
             long setupEndNanos = System.nanoTime();
@@ -558,8 +682,13 @@ public final class RemixDynamicEntityCapture {
         firstPersonActive = true;
         activeFirstPersonTexture = "/mob/char.png";
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID, activeDynamicEntityHurtStage);
+        MinecraftRenderHooks.beginDynamicEntity(
+            FIRST_PERSON_DYNAMIC_ENTITY_ID,
+            activeDynamicEntityHurtStage,
+            activeDynamicEntityCreeperFuseStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
         MinecraftRenderHooks.setFirstPersonHeldItem(NO_HELD_ITEM);
     }
@@ -581,9 +710,14 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = true;
         activeDynamicEntityId = FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID;
         activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
         activeDynamicEntityTexture = makeFirstPersonShadowTextureAlias("/mob/char.png");
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID, activeDynamicEntityHurtStage);
+        MinecraftRenderHooks.beginDynamicEntity(
+            FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID,
+            activeDynamicEntityHurtStage,
+            activeDynamicEntityCreeperFuseStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
         firstPersonShadowCaptureActive = true;
 
@@ -806,6 +940,12 @@ public final class RemixDynamicEntityCapture {
                     capturedColor[2],
                     capturedColor[3],
                     activeDynamicEntityHurtStage);
+                capturedColor = ColorMath.applyCreeperFuseIndicator(
+                    capturedColor[0],
+                    capturedColor[1],
+                    capturedColor[2],
+                    capturedColor[3],
+                    activeDynamicEntityCreeperFuseProgress);
             int colorRgba = ColorMath.packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {

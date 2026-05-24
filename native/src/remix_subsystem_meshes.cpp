@@ -243,7 +243,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
   entityHeldTorchLightsSeenThisFrame_.clear();
 }
 
-void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage) {
+void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, std::uint32_t creeperFuseStage) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDynamicEntity");
   std::scoped_lock lock(mutex_);
 
@@ -254,6 +254,7 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage) {
   activeDynamicEntity_ = {};
   activeDynamicEntity_.entityId = entityId;
   activeDynamicEntity_.hurtStage = std::min(hurtStage, kDynamicEntityMaxHurtStage);
+  activeDynamicEntity_.creeperFuseStage = std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage);
   activeDynamicEntity_.active = entityId >= 0;
   activeDynamicEntity_.quads.reserve(256);
   activeDynamicEntity_.boneTransforms.reserve(32);
@@ -1058,7 +1059,8 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   const std::uint64_t geometryFingerprint = computeDynamicEntityFingerprint(
       buildState.quads,
       boneCount,
-      buildState.hurtStage);
+      buildState.hurtStage,
+      buildState.creeperFuseStage);
   const std::uint64_t meshKey = makeDynamicEntityMeshKey(buildState.entityId, geometryFingerprint);
   if (const auto existing = dynamicEntityMeshes_.find(meshKey); existing != dynamicEntityMeshes_.end()) {
     return &existing->second;
@@ -1091,7 +1093,8 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
     remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(
         quad.texturePath,
         materialClass,
-        buildState.hurtStage);
+      buildState.hurtStage,
+      buildState.creeperFuseStage);
     if (materialHandle == nullptr) {
       continue;
     }

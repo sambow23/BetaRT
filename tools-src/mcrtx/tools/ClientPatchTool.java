@@ -760,7 +760,7 @@ public final class ClientPatchTool {
     }
 
     private static void patchLivingEntityRender(MethodNode method) {
-        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;)V")) {
+        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;F)V")) {
             return;
         }
 
@@ -856,7 +856,7 @@ public final class ClientPatchTool {
     }
 
     private static void patchMinecartRender(MethodNode method) {
-        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;)V")) {
+        if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;F)V")) {
             return;
         }
 
@@ -1228,7 +1228,8 @@ public final class ClientPatchTool {
     private static InsnList livingEntityRenderStartCall() {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onLivingEntityRenderStart", "(Lsn;)V", false));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 9));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onLivingEntityRenderStart", "(Lsn;F)V", false));
         return instructions;
     }
 

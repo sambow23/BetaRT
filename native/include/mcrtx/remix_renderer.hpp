@@ -212,7 +212,11 @@ struct DynamicEntityQuad {
 };
 
 constexpr std::uint32_t kDynamicEntityMaxHurtStage = 10;
-constexpr std::size_t kDynamicEntityMaterialVariantCount = (static_cast<std::size_t>(kDynamicEntityMaxHurtStage) + 1u) * 2u;
+constexpr std::uint32_t kDynamicEntityMaxCreeperFuseStage = 10;
+constexpr std::size_t kDynamicEntityMaterialVariantCount =
+  (static_cast<std::size_t>(kDynamicEntityMaxHurtStage) + 1u)
+  * (static_cast<std::size_t>(kDynamicEntityMaxCreeperFuseStage) + 1u)
+  * 2u;
 
 enum class DynamicEntityMaterialClass : std::uint8_t {
   Cutout = 0,
@@ -222,6 +226,7 @@ enum class DynamicEntityMaterialClass : std::uint8_t {
 struct DynamicEntityBuildState {
   int entityId {-1};
   std::uint32_t hurtStage {0};
+  std::uint32_t creeperFuseStage {0};
   std::string currentTexturePath {};
   std::vector<DynamicEntityQuad> quads {};
   std::vector<remixapi_Transform> boneTransforms {};
@@ -338,7 +343,7 @@ public:
       float fogDensity);
   void clearCloudLayer();
   void beginDynamicEntityFrame();
-  void beginDynamicEntity(int entityId, std::uint32_t hurtStage);
+  void beginDynamicEntity(int entityId, std::uint32_t hurtStage, std::uint32_t creeperFuseStage);
   void setDynamicEntityTexture(const std::string& texturePath);
   void setFirstPersonHeldItem(int itemId);
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
@@ -518,7 +523,8 @@ private:
   remixapi_MaterialHandle acquireDynamicEntityMaterial(
       const std::string& texturePath,
       DynamicEntityMaterialClass materialClass,
-      std::uint32_t hurtStage);
+      std::uint32_t hurtStage,
+      std::uint32_t creeperFuseStage);
   remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
   bool createTorchLight(const TorchLightPlacement& placement);
   bool updateTorchLight(const TorchLightPlacement& placement);
