@@ -273,6 +273,8 @@ public final class ClientPatchTool {
                 if (!hasHelperCall(method, "onEntityTextureBind", "(Ljava/lang/String;Ljava/lang/String;)V")) {
                     method.instructions.insertBefore(method.instructions.getFirst(), entityTextureBindCallFallback());
                 }
+            } else if (method.name.equals("b") && method.desc.equals("(Lsn;DDDFF)V")) {
+                patchEntityFireOverlay(method);
             }
         }
         return writeClass(classNode);
@@ -854,6 +856,24 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchEntityFireOverlay(MethodNode method) {
+        if (hasHelperCall(method, "onEntityFireOverlayStart", "(Lsn;)V")) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKESPECIAL
+                    && methodInsnNode.owner.equals(BASE_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lsn;DDDF)V")) {
+                method.instructions.insertBefore(node, entityFireOverlayStartCall());
+                method.instructions.insert(node, staticHelperCall("onEntityFireOverlayEnd", "()V"));
+                return;
+            }
+        }
+    }
+
     private static void patchPickupParticleRender(MethodNode method) {
         if (hasHelperCall(method, "onPickupParticleEntityRenderStart", "(Lsn;)V")) {
             return;
@@ -1383,6 +1403,18 @@ public final class ClientPatchTool {
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
                 "onItemEntityRenderStart",
+                "(Lsn;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList entityFireOverlayStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onEntityFireOverlayStart",
                 "(Lsn;)V",
                 false));
         return instructions;

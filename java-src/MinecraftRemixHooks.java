@@ -437,6 +437,24 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onEntityFireOverlayStart(sn entity) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onEntityFireOverlayStart(entity);
+        } finally {
+            HookProfiler.endHook("hook.onEntityFireOverlayStart", __perf);
+        }
+    }
+
+    public static void onEntityFireOverlayEnd() {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onEntityFireOverlayEnd();
+        } finally {
+            HookProfiler.endHook("hook.onEntityFireOverlayEnd", __perf);
+        }
+    }
+
     public static void onSignRenderStart(yk sign) {
         long __perf = HookProfiler.begin();
         try {

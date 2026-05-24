@@ -19,12 +19,21 @@ public final class RemixDynamicEntityCapture {
     private static final int TORCH_BLOCK_ID = 50;
     private static final int REDSTONE_TORCH_OFF_BLOCK_ID = 75;
     private static final int REDSTONE_TORCH_ON_BLOCK_ID = 76;
+    private static final int FIRE_PRIMARY_TERRAIN_TILE_INDEX = 31;
+    private static final int FIRE_ALTERNATE_TERRAIN_TILE_INDEX = 47;
+    private static final int FIRE_ANIMATION_FRAME_COUNT = 16;
+    private static final long FIRE_ANIMATION_FRAME_INTERVAL_MILLISECONDS = 50L;
+    private static final int TERRAIN_ATLAS_TILE_COLUMNS = 16;
+    private static final float TERRAIN_ATLAS_TILE_SPAN = 1.0f / TERRAIN_ATLAS_TILE_COLUMNS;
+    private static final float ENTITY_FIRE_OVERLAY_ATLAS_ROW_COUNT = 2.0f;
     private static final float ENTITY_HELD_TORCH_RIGHT_NUDGE = 0.18f;
     private static final float FONT_GLYPH_SIZE = 7.99f;
     private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final String FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/firstperson_shadow/";
+    private static final String ENTITY_FIRE_OVERLAY_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/entity_fire_overlay/";
+    private static final String ENTITY_FIRE_OVERLAY_TEXTURE_PATH = "/mcrtx_alias/entity_fire_overlay/terrain.png";
     private static final String FONT_TEXTURE_PATH = "/font/default.png";
     private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
@@ -43,6 +52,7 @@ public final class RemixDynamicEntityCapture {
     private static boolean signRenderActive;
     private static boolean dynamicEntityActive;
     private static boolean pickupParticleEntityRenderActive;
+    private static boolean entityFireOverlayActive;
     private static int activeDynamicEntityId = -1;
     private static int activeDynamicEntityHurtStage;
     private static String activeDynamicEntityTexture = "";
@@ -325,6 +335,7 @@ public final class RemixDynamicEntityCapture {
         }
         MinecraftRenderHooks.endDynamicEntity();
         dynamicEntityActive = false;
+        entityFireOverlayActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityHurtStage = 0;
         activeDynamicEntityTexture = "";
@@ -360,6 +371,31 @@ public final class RemixDynamicEntityCapture {
         }
 
         pickupParticleEntityRenderActive = false;
+        onLivingEntityRenderEnd();
+    }
+
+    public static void onEntityFireOverlayStart(sn entity) {
+        if (!MinecraftRenderHooks.isInitialized() || entity == null || !isTrackedLivingEntity(entity)) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+        entityFireOverlayActive = true;
+        dynamicEntityActive = true;
+        activeDynamicEntityId = entity.aD;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityTexture = ENTITY_FIRE_OVERLAY_TEXTURE_PATH;
+        nextDynamicBoneIndex = 0;
+        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0);
+        MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+    }
+
+    public static void onEntityFireOverlayEnd() {
+        if (!entityFireOverlayActive) {
+            return;
+        }
+
+        entityFireOverlayActive = false;
         onLivingEntityRenderEnd();
     }
 
@@ -711,7 +747,9 @@ public final class RemixDynamicEntityCapture {
             return;
         }
         String resolvedTexture = normalizeDynamicTexturePath(primaryTexture, fallbackTexture);
-        if (firstPersonShadowCaptureActive) {
+        if (entityFireOverlayActive) {
+            resolvedTexture = makeEntityFireOverlayTextureAlias(resolvedTexture.isEmpty() ? TERRAIN_TEXTURE_PATH : resolvedTexture);
+        } else if (firstPersonShadowCaptureActive) {
             resolvedTexture = makeFirstPersonShadowTextureAlias(resolvedTexture);
         }
         if (resolvedTexture.isEmpty() || resolvedTexture.equals(activeDynamicEntityTexture)) {
@@ -889,21 +927,44 @@ public final class RemixDynamicEntityCapture {
                 float p0x = Float.intBitsToFloat(rawVertexData[vertexIndex * 8]);
                 float p0y = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 1]);
                 float p0z = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 2]);
+                float p0u = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]);
+                float p0v = Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]);
                 float p1x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8]);
                 float p1y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 1]);
                 float p1z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 2]);
+                float p1u = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 3]);
+                float p1v = Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 4]);
                 float p2x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8]);
                 float p2y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 1]);
                 float p2z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 2]);
+                float p2u = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 3]);
+                float p2v = Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 4]);
                 float p3x = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8]);
                 float p3y = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 1]);
                 float p3z = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 2]);
+                float p3u = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 3]);
+                float p3v = Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 4]);
+
+                if (entityFireOverlayActive) {
+                    float[] uv0 = remapEntityFireOverlayUv(p0u, p0v);
+                    float[] uv1 = remapEntityFireOverlayUv(p1u, p1v);
+                    float[] uv2 = remapEntityFireOverlayUv(p2u, p2v);
+                    float[] uv3 = remapEntityFireOverlayUv(p3u, p3v);
+                    p0u = uv0[0];
+                    p0v = uv0[1];
+                    p1u = uv1[0];
+                    p1v = uv1[1];
+                    p2u = uv2[0];
+                    p2v = uv2[1];
+                    p3u = uv3[0];
+                    p3v = uv3[1];
+                }
 
                 MinecraftRenderHooks.captureDynamicEntityQuad(
-                        p0x, p0y, p0z, Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]), Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]),
-                        p1x, p1y, p1z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 1) * 8 + 4]),
-                        p2x, p2y, p2z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 2) * 8 + 4]),
-                        p3x, p3y, p3z, Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 3]), Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 4]),
+                        p0x, p0y, p0z, p0u, p0v,
+                        p1x, p1y, p1z, p1u, p1v,
+                        p2x, p2y, p2z, p2u, p2v,
+                        p3x, p3y, p3z, p3u, p3v,
                         quadColor,
                         boneIndex);
             }
@@ -928,6 +989,7 @@ public final class RemixDynamicEntityCapture {
             exception.printStackTrace();
         }
         dynamicEntityActive = false;
+        entityFireOverlayActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityTexture = "";
         pickupParticleEntityRenderActive = false;
@@ -1091,6 +1153,45 @@ public final class RemixDynamicEntityCapture {
             normalized = normalized.substring(1);
         }
         return FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX + normalized;
+    }
+
+    private static String makeEntityFireOverlayTextureAlias(String texturePath) {
+        String normalized = stripTexturePrefix(texturePath);
+        if (normalized.isEmpty()) {
+            return "";
+        }
+        if (normalized.startsWith(ENTITY_FIRE_OVERLAY_TEXTURE_ALIAS_PREFIX)) {
+            return normalized;
+        }
+        if (normalized.charAt(0) == '/') {
+            normalized = normalized.substring(1);
+        }
+        return ENTITY_FIRE_OVERLAY_TEXTURE_ALIAS_PREFIX + normalized;
+    }
+
+    private static float[] remapEntityFireOverlayUv(float u, float v) {
+        int tileX = clampInt((int) Math.floor(u / TERRAIN_ATLAS_TILE_SPAN), 0, TERRAIN_ATLAS_TILE_COLUMNS - 1);
+        int tileY = clampInt((int) Math.floor(v / TERRAIN_ATLAS_TILE_SPAN), 0, TERRAIN_ATLAS_TILE_COLUMNS - 1);
+        int terrainTileIndex = tileX + tileY * TERRAIN_ATLAS_TILE_COLUMNS;
+        int fireRow = terrainTileIndex == FIRE_ALTERNATE_TERRAIN_TILE_INDEX ? 1 : 0;
+        int fireFrame = (int) ((System.currentTimeMillis() / FIRE_ANIMATION_FRAME_INTERVAL_MILLISECONDS) % FIRE_ANIMATION_FRAME_COUNT);
+
+        float tileMinU = tileX * TERRAIN_ATLAS_TILE_SPAN;
+        float tileMinV = tileY * TERRAIN_ATLAS_TILE_SPAN;
+        float normalizedU = clamp01((u - tileMinU) / TERRAIN_ATLAS_TILE_SPAN);
+        float normalizedV = clamp01((v - tileMinV) / TERRAIN_ATLAS_TILE_SPAN);
+        return new float[] {
+                (fireFrame + normalizedU) / FIRE_ANIMATION_FRAME_COUNT,
+                (fireRow + normalizedV) / ENTITY_FIRE_OVERLAY_ATLAS_ROW_COUNT
+        };
+    }
+
+    private static int clampInt(int value, int minValue, int maxValue) {
+        return Math.max(minValue, Math.min(maxValue, value));
+    }
+
+    private static float clamp01(float value) {
+        return Math.max(0.0f, Math.min(1.0f, value));
     }
 
     private static String activeCaptureTexture() {
