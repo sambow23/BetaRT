@@ -802,9 +802,12 @@ std::uint32_t computeDynamicEntityBoneCount(const std::vector<DynamicEntityQuad>
 
 std::uint64_t computeDynamicEntityFingerprint(
     const std::vector<DynamicEntityQuad>& quads,
-    std::uint32_t boneCount) {
+    std::uint32_t boneCount,
+    std::uint32_t hurtStage) {
   std::uint64_t fingerprint = 1469598103934665603ull;
   fingerprint ^= static_cast<std::uint64_t>(boneCount);
+  fingerprint *= 1099511628211ull;
+  fingerprint ^= static_cast<std::uint64_t>(std::min(hurtStage, kDynamicEntityMaxHurtStage));
   fingerprint *= 1099511628211ull;
   for (const DynamicEntityQuad& quad : quads) {
     fingerprint ^= static_cast<std::uint64_t>(quad.boneIndex);

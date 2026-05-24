@@ -264,11 +264,11 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nBeginDynamicEntityFrame();
     }
 
-    public static synchronized void beginDynamicEntity(int entityId) {
+    public static synchronized void beginDynamicEntity(int entityId, int hurtStage) {
         if (!initialized) {
             return;
         }
-        RemixBridgeNative.nBeginDynamicEntity(entityId);
+        RemixBridgeNative.nBeginDynamicEntity(entityId, hurtStage);
     }
 
     public static synchronized void setDynamicEntityTexture(String texturePath) {

@@ -41,10 +41,12 @@ public final class ClientPatchTool {
     private static final String PARTICLE_CLASS = "xw";
     private static final String BLOCK_PARTICLE_CLASS = "qm";
     private static final String ITEM_PARTICLE_CLASS = "pb";
+    private static final String PICKUP_PARTICLE_CLASS = "em";
     private static final String REMIX_HELPER_CLASS = "MinecraftRemixHooks";
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
     private static final String BASE_RENDERER_CLASS = "bw";
+    private static final String ITEM_ENTITY_RENDERER_CLASS = "bb";
     private static final String PLAYER_RENDERER_CLASS = "ds";
     private static final String FIRST_PERSON_RENDERER_CLASS = "ra";
     private static final String WORLD_RENDERER_CLASS = "n";
@@ -89,6 +91,8 @@ public final class ClientPatchTool {
                     content = patchTh(content);
                 } else if (entryName.equals(BASE_RENDERER_CLASS + ".class")) {
                     content = patchBw(content);
+                } else if (entryName.equals(ITEM_ENTITY_RENDERER_CLASS + ".class")) {
+                    content = patchBb(content);
                 } else if (entryName.equals(PLAYER_RENDERER_CLASS + ".class")) {
                     content = patchDs(content);
                 } else if (entryName.equals(FIRST_PERSON_RENDERER_CLASS + ".class")) {
@@ -102,6 +106,8 @@ public final class ClientPatchTool {
                 } else if (entryName.equals(BLOCK_PARTICLE_CLASS + ".class")
                         || entryName.equals(ITEM_PARTICLE_CLASS + ".class")) {
                     content = patchParticle(content, "onAnimatedParticleRender");
+                } else if (entryName.equals(PICKUP_PARTICLE_CLASS + ".class")) {
+                    content = patchEm(content);
                 } else if (entryName.equals(OPTIONS_SCREEN_CLASS + ".class")) {
                     content = patchCo(content);
                 } else if (entryName.equals(WORLD_RENDERER_CLASS + ".class")) {
@@ -272,6 +278,16 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchBb(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lhl;DDDFF)V")) {
+                patchItemEntityRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchDs(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
@@ -373,6 +389,16 @@ public final class ClientPatchTool {
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Ljava/lang/String;IIIZ)V")) {
                 patchFontRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
+    private static byte[] patchEm(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
+                patchPickupParticleRender(method);
             }
         }
         return writeClass(classNode);
@@ -810,6 +836,39 @@ public final class ClientPatchTool {
                 method.instructions.insertBefore(node, staticHelperCall("onLivingEntityRenderEnd", "()V"));
             }
             node = next;
+        }
+    }
+
+    private static void patchItemEntityRender(MethodNode method) {
+        if (hasHelperCall(method, "onItemEntityRenderStart", "(Lsn;)V")) {
+            return;
+        }
+
+        method.instructions.insertBefore(method.instructions.getFirst(), itemEntityRenderStartCall());
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onItemEntityRenderEnd", "()V"));
+            }
+            node = next;
+        }
+    }
+
+    private static void patchPickupParticleRender(MethodNode method) {
+        if (hasHelperCall(method, "onPickupParticleEntityRenderStart", "(Lsn;)V")) {
+            return;
+        }
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(LIVING_RENDER_MANAGER_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Lsn;DDDFF)V")) {
+                method.instructions.insertBefore(node, pickupParticleEntityRenderStartCall());
+                method.instructions.insert(node, staticHelperCall("onPickupParticleEntityRenderEnd", "()V"));
+                return;
+            }
         }
     }
 
@@ -1300,6 +1359,31 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
             helperMethodName,
                 "(Lxw;FFFFFF)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList pickupParticleEntityRenderStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, PICKUP_PARTICLE_CLASS, "a", "Lsn;"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onPickupParticleEntityRenderStart",
+                "(Lsn;)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList itemEntityRenderStartCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onItemEntityRenderStart",
+                "(Lsn;)V",
                 false));
         return instructions;
     }

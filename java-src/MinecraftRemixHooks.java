@@ -401,6 +401,42 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void onPickupParticleEntityRenderStart(sn entity) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onPickupParticleEntityRenderStart(entity);
+        } finally {
+            HookProfiler.endHook("hook.onPickupParticleEntityRenderStart", __perf);
+        }
+    }
+
+    public static void onPickupParticleEntityRenderEnd() {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onPickupParticleEntityRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onPickupParticleEntityRenderEnd", __perf);
+        }
+    }
+
+    public static void onItemEntityRenderStart(sn entity) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onItemEntityRenderStart(entity);
+        } finally {
+            HookProfiler.endHook("hook.onItemEntityRenderStart", __perf);
+        }
+    }
+
+    public static void onItemEntityRenderEnd() {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onItemEntityRenderEnd();
+        } finally {
+            HookProfiler.endHook("hook.onItemEntityRenderEnd", __perf);
+        }
+    }
+
     public static void onSignRenderStart(yk sign) {
         long __perf = HookProfiler.begin();
         try {

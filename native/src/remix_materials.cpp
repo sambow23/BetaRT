@@ -24,9 +24,33 @@ using namespace mcrtx::detail;
 namespace {
 
 constexpr std::uint64_t kDynamicEntityTranslucentMaterialHashMask = 0x54524E5300000000ull;
+constexpr std::uint64_t kDynamicEntityHurtMaterialHashMask = 0x4852540000000000ull;
+constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 4.0f;
+inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
 
 std::size_t dynamicEntityMaterialClassIndex(DynamicEntityMaterialClass materialClass) {
   return materialClass == DynamicEntityMaterialClass::Translucent ? 1u : 0u;
+}
+
+std::uint32_t clampDynamicEntityHurtStage(std::uint32_t hurtStage) {
+  return std::min(hurtStage, kDynamicEntityMaxHurtStage);
+}
+
+std::size_t dynamicEntityMaterialVariantIndex(
+    DynamicEntityMaterialClass materialClass,
+    std::uint32_t hurtStage) {
+  const std::size_t hurtIndex = static_cast<std::size_t>(clampDynamicEntityHurtStage(hurtStage));
+  return (hurtIndex * 2u) + dynamicEntityMaterialClassIndex(materialClass);
+}
+
+float dynamicEntityHurtEmissiveIntensity(std::uint32_t hurtStage) {
+  const std::uint32_t clampedHurtStage = clampDynamicEntityHurtStage(hurtStage);
+  if (clampedHurtStage == 0) {
+    return 0.0f;
+  }
+
+  return kDynamicEntityHurtMaxEmissiveIntensity
+      * (static_cast<float>(clampedHurtStage) / static_cast<float>(kDynamicEntityMaxHurtStage));
 }
 
 struct OptionalPbrTextures {
@@ -1055,9 +1079,11 @@ void RemixRenderer::destroyTerrainMaterials() {
 
 remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     const std::string& texturePath,
-    DynamicEntityMaterialClass materialClass) {
+    DynamicEntityMaterialClass materialClass,
+    std::uint32_t hurtStage) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::acquireDynamicEntityMaterial");
-  const std::size_t materialIndex = dynamicEntityMaterialClassIndex(materialClass);
+  const std::uint32_t clampedHurtStage = clampDynamicEntityHurtStage(hurtStage);
+  const std::size_t materialIndex = dynamicEntityMaterialVariantIndex(materialClass, clampedHurtStage);
   const auto existing = dynamicEntityMaterialHandles_.find(texturePath);
   if (existing != dynamicEntityMaterialHandles_.end()) {
     if (existing->second[materialIndex] != nullptr) {
@@ -1090,10 +1116,15 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
   }
 
   const wchar_t* emissiveTexture = emissiveTexturePath == nullptr ? nullptr : emissiveTexturePath->c_str();
-  const float emissiveIntensity = emissiveTexture == nullptr ? 0.0f : kTerrainEmissiveIntensity;
-  const remixapi_Float3D emissiveColor = emissiveTexture == nullptr
+  float emissiveIntensity = emissiveTexture == nullptr ? 0.0f : kTerrainEmissiveIntensity;
+  remixapi_Float3D emissiveColor = emissiveTexture == nullptr
       ? remixapi_Float3D {0.0f, 0.0f, 0.0f}
       : kTerrainEmissiveColor;
+  if (clampedHurtStage != 0) {
+    emissiveTexture = nullptr;
+    emissiveIntensity = dynamicEntityHurtEmissiveIntensity(clampedHurtStage);
+    emissiveColor = kDynamicEntityHurtEmissiveColor;
+  }
   const OptionalPbrTextures pbrTextures = resolveOptionalPbrTextures(resolvedTexturePath);
 
   remixapi_MaterialInfoOpaqueEXT opaqueInfo {};
@@ -1103,7 +1134,8 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
   materialInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
   materialInfo.hash = kDynamicEntityMaterialHashSeed
       ^ static_cast<std::uint64_t>(std::hash<std::string> {}(texturePath))
-      ^ (materialClass == DynamicEntityMaterialClass::Translucent ? kDynamicEntityTranslucentMaterialHashMask : 0ull);
+      ^ (materialClass == DynamicEntityMaterialClass::Translucent ? kDynamicEntityTranslucentMaterialHashMask : 0ull)
+      ^ (static_cast<std::uint64_t>(clampedHurtStage) * kDynamicEntityHurtMaterialHashMask);
   materialInfo.albedoTexture = resolvedTexturePath.c_str();
   materialInfo.emissiveTexture = emissiveTexture;
   materialInfo.emissiveIntensity = emissiveIntensity;

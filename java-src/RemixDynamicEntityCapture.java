@@ -3,12 +3,14 @@ import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.lwjglshim.OpenGlCompat;
+import java.lang.reflect.Field;
 import java.nio.FloatBuffer;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
 
 public final class RemixDynamicEntityCapture {
+    private static final int MAX_HURT_STAGE = 10;
     private static final int MAX_DYNAMIC_BONES = 256;
     private static final int FIRST_PERSON_DYNAMIC_ENTITY_ID = Integer.MAX_VALUE - 1;
     private static final int FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID = Integer.MAX_VALUE - 2;
@@ -40,8 +42,12 @@ public final class RemixDynamicEntityCapture {
     private static boolean dynamicCaptureFrameActive;
     private static boolean signRenderActive;
     private static boolean dynamicEntityActive;
+    private static boolean pickupParticleEntityRenderActive;
     private static int activeDynamicEntityId = -1;
+    private static int activeDynamicEntityHurtStage;
     private static String activeDynamicEntityTexture = "";
+    private static Class<?> livingEntityBaseClass;
+    private static Field livingEntityHurtTimeField;
     private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
@@ -216,6 +222,84 @@ public final class RemixDynamicEntityCapture {
     private RemixDynamicEntityCapture() {
     }
 
+    private static int clampHurtStage(int hurtStage) {
+        return Math.max(0, Math.min(MAX_HURT_STAGE, hurtStage));
+    }
+
+    private static Class<?> resolveLivingEntityBaseClass(sn entity) {
+        if (entity == null) {
+            return null;
+        }
+
+        Class<?> cachedBaseClass = livingEntityBaseClass;
+        if (cachedBaseClass != null && cachedBaseClass.isInstance(entity)) {
+            return cachedBaseClass;
+        }
+
+        Class<?> type = entity.getClass();
+        while (type != null) {
+            if ("ls".equals(type.getName())) {
+                livingEntityBaseClass = type;
+                return type;
+            }
+            type = type.getSuperclass();
+        }
+
+        return null;
+    }
+
+    private static boolean isTrackedLivingEntity(sn entity) {
+        Class<?> baseClass = resolveLivingEntityBaseClass(entity);
+        return baseClass != null && baseClass.isInstance(entity);
+    }
+
+    private static int resolveLivingEntityHurtStage(sn entity) {
+        if (entity == null) {
+            return 0;
+        }
+
+        Class<?> baseClass = resolveLivingEntityBaseClass(entity);
+        if (baseClass == null || !baseClass.isInstance(entity)) {
+            return 0;
+        }
+
+        try {
+            Field hurtTimeField = livingEntityHurtTimeField;
+            if (hurtTimeField != null && hurtTimeField.getDeclaringClass().isInstance(entity)) {
+                return clampHurtStage(hurtTimeField.getInt(entity));
+            }
+
+            hurtTimeField = null;
+            Class<?> type = entity.getClass();
+            while (type != null) {
+                try {
+                    Field candidateField = type.getDeclaredField("aa");
+                    if (candidateField.getType() != Integer.TYPE) {
+                        type = type.getSuperclass();
+                        continue;
+                    }
+
+                    candidateField.setAccessible(true);
+                    hurtTimeField = candidateField;
+                    livingEntityHurtTimeField = candidateField;
+                    break;
+                } catch (NoSuchFieldException missingField) {
+                    type = type.getSuperclass();
+                }
+            }
+
+            if (hurtTimeField == null || !hurtTimeField.getDeclaringClass().isInstance(entity)) {
+                return 0;
+            }
+
+            return clampHurtStage(hurtTimeField.getInt(entity));
+        } catch (IllegalAccessException exception) {
+            return 0;
+        } catch (IllegalArgumentException exception) {
+            return 0;
+        }
+    }
+
     public static void onLivingEntityFrameBegin() {
         long beginNanos = System.nanoTime();
         ensureDynamicCaptureFrame();
@@ -224,14 +308,15 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityRenderStart(sn entity) {
-        if (!MinecraftRenderHooks.isInitialized() || entity == null) {
+        if (!MinecraftRenderHooks.isInitialized() || entity == null || !isTrackedLivingEntity(entity)) {
             return;
         }
         dynamicEntityActive = true;
         activeDynamicEntityId = entity.aD;
+        activeDynamicEntityHurtStage = resolveLivingEntityHurtStage(entity);
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(entity.aD);
+        MinecraftRenderHooks.beginDynamicEntity(entity.aD, activeDynamicEntityHurtStage);
     }
 
     public static void onLivingEntityRenderEnd() {
@@ -241,8 +326,41 @@ public final class RemixDynamicEntityCapture {
         MinecraftRenderHooks.endDynamicEntity();
         dynamicEntityActive = false;
         activeDynamicEntityId = -1;
+        activeDynamicEntityHurtStage = 0;
         activeDynamicEntityTexture = "";
         nextDynamicBoneIndex = 0;
+    }
+
+    public static void onPickupParticleEntityRenderStart(sn entity) {
+        pickupParticleEntityRenderActive = false;
+    }
+
+    public static void onPickupParticleEntityRenderEnd() {
+        pickupParticleEntityRenderActive = false;
+    }
+
+    public static void onItemEntityRenderStart(sn entity) {
+        if (!MinecraftRenderHooks.isInitialized() || entity == null) {
+            return;
+        }
+
+        ensureDynamicCaptureFrame();
+        pickupParticleEntityRenderActive = true;
+        dynamicEntityActive = true;
+        activeDynamicEntityId = entity.aD;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
+        MinecraftRenderHooks.beginDynamicEntity(entity.aD, 0);
+    }
+
+    public static void onItemEntityRenderEnd() {
+        if (!pickupParticleEntityRenderActive) {
+            return;
+        }
+
+        pickupParticleEntityRenderActive = false;
+        onLivingEntityRenderEnd();
     }
 
     public static void onSignRenderStart(yk sign) {
@@ -254,9 +372,10 @@ public final class RemixDynamicEntityCapture {
         signRenderActive = true;
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(sign.e, sign.f, sign.g, 0x5349474E);
+        activeDynamicEntityHurtStage = 0;
         activeDynamicEntityTexture = SIGN_TEXTURE_PATH;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId);
+        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId, activeDynamicEntityHurtStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
     }
 
@@ -273,9 +392,10 @@ public final class RemixDynamicEntityCapture {
         ensureDynamicCaptureFrame();
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(piston.e, piston.f, piston.g, 0x50495354);
+        activeDynamicEntityHurtStage = 0;
         activeDynamicEntityTexture = TERRAIN_TEXTURE_PATH;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId);
+        MinecraftRenderHooks.beginDynamicEntity(activeDynamicEntityId, activeDynamicEntityHurtStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
     }
 
@@ -302,7 +422,7 @@ public final class RemixDynamicEntityCapture {
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             long stateReadEndNanos = System.nanoTime();
 
-            MinecraftRenderHooks.beginDynamicEntity(painting.aD);
+            MinecraftRenderHooks.beginDynamicEntity(painting.aD, 0);
             MinecraftRenderHooks.setDynamicEntityTexture(PAINTING_TEXTURE_PATH);
             submitDynamicBoneTransform(0, modelToWorld);
             long setupEndNanos = System.nanoTime();
@@ -401,8 +521,9 @@ public final class RemixDynamicEntityCapture {
         ensureDynamicCaptureFrame();
         firstPersonActive = true;
         activeFirstPersonTexture = "/mob/char.png";
+        activeDynamicEntityHurtStage = 0;
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID);
+        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_DYNAMIC_ENTITY_ID, activeDynamicEntityHurtStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
         MinecraftRenderHooks.setFirstPersonHeldItem(NO_HELD_ITEM);
     }
@@ -423,9 +544,10 @@ public final class RemixDynamicEntityCapture {
         ensureDynamicCaptureFrame();
         dynamicEntityActive = true;
         activeDynamicEntityId = FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID;
+        activeDynamicEntityHurtStage = 0;
         activeDynamicEntityTexture = makeFirstPersonShadowTextureAlias("/mob/char.png");
         nextDynamicBoneIndex = 0;
-        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID);
+        MinecraftRenderHooks.beginDynamicEntity(FIRST_PERSON_PLAYER_SHADOW_ENTITY_ID, activeDynamicEntityHurtStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
         firstPersonShadowCaptureActive = true;
 
@@ -627,7 +749,13 @@ public final class RemixDynamicEntityCapture {
             } else {
                 modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             }
-            float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
+                float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
+                capturedColor = ColorMath.applyHurtIndicator(
+                    capturedColor[0],
+                    capturedColor[1],
+                    capturedColor[2],
+                    capturedColor[3],
+                    activeDynamicEntityHurtStage);
             int colorRgba = ColorMath.packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {
@@ -802,6 +930,7 @@ public final class RemixDynamicEntityCapture {
         dynamicEntityActive = false;
         activeDynamicEntityId = -1;
         activeDynamicEntityTexture = "";
+        pickupParticleEntityRenderActive = false;
         signRenderActive = false;
         firstPersonActive = false;
         activeFirstPersonTexture = "";

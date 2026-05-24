@@ -1,6 +1,8 @@
 package mcrtx.bridge;
 
 public final class ColorMath {
+    private static final int MAX_HURT_STAGE = 10;
+
     private ColorMath() {
     }
 
@@ -46,5 +48,18 @@ public final class ColorMath {
             return new float[]{1.0f, 1.0f, 1.0f, alpha};
         }
         return new float[]{red, green, blue, alpha};
+    }
+
+    public static float[] applyHurtIndicator(float red, float green, float blue, float alpha, int hurtStage) {
+        int clampedStage = Math.max(0, Math.min(MAX_HURT_STAGE, hurtStage));
+        if (clampedStage == 0) {
+            return new float[]{red, green, blue, alpha};
+        }
+
+        float intensity = clampedStage / (float) MAX_HURT_STAGE;
+        float tintedRed = red + ((1.0f - red) * intensity);
+        float tintedGreen = green * (1.0f - intensity);
+        float tintedBlue = blue * (1.0f - intensity);
+        return new float[]{tintedRed, tintedGreen, tintedBlue, alpha};
     }
 }

@@ -169,7 +169,7 @@ public final class RemixBridgeNative {
 
             public static native void nBeginDynamicEntityFrame();
 
-            public static native void nBeginDynamicEntity(int entityId);
+            public static native void nBeginDynamicEntity(int entityId, int hurtStage);
 
             public static native void nSetDynamicEntityTexture(String texturePath);
 

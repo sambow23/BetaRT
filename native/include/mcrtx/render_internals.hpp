@@ -338,7 +338,8 @@ void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& valu
 std::uint32_t computeDynamicEntityBoneCount(const std::vector<DynamicEntityQuad>& quads);
 std::uint64_t computeDynamicEntityFingerprint(
     const std::vector<DynamicEntityQuad>& quads,
-    std::uint32_t boneCount);
+    std::uint32_t boneCount,
+    std::uint32_t hurtStage);
 std::uint32_t packVertexColor(std::uint32_t rgbColor);
 
 // ---- Tile / bounds helpers ------------------------------------------------

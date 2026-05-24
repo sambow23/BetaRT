@@ -298,9 +298,10 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntityFr
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntity(
-    JNIEnv*, jclass, jint entityId) {
+    JNIEnv*, jclass, jint entityId, jint hurtStage) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDynamicEntity");
-  RemixRenderer::instance().beginDynamicEntity(entityId);
+  const std::uint32_t clampedHurtStage = hurtStage < 0 ? 0u : static_cast<std::uint32_t>(hurtStage);
+  RemixRenderer::instance().beginDynamicEntity(static_cast<int>(entityId), clampedHurtStage);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityTexture(

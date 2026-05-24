@@ -211,6 +211,9 @@ struct DynamicEntityQuad {
   std::uint32_t boneIndex {0};
 };
 
+constexpr std::uint32_t kDynamicEntityMaxHurtStage = 10;
+constexpr std::size_t kDynamicEntityMaterialVariantCount = (static_cast<std::size_t>(kDynamicEntityMaxHurtStage) + 1u) * 2u;
+
 enum class DynamicEntityMaterialClass : std::uint8_t {
   Cutout = 0,
   Translucent = 1,
@@ -218,6 +221,7 @@ enum class DynamicEntityMaterialClass : std::uint8_t {
 
 struct DynamicEntityBuildState {
   int entityId {-1};
+  std::uint32_t hurtStage {0};
   std::string currentTexturePath {};
   std::vector<DynamicEntityQuad> quads {};
   std::vector<remixapi_Transform> boneTransforms {};
@@ -334,7 +338,7 @@ public:
       float fogDensity);
   void clearCloudLayer();
   void beginDynamicEntityFrame();
-  void beginDynamicEntity(int entityId);
+  void beginDynamicEntity(int entityId, std::uint32_t hurtStage);
   void setDynamicEntityTexture(const std::string& texturePath);
   void setFirstPersonHeldItem(int itemId);
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
@@ -513,7 +517,8 @@ private:
   bool createPrimingMesh();
   remixapi_MaterialHandle acquireDynamicEntityMaterial(
       const std::string& texturePath,
-      DynamicEntityMaterialClass materialClass);
+      DynamicEntityMaterialClass materialClass,
+      std::uint32_t hurtStage);
   remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
   bool createTorchLight(const TorchLightPlacement& placement);
   bool updateTorchLight(const TorchLightPlacement& placement);
@@ -681,7 +686,7 @@ private:
   std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
   std::vector<BlockOutlineInstance> blockOutlineInstances_ {};
   std::vector<ParticleQuad> particleQuads_ {};
-  std::unordered_map<std::string, std::array<remixapi_MaterialHandle, 2>> dynamicEntityMaterialHandles_ {};
+  std::unordered_map<std::string, std::array<remixapi_MaterialHandle, kDynamicEntityMaterialVariantCount>> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
   remixapi_MeshHandle primingMeshHandle_ {nullptr};
