@@ -707,6 +707,7 @@ private:
   static constexpr int kBlockOutlineStyleSolid = 2;
   static constexpr int kBlockOutlineStyleGlow = 3;
   static constexpr int kBlockOutlineStyleRgb = 4;
+  static constexpr int kBlockOutlineStyleThin = 5;
   int blockOutlineStyle_ {kBlockOutlineStyleBold};
   float blockOutlineEmissiveIntensity_ {4.5f};
   static constexpr int kRtQualityLow = 0;

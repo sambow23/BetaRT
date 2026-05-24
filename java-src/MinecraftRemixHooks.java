@@ -805,6 +805,9 @@ public final class MinecraftRemixHooks {
         int style = McrtxRuntimeSettings.getBlockOutlineStyle();
         switch (style) {
             case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN);
+                break;
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN:
                 McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW);
                 break;
             case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
@@ -1089,6 +1092,8 @@ public final class MinecraftRemixHooks {
         switch (style) {
             case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
                 return "Subtle";
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN:
+                return "Thin";
             case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
                 return "Glow";
             case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB:

@@ -43,6 +43,7 @@ public final class McrtxRuntimeSettings {
     public static final int BLOCK_OUTLINE_STYLE_SOLID = 2;
     public static final int BLOCK_OUTLINE_STYLE_GLOW = 3;
     public static final int BLOCK_OUTLINE_STYLE_RGB = 4;
+    public static final int BLOCK_OUTLINE_STYLE_THIN = 5;
 
     public static final int UPSCALER_TYPE_NONE = 0;
     public static final int UPSCALER_TYPE_DLSS = 1;
@@ -666,6 +667,9 @@ public final class McrtxRuntimeSettings {
         if (trimmed.equalsIgnoreCase("rgb") || trimmed.equals("4")) {
             return BLOCK_OUTLINE_STYLE_RGB;
         }
+        if (trimmed.equalsIgnoreCase("thin") || trimmed.equals("5")) {
+            return BLOCK_OUTLINE_STYLE_THIN;
+        }
         return defaultValue;
     }
 
@@ -836,7 +840,7 @@ public final class McrtxRuntimeSettings {
     }
 
     private static int normalizeBlockOutlineStyle(int style) {
-        if (style >= BLOCK_OUTLINE_STYLE_SUBTLE && style <= BLOCK_OUTLINE_STYLE_RGB) {
+        if (style >= BLOCK_OUTLINE_STYLE_SUBTLE && style <= BLOCK_OUTLINE_STYLE_THIN) {
             return style;
         }
         return BLOCK_OUTLINE_STYLE_BOLD;
@@ -944,6 +948,8 @@ public final class McrtxRuntimeSettings {
                 return "Glow";
             case BLOCK_OUTLINE_STYLE_RGB:
                 return "RGB";
+            case BLOCK_OUTLINE_STYLE_THIN:
+                return "Thin";
             case BLOCK_OUTLINE_STYLE_SOLID:
                 return "Solid";
             case BLOCK_OUTLINE_STYLE_BOLD:

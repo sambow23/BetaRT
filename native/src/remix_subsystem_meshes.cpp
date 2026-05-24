@@ -63,16 +63,18 @@ BlockOutlineAnimatedColor currentBlockOutlineRgbColor() {
 BlockOutlineStyleParameters blockOutlineStyleParametersFor(int style) {
   switch (style) {
     case 0:
-      return {0.004f, 0.30f, 0.010f, false, false, false, 1.0f, 1.0f, 1.0f};
+      return {0.004f, 0.30f, 0.010f, false, false, false, 0.0f, 0.0f, 0.0f};
+    case 5:
+      return {0.004f, 0.30f, 0.0025f, false, false, false, 0.0f, 0.0f, 0.0f};
     case 3:
       return {0.004f, 0.30f, 0.010f, false, true, false, 1.0f, 1.0f, 1.0f};
     case 4:
       return {0.004f, 0.30f, 0.010f, false, true, true, 1.0f, 0.2f, 0.2f};
     case 2:
-      return {0.010f, 0.22f, 0.0f, true, false, false, 1.0f, 1.0f, 1.0f};
+      return {0.010f, 0.22f, 0.0f, true, false, false, 0.0f, 0.0f, 0.0f};
     case 1:
     default:
-      return {0.006f, 0.55f, 0.018f, false, false, false, 1.0f, 1.0f, 1.0f};
+      return {0.006f, 0.55f, 0.018f, false, false, false, 0.0f, 0.0f, 0.0f};
   }
 }
 
@@ -406,7 +408,7 @@ void RemixRenderer::setBlockOutlineEnabled(bool enabled) {
 void RemixRenderer::setBlockOutlineStyle(int style) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setBlockOutlineStyle");
   std::scoped_lock lock(mutex_);
-  if (style < 0 || style > 4) {
+  if (style < 0 || style > 5) {
     style = 1;
   }
   blockOutlineStyle_ = style;
