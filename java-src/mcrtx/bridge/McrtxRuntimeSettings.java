@@ -12,12 +12,37 @@ import java.util.TreeMap;
 public final class McrtxRuntimeSettings {
     public static final String PLAYER_SHADOWS_ENABLED_KEY = "MCRTX_PLAYER_SHADOWS_ENABLED";
     public static final String HELD_TORCH_LIGHTS_ENABLED_KEY = "MCRTX_HELD_TORCH_LIGHTS_ENABLED";
+    public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
+    public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
+    public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
     public static final String UPSCALER_TYPE_KEY = "MCRTX_UPSCALER_TYPE";
     public static final String DLSS_PRESET_KEY = "MCRTX_DLSS_PRESET";
     public static final String XESS_PRESET_KEY = "MCRTX_XESS_PRESET";
     public static final String TAAU_PRESET_KEY = "MCRTX_TAAU_PRESET";
     public static final String RAY_RECONSTRUCTION_ENABLED_KEY = "MCRTX_RAY_RECONSTRUCTION_ENABLED";
     public static final String RT_QUALITY_KEY = "MCRTX_RT_QUALITY";
+    public static final String BLOCK_OUTLINE_ENABLED_KEY = "MCRTX_BLOCK_OUTLINE_ENABLED";
+    public static final String BLOCK_OUTLINE_STYLE_KEY = "MCRTX_BLOCK_OUTLINE_STYLE";
+    public static final String BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY = "MCRTX_BLOCK_OUTLINE_EMISSIVE_INTENSITY";
+
+    public static final int MIN_GAMEPLAY_FOV_DEGREES = 30;
+    public static final int MAX_GAMEPLAY_FOV_DEGREES = 120;
+    public static final int DEFAULT_GAMEPLAY_FOV_DEGREES = 70;
+    public static final int MIN_VIEW_MODEL_FOV_DEGREES = 30;
+    public static final int MAX_VIEW_MODEL_FOV_DEGREES = 120;
+    public static final int DEFAULT_VIEW_MODEL_FOV_DEGREES = 70;
+    public static final int MIN_NO_CULL_DISTANCE_BLOCKS = 0;
+    public static final int MAX_NO_CULL_DISTANCE_BLOCKS = 200;
+    public static final int DEFAULT_NO_CULL_DISTANCE_BLOCKS = 200;
+    public static final int MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 0;
+    public static final int MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 100;
+    public static final int DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 45;
+
+    public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
+    public static final int BLOCK_OUTLINE_STYLE_BOLD = 1;
+    public static final int BLOCK_OUTLINE_STYLE_SOLID = 2;
+    public static final int BLOCK_OUTLINE_STYLE_GLOW = 3;
+    public static final int BLOCK_OUTLINE_STYLE_RGB = 4;
 
     public static final int UPSCALER_TYPE_NONE = 0;
     public static final int UPSCALER_TYPE_DLSS = 1;
@@ -56,12 +81,18 @@ public final class McrtxRuntimeSettings {
     private static boolean loaded;
     private static boolean playerShadowsEnabled = true;
     private static boolean heldTorchLightsEnabled = true;
+    private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
+    private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
+    private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
     private static int upscalerType = UPSCALER_TYPE_DLSS;
     private static int dlssPreset = DLSS_PRESET_AUTO;
     private static int xessPreset = XESS_PRESET_BALANCED;
     private static int taauPreset = TAAU_PRESET_BALANCED;
     private static boolean rayReconstructionEnabled = true;
     private static int rtQuality = RT_QUALITY_HIGH;
+    private static boolean blockOutlineEnabled = true;
+    private static int blockOutlineStyle = BLOCK_OUTLINE_STYLE_BOLD;
+    private static int blockOutlineEmissiveIntensityTenths = DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
 
     private McrtxRuntimeSettings() {
     }
@@ -77,6 +108,27 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return heldTorchLightsEnabled;
+        }
+    }
+
+    public static int getGameplayFovDegrees() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return gameplayFovDegrees;
+        }
+    }
+
+    public static int getViewModelFovDegrees() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return viewModelFovDegrees;
+        }
+    }
+
+    public static int getNoCullDistanceBlocks() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return noCullDistanceBlocks;
         }
     }
 
@@ -98,6 +150,42 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             heldTorchLightsEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setGameplayFovDegrees(int fovDegrees) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedFovDegrees = normalizeGameplayFovDegrees(fovDegrees);
+            if (gameplayFovDegrees == normalizedFovDegrees) {
+                return;
+            }
+            gameplayFovDegrees = normalizedFovDegrees;
+            saveLocked();
+        }
+    }
+
+    public static void setViewModelFovDegrees(int fovDegrees) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedFovDegrees = normalizeViewModelFovDegrees(fovDegrees);
+            if (viewModelFovDegrees == normalizedFovDegrees) {
+                return;
+            }
+            viewModelFovDegrees = normalizedFovDegrees;
+            saveLocked();
+        }
+    }
+
+    public static void setNoCullDistanceBlocks(int blockDistance) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedBlockDistance = normalizeNoCullDistanceBlocks(blockDistance);
+            if (noCullDistanceBlocks == normalizedBlockDistance) {
+                return;
+            }
+            noCullDistanceBlocks = normalizedBlockDistance;
             saveLocked();
         }
     }
@@ -192,6 +280,34 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static boolean isBlockOutlineEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return blockOutlineEnabled;
+        }
+    }
+
+    public static int getBlockOutlineStyle() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return blockOutlineStyle;
+        }
+    }
+
+    public static int getBlockOutlineEmissiveIntensityTenths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return blockOutlineEmissiveIntensityTenths;
+        }
+    }
+
+    public static float getBlockOutlineEmissiveIntensity() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) blockOutlineEmissiveIntensityTenths / 10.0f;
+        }
+    }
+
     public static void setRayReconstructionEnabled(boolean enabled) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -215,6 +331,41 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setBlockOutlineEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (blockOutlineEnabled == enabled) {
+                return;
+            }
+            blockOutlineEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setBlockOutlineStyle(int style) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedStyle = normalizeBlockOutlineStyle(style);
+            if (blockOutlineStyle == normalizedStyle) {
+                return;
+            }
+            blockOutlineStyle = normalizedStyle;
+            saveLocked();
+        }
+    }
+
+    public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
+            if (blockOutlineEmissiveIntensityTenths == normalizedIntensityTenths) {
+                return;
+            }
+            blockOutlineEmissiveIntensityTenths = normalizedIntensityTenths;
+            saveLocked();
+        }
+    }
+
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -223,12 +374,21 @@ public final class McrtxRuntimeSettings {
         Map<String, String> fileValues = McrtxRuntimeConfig.loadFileValuesSnapshot();
         playerShadowsEnabled = readBooleanSetting(fileValues, PLAYER_SHADOWS_ENABLED_KEY, true);
         heldTorchLightsEnabled = readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
+        gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
+        viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
+        noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
         upscalerType = readUpscalerTypeSetting(fileValues, UPSCALER_TYPE_KEY, deriveDefaultUpscalerType(fileValues));
         dlssPreset = readDlssPresetSetting(fileValues, DLSS_PRESET_KEY, DLSS_PRESET_AUTO);
         xessPreset = readXessPresetSetting(fileValues, XESS_PRESET_KEY, XESS_PRESET_BALANCED);
         taauPreset = readTaauPresetSetting(fileValues, TAAU_PRESET_KEY, TAAU_PRESET_BALANCED);
         rayReconstructionEnabled = readBooleanSetting(fileValues, RAY_RECONSTRUCTION_ENABLED_KEY, true);
         rtQuality = readRtQualitySetting(fileValues, RT_QUALITY_KEY, RT_QUALITY_HIGH);
+        blockOutlineEnabled = readBooleanSetting(fileValues, BLOCK_OUTLINE_ENABLED_KEY, true);
+        blockOutlineStyle = readBlockOutlineStyleSetting(fileValues, BLOCK_OUTLINE_STYLE_KEY, BLOCK_OUTLINE_STYLE_BOLD);
+        blockOutlineEmissiveIntensityTenths = readBlockOutlineEmissiveIntensityTenthsSetting(
+            fileValues,
+            BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
+            DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS);
         loaded = true;
     }
 
@@ -284,6 +444,66 @@ public final class McrtxRuntimeSettings {
             return DLSS_PRESET_AUTO;
         }
         return defaultValue;
+    }
+
+    private static int readGameplayFovSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeGameplayFovDegrees(defaultValue);
+        }
+
+        try {
+            return normalizeGameplayFovDegrees(Math.round(Float.parseFloat(configuredValue.trim())));
+        } catch (NumberFormatException exception) {
+            return normalizeGameplayFovDegrees(defaultValue);
+        }
+    }
+
+    private static int readViewModelFovSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeViewModelFovDegrees(defaultValue);
+        }
+
+        try {
+            return normalizeViewModelFovDegrees(Math.round(Float.parseFloat(configuredValue.trim())));
+        } catch (NumberFormatException exception) {
+            return normalizeViewModelFovDegrees(defaultValue);
+        }
+    }
+
+    private static int readNoCullDistanceSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeNoCullDistanceBlocks(defaultValue);
+        }
+
+        try {
+            return normalizeNoCullDistanceBlocks((int) Math.round(Double.parseDouble(configuredValue.trim())));
+        } catch (NumberFormatException exception) {
+            return normalizeNoCullDistanceBlocks(defaultValue);
+        }
     }
 
     private static int readUpscalerTypeSetting(Map<String, String> fileValues, String key, int defaultValue) {
@@ -417,16 +637,81 @@ public final class McrtxRuntimeSettings {
         return defaultValue;
     }
 
+    private static int readBlockOutlineStyleSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return defaultValue;
+        }
+
+        String trimmed = configuredValue.trim();
+        if (trimmed.equalsIgnoreCase("subtle") || trimmed.equalsIgnoreCase("classic") || trimmed.equals("0")) {
+            return BLOCK_OUTLINE_STYLE_SUBTLE;
+        }
+        if (trimmed.equalsIgnoreCase("bold") || trimmed.equals("1")) {
+            return BLOCK_OUTLINE_STYLE_BOLD;
+        }
+        if (trimmed.equalsIgnoreCase("solid") || trimmed.equals("2")) {
+            return BLOCK_OUTLINE_STYLE_SOLID;
+        }
+        if (trimmed.equalsIgnoreCase("glow") || trimmed.equals("3")) {
+            return BLOCK_OUTLINE_STYLE_GLOW;
+        }
+        if (trimmed.equalsIgnoreCase("rgb") || trimmed.equals("4")) {
+            return BLOCK_OUTLINE_STYLE_RGB;
+        }
+        return defaultValue;
+    }
+
+    private static int readBlockOutlineEmissiveIntensityTenthsSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeBlockOutlineEmissiveIntensityTenths(defaultValue);
+        }
+
+        try {
+            double parsedValue = Double.parseDouble(configuredValue.trim());
+            if (parsedValue > (double) MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS / 10.0
+                    && parsedValue <= (double) MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
+                return normalizeBlockOutlineEmissiveIntensityTenths((int) Math.round(parsedValue));
+            }
+            return normalizeBlockOutlineEmissiveIntensityTenths((int) Math.round(parsedValue * 10.0));
+        } catch (NumberFormatException exception) {
+            return normalizeBlockOutlineEmissiveIntensityTenths(defaultValue);
+        }
+    }
+
     private static void saveLocked() {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
         fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, formatBoolean(heldTorchLightsEnabled));
+        fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
+        fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
+        fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));
         fileValues.put(UPSCALER_TYPE_KEY, formatUpscalerType(upscalerType));
         fileValues.put(DLSS_PRESET_KEY, formatDlssPreset(dlssPreset));
         fileValues.put(XESS_PRESET_KEY, formatXessPreset(xessPreset));
         fileValues.put(TAAU_PRESET_KEY, formatTaauPreset(taauPreset));
         fileValues.put(RAY_RECONSTRUCTION_ENABLED_KEY, formatBoolean(rayReconstructionEnabled));
         fileValues.put(RT_QUALITY_KEY, formatRtQuality(rtQuality));
+        fileValues.put(BLOCK_OUTLINE_ENABLED_KEY, formatBoolean(blockOutlineEnabled));
+        fileValues.put(BLOCK_OUTLINE_STYLE_KEY, formatBlockOutlineStyle(blockOutlineStyle));
+        fileValues.put(
+            BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
+            formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
         writeFileValues(fileValues);
     }
 
@@ -492,6 +777,36 @@ public final class McrtxRuntimeSettings {
         return UPSCALER_TYPE_DLSS;
     }
 
+    private static int normalizeGameplayFovDegrees(int fovDegrees) {
+        if (fovDegrees < MIN_GAMEPLAY_FOV_DEGREES) {
+            return MIN_GAMEPLAY_FOV_DEGREES;
+        }
+        if (fovDegrees > MAX_GAMEPLAY_FOV_DEGREES) {
+            return MAX_GAMEPLAY_FOV_DEGREES;
+        }
+        return fovDegrees;
+    }
+
+    private static int normalizeViewModelFovDegrees(int fovDegrees) {
+        if (fovDegrees < MIN_VIEW_MODEL_FOV_DEGREES) {
+            return MIN_VIEW_MODEL_FOV_DEGREES;
+        }
+        if (fovDegrees > MAX_VIEW_MODEL_FOV_DEGREES) {
+            return MAX_VIEW_MODEL_FOV_DEGREES;
+        }
+        return fovDegrees;
+    }
+
+    private static int normalizeNoCullDistanceBlocks(int blockDistance) {
+        if (blockDistance < MIN_NO_CULL_DISTANCE_BLOCKS) {
+            return MIN_NO_CULL_DISTANCE_BLOCKS;
+        }
+        if (blockDistance > MAX_NO_CULL_DISTANCE_BLOCKS) {
+            return MAX_NO_CULL_DISTANCE_BLOCKS;
+        }
+        return blockDistance;
+    }
+
     private static int normalizeDlssPreset(int preset) {
         if (preset >= DLSS_PRESET_ULTRA_PERFORMANCE && preset <= DLSS_PRESET_DLAA) {
             return preset;
@@ -518,6 +833,23 @@ public final class McrtxRuntimeSettings {
             return quality;
         }
         return RT_QUALITY_HIGH;
+    }
+
+    private static int normalizeBlockOutlineStyle(int style) {
+        if (style >= BLOCK_OUTLINE_STYLE_SUBTLE && style <= BLOCK_OUTLINE_STYLE_RGB) {
+            return style;
+        }
+        return BLOCK_OUTLINE_STYLE_BOLD;
+    }
+
+    private static int normalizeBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
+        if (intensityTenths < MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
+            return MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+        }
+        if (intensityTenths > MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
+            return MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+        }
+        return intensityTenths;
     }
 
     private static String formatUpscalerType(int type) {
@@ -602,5 +934,26 @@ public final class McrtxRuntimeSettings {
             default:
                 return "High";
         }
+    }
+
+    private static String formatBlockOutlineStyle(int style) {
+        switch (normalizeBlockOutlineStyle(style)) {
+            case BLOCK_OUTLINE_STYLE_SUBTLE:
+                return "Subtle";
+            case BLOCK_OUTLINE_STYLE_GLOW:
+                return "Glow";
+            case BLOCK_OUTLINE_STYLE_RGB:
+                return "RGB";
+            case BLOCK_OUTLINE_STYLE_SOLID:
+                return "Solid";
+            case BLOCK_OUTLINE_STYLE_BOLD:
+            default:
+                return "Bold";
+        }
+    }
+
+    private static String formatBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
+        int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
+        return Integer.toString(normalizedIntensityTenths / 10) + "." + Integer.toString(normalizedIntensityTenths % 10);
     }
 }

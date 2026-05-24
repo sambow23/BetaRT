@@ -225,6 +225,8 @@ public final class ClientPatchTool {
                 patchCloudRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
                 patchDestroyOverlayRender(method);
+            } else if (method.name.equals("b") && method.desc.equals("(Lgs;Lvf;ILiz;F)V")) {
+                patchBlockOutlineRender(method);
             }
         }
         return writeClass(classNode);
@@ -768,6 +770,33 @@ public final class ClientPatchTool {
         }
     }
 
+    private static void patchBlockOutlineRender(MethodNode method) {
+        removeBlockOutlineRenderCalls(method);
+        method.instructions.insertBefore(method.instructions.getFirst(), blockOutlineRenderCall());
+    }
+
+    private static void removeBlockOutlineRenderCalls(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKESTATIC
+                    && methodInsnNode.owner.equals(REMIX_HELPER_CLASS)
+                    && methodInsnNode.name.equals("onBlockOutlineRender")
+                    && (methodInsnNode.desc.equals("(Lvf;I)V")
+                        || methodInsnNode.desc.equals("(Lgs;Lvf;IF)V"))) {
+                int argumentLoadCount = methodInsnNode.desc.equals("(Lvf;I)V") ? 2 : 4;
+                AbstractInsnNode previous = node.getPrevious();
+                for (int removed = 0; removed < argumentLoadCount && previous instanceof VarInsnNode; removed += 1) {
+                    AbstractInsnNode loadNode = previous;
+                    previous = previous.getPrevious();
+                    method.instructions.remove(loadNode);
+                }
+                method.instructions.remove(node);
+            }
+            node = next;
+        }
+    }
+
     private static void patchMinecartRender(MethodNode method) {
         if (hasHelperCall(method, "onLivingEntityRenderStart", "(Lsn;)V")) {
             return;
@@ -1290,6 +1319,21 @@ public final class ClientPatchTool {
                 REMIX_HELPER_CLASS,
                 "onDestroyOverlayRender",
                 "(IIIF)V",
+                false));
+        return instructions;
+    }
+
+    private static InsnList blockOutlineRenderCall() {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 2));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        instructions.add(new VarInsnNode(Opcodes.FLOAD, 5));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "onBlockOutlineRender",
+            "(Lgs;Lvf;IF)V",
                 false));
         return instructions;
     }

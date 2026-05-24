@@ -249,6 +249,12 @@ struct DestroyOverlayInstance {
   int destroyStage {0};
 };
 
+struct BlockOutlineInstance {
+  int blockX {0};
+  int blockY {0};
+  int blockZ {0};
+};
+
 struct ParticleQuad {
   std::array<float, 12> positions {};
   std::array<float, 8> texcoords {};
@@ -270,6 +276,7 @@ struct FrameRenderSnapshot {
   remixapi_MeshHandle cloudMeshHandle {nullptr};
   remixapi_MeshHandle fireMeshHandle {nullptr};
   remixapi_MeshHandle destroyOverlayMeshHandle {nullptr};
+  remixapi_MeshHandle blockOutlineMeshHandle {nullptr};
   remixapi_MeshHandle particleMeshHandle {nullptr};
   float cloudTransformX {0.0f};
   float cloudTransformY {0.0f};
@@ -280,6 +287,7 @@ struct FrameRenderSnapshot {
   std::size_t submittedFireQuads {0};
   std::size_t submittedDynamicEntityQuads {0};
   std::size_t submittedDestroyOverlays {0};
+  std::size_t submittedBlockOutlines {0};
   std::size_t submittedParticleQuads {0};
   std::size_t submittedTorchLights {0};
 
@@ -289,6 +297,7 @@ struct FrameRenderSnapshot {
         || cloudMeshHandle != nullptr
         || fireMeshHandle != nullptr
         || destroyOverlayMeshHandle != nullptr
+          || blockOutlineMeshHandle != nullptr
         || particleMeshHandle != nullptr
         || !torchLights.empty();
   }
@@ -331,6 +340,10 @@ public:
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
   void setPlayerShadowsEnabled(bool enabled);
   void setHeldTorchLightsEnabled(bool enabled);
+  void setBlockOutlineEnabled(bool enabled);
+  void setBlockOutlineStyle(int style);
+  void setBlockOutlineEmissiveIntensity(float intensity);
+  void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
   void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
@@ -360,6 +373,7 @@ public:
       std::uint32_t boneIndex);
   void endDynamicEntity();
   void beginDestroyOverlayFrame();
+  void beginBlockOutlineFrame();
   void captureDestroyOverlay(
       int blockX,
       int blockY,
@@ -368,6 +382,7 @@ public:
       int blockMetadata,
       int renderType,
       int destroyStage);
+  void captureBlockOutline(int blockX, int blockY, int blockZ);
   void beginParticleFrame();
   void captureParticleQuad(
       float x0,
@@ -490,7 +505,9 @@ private:
   void updateOutputWindowSize();
   void syncOutputWindowInteractivity(remixapi_UIState uiState);
   bool initializeTerrainMaterials();
+  void createBlockOutlineMaterials();
   void destroyTerrainMaterials();
+  void destroyBlockOutlineMaterials();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   bool createPrimingMesh();
@@ -521,6 +538,7 @@ private:
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
   bool rebuildFireMesh();
   bool rebuildDestroyOverlayMesh();
+  bool rebuildBlockOutlineMesh();
   static std::filesystem::path resolveCloudTexturePath();
   static std::filesystem::path resolveFireTexturePath();
   static std::filesystem::path resolveWaterTexturePath();
@@ -535,6 +553,7 @@ private:
   void destroyCloudMesh();
   void destroyFireMesh();
   void destroyDestroyOverlayMesh();
+  void destroyBlockOutlineMesh();
   void destroyParticleMesh();
   void destroyMeshHandle(remixapi_MeshHandle& meshHandle);
   void destroyLightHandle(remixapi_LightHandle lightHandle);
@@ -592,6 +611,7 @@ private:
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
   CameraState camera_ {};
+  float viewModelFovDegrees_ {70.0f};
   bool chunkBuildActive_ {false};
   ChunkBuildState activeChunkBuild_ {};
   std::vector<CapturedBlockInstance> activeChunkBlocks_ {};
@@ -615,6 +635,7 @@ private:
   std::size_t lastSubmittedFireQuadCount_ {0};
   std::size_t lastSubmittedDynamicEntityQuadCount_ {0};
   std::size_t lastSubmittedDestroyOverlayCount_ {0};
+  std::size_t lastSubmittedBlockOutlineCount_ {0};
   std::size_t lastSubmittedParticleQuadCount_ {0};
   std::size_t lastSubmittedTorchLightCount_ {0};
   bool loggedLightSubmissionPath_ {false};
@@ -630,12 +651,16 @@ private:
   std::array<remixapi_MaterialHandle, 7> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
   remixapi_MaterialHandle destroyOverlayMaterialHandle_ {nullptr};
+  remixapi_MaterialHandle blockOutlineGlowMaterialHandle_ {nullptr};
+  std::array<remixapi_MaterialHandle, 6> blockOutlineRgbMaterialHandles_ {};
   remixapi_MaterialHandle fireMaterialHandle_ {nullptr};
   remixapi_MeshHandle cloudMeshHandle_ {nullptr};
   remixapi_MeshHandle fireMeshHandle_ {nullptr};
   remixapi_MeshHandle destroyOverlayMeshHandle_ {nullptr};
+  remixapi_MeshHandle blockOutlineMeshHandle_ {nullptr};
   std::uint64_t nextFireMeshHash_ {1};
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
+  std::uint64_t nextBlockOutlineMeshHash_ {1};
   std::uint64_t nextParticleMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
   bool cloudMeshFancy_ {false};
@@ -646,6 +671,7 @@ private:
   float cloudTransformZ_ {0.0f};
   std::size_t fireQuadCount_ {0};
   std::size_t destroyOverlayCount_ {0};
+  std::size_t blockOutlineCount_ {0};
   std::size_t particleQuadCount_ {0};
   std::uint32_t lastFireAnimationFrame_ {0xFFFFFFFFu};
   std::uint64_t lastFireChunkBuildCount_ {0xFFFFFFFFFFFFFFFFull};
@@ -653,6 +679,7 @@ private:
   std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
   std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
+  std::vector<BlockOutlineInstance> blockOutlineInstances_ {};
   std::vector<ParticleQuad> particleQuads_ {};
   std::unordered_map<std::string, std::array<remixapi_MaterialHandle, 2>> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
@@ -669,6 +696,14 @@ private:
   int heldItemId_ {-1};
   bool playerShadowsEnabled_ {true};
   bool heldTorchLightsEnabled_ {true};
+  bool blockOutlineEnabled_ {true};
+  static constexpr int kBlockOutlineStyleSubtle = 0;
+  static constexpr int kBlockOutlineStyleBold = 1;
+  static constexpr int kBlockOutlineStyleSolid = 2;
+  static constexpr int kBlockOutlineStyleGlow = 3;
+  static constexpr int kBlockOutlineStyleRgb = 4;
+  int blockOutlineStyle_ {kBlockOutlineStyleBold};
+  float blockOutlineEmissiveIntensity_ {4.5f};
   static constexpr int kRtQualityLow = 0;
   static constexpr int kRtQualityMedium = 1;
   static constexpr int kRtQualityHigh = 2;

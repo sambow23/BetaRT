@@ -181,6 +181,14 @@ public final class RemixBridgeNative {
 
             public static native void nSetHeldTorchLightsEnabled(boolean enabled);
 
+            public static native void nSetBlockOutlineEnabled(boolean enabled);
+
+            public static native void nSetBlockOutlineStyle(int style);
+
+            public static native void nSetBlockOutlineEmissiveIntensity(float intensity);
+
+            public static native void nSetViewModelFovDegrees(float fovYDegrees);
+
             public static native void nSetRtQuality(int rtQuality);
 
             public static native void nSetUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, boolean rayReconstructionEnabled);
@@ -204,6 +212,8 @@ public final class RemixBridgeNative {
 
             public static native void nBeginDestroyOverlayFrame();
 
+            public static native void nBeginBlockOutlineFrame();
+
             public static native void nCaptureDestroyOverlay(
                 int blockX,
                 int blockY,
@@ -212,6 +222,11 @@ public final class RemixBridgeNative {
                 int blockMetadata,
                 int renderType,
                 int destroyStage);
+
+            public static native void nCaptureBlockOutline(
+                int blockX,
+                int blockY,
+                int blockZ);
 
             public static native void nBeginParticleFrame();
 

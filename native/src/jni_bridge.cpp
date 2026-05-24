@@ -343,6 +343,30 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetHeldTorchLightsEn
   RemixRenderer::instance().setHeldTorchLightsEnabled(enabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineEnabled");
+  RemixRenderer::instance().setBlockOutlineEnabled(enabled == JNI_TRUE);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineStyle(
+    JNIEnv*, jclass, jint style) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineStyle");
+  RemixRenderer::instance().setBlockOutlineStyle(static_cast<int>(style));
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEmissiveIntensity(
+    JNIEnv*, jclass, jfloat intensity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineEmissiveIntensity");
+  RemixRenderer::instance().setBlockOutlineEmissiveIntensity(intensity);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetViewModelFovDegrees(
+    JNIEnv*, jclass, jfloat fovYDegrees) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetViewModelFovDegrees");
+  RemixRenderer::instance().setViewModelFovDegrees(fovYDegrees);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetRtQuality(
     JNIEnv*, jclass, jint rtQuality) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRtQuality");
@@ -421,6 +445,11 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDestroyOverlayF
   RemixRenderer::instance().beginDestroyOverlayFrame();
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginBlockOutlineFrame(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginBlockOutlineFrame");
+  RemixRenderer::instance().beginBlockOutlineFrame();
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDestroyOverlay(
     JNIEnv*, jclass,
     jint blockX,
@@ -439,6 +468,15 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDestroyOverla
       blockMetadata,
       renderType,
       destroyStage);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureBlockOutline(
+    JNIEnv*, jclass,
+    jint blockX,
+    jint blockY,
+    jint blockZ) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureBlockOutline");
+  RemixRenderer::instance().captureBlockOutline(blockX, blockY, blockZ);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginParticleFrame(JNIEnv*, jclass) {

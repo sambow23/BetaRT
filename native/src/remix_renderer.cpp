@@ -460,6 +460,7 @@ void RemixRenderer::shutdownLocked() {
     destroyCloudMesh();
     destroyFireMesh();
     destroyDestroyOverlayMesh();
+    destroyBlockOutlineMesh();
     destroyParticleMesh();
     destroyMeshHandle(primingMeshHandle_);
     destroyDynamicEntityMeshes();
@@ -490,6 +491,7 @@ void RemixRenderer::shutdownLocked() {
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
   destroyOverlayInstances_.clear();
+  blockOutlineInstances_.clear();
   particleQuads_.clear();
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
@@ -510,6 +512,7 @@ void RemixRenderer::shutdownLocked() {
   lastSubmittedFireQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
   lastSubmittedDestroyOverlayCount_ = 0;
+  lastSubmittedBlockOutlineCount_ = 0;
   lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
   terrainAtlasPath_.clear();
@@ -517,10 +520,12 @@ void RemixRenderer::shutdownLocked() {
   fireTexturePath_.clear();
   nextFireMeshHash_ = 1;
   nextDestroyOverlayMeshHash_ = 1;
+  nextBlockOutlineMeshHash_ = 1;
   nextParticleMeshHash_ = 1;
   cloudQuadCount_ = 0;
   fireQuadCount_ = 0;
   destroyOverlayCount_ = 0;
+  blockOutlineCount_ = 0;
   particleQuadCount_ = 0;
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
   lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
@@ -1025,6 +1030,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     return false;
   }
 
+  if (!rebuildBlockOutlineMesh()) {
+    return false;
+  }
+
   if (!rebuildParticleMesh()) {
     return false;
   }
@@ -1067,6 +1076,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.cloudMeshHandle = cloudMeshHandle_;
   snapshot.fireMeshHandle = fireMeshHandle_;
   snapshot.destroyOverlayMeshHandle = destroyOverlayMeshHandle_;
+  snapshot.blockOutlineMeshHandle = blockOutlineMeshHandle_;
   snapshot.particleMeshHandle = particleMeshHandle_;
   snapshot.cloudTransformX = cloudTransformX_;
   snapshot.cloudTransformY = cloudTransformY_;
@@ -1074,6 +1084,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.submittedCloudQuads = cloudMeshHandle_ != nullptr ? cloudQuadCount_ : 0;
   snapshot.submittedFireQuads = fireMeshHandle_ != nullptr ? fireQuadCount_ : 0;
   snapshot.submittedDestroyOverlays = destroyOverlayMeshHandle_ != nullptr ? destroyOverlayCount_ : 0;
+  snapshot.submittedBlockOutlines = blockOutlineMeshHandle_ != nullptr ? blockOutlineCount_ : 0;
   snapshot.submittedParticleQuads = particleMeshHandle_ != nullptr ? particleQuadCount_ : 0;
 
   if (heldTorchLightsEnabled_) {
@@ -1232,6 +1243,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
       || snapshot.submittedFireQuads != lastSubmittedFireQuadCount_
       || snapshot.submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
       || snapshot.submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
+      || snapshot.submittedBlockOutlines != lastSubmittedBlockOutlineCount_
       || snapshot.submittedParticleQuads != lastSubmittedParticleQuadCount_
       || snapshot.submittedTorchLights != lastSubmittedTorchLightCount_) {
     if (presentedFrames_ < 8) {
@@ -1242,7 +1254,8 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
              << " cloud quads and " << snapshot.submittedFireQuads
              << " fire quads and " << snapshot.submittedDynamicEntityQuads
              << " dynamic entity quads and " << snapshot.submittedDestroyOverlays
-             << " destroy overlays and "
+             << " destroy overlays and " << snapshot.submittedBlockOutlines
+             << " block outlines and "
              << snapshot.submittedParticleQuads << " particle quads and "
              << snapshot.submittedTorchLights
              << " torch lights";
@@ -1256,6 +1269,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   lastSubmittedFireQuadCount_ = snapshot.submittedFireQuads;
   lastSubmittedDynamicEntityQuadCount_ = snapshot.submittedDynamicEntityQuads;
   lastSubmittedDestroyOverlayCount_ = snapshot.submittedDestroyOverlays;
+  lastSubmittedBlockOutlineCount_ = snapshot.submittedBlockOutlines;
   lastSubmittedParticleQuadCount_ = snapshot.submittedParticleQuads;
   lastSubmittedTorchLightCount_ = snapshot.submittedTorchLights;
   ++presentedFrames_;
@@ -1672,6 +1686,45 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     }
   }
 
+  if (snapshot.blockOutlineMeshHandle != nullptr) {
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.alphaTestEnabled = TRUE;
+    blendInfo.alphaTestReferenceValue = 1;
+    blendInfo.alphaTestCompareOp = 4;
+    blendInfo.alphaBlendEnabled = TRUE;
+    blendInfo.srcColorBlendFactor = 6;
+    blendInfo.dstColorBlendFactor = 7;
+    blendInfo.colorBlendOp = 0;
+    blendInfo.srcAlphaBlendFactor = 1;
+    blendInfo.dstAlphaBlendFactor = 0;
+    blendInfo.alphaBlendOp = 0;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &blendInfo;
+    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+    instanceInfo.mesh = snapshot.blockOutlineMeshHandle;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.blockOutline");
+      return remix_.DrawInstance(&instanceInfo);
+    }();
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      setError("DrawInstance failed: " + errorCodeToString(result));
+      return false;
+    }
+  }
+
   if (snapshot.particleMeshHandle != nullptr) {
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
@@ -1759,6 +1812,8 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
   const float nearPlane = camera.nearPlane > 0.001f ? camera.nearPlane : 0.05f;
   const float farPlane = camera.farPlane > nearPlane ? camera.farPlane : (nearPlane + 1024.0f);
   const float aspect = camera.aspect > 0.001f ? camera.aspect : 1.0f;
+  const float worldFovYDegrees = (camera.fovYDegrees >= 1.0f && camera.fovYDegrees <= 179.0f) ? camera.fovYDegrees : 70.0f;
+  const float viewModelFovYDegrees = (viewModelFovDegrees_ >= 1.0f && viewModelFovDegrees_ <= 179.0f) ? viewModelFovDegrees_ : worldFovYDegrees;
   const float viewModelNearPlane = std::min(nearPlane, 0.001f);
   const float viewModelFarPlane = farPlane > viewModelNearPlane ? farPlane : (viewModelNearPlane + 1024.0f);
 
@@ -1768,7 +1823,7 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
   params.forward = {camera.forward[0], camera.forward[1], camera.forward[2]};
   params.up = {camera.up[0], camera.up[1], camera.up[2]};
   params.right = {camera.right[0], camera.right[1], camera.right[2]};
-  params.fovYInDegrees = camera.fovYDegrees;
+  params.fovYInDegrees = worldFovYDegrees;
   params.aspect = aspect;
   params.nearPlane = nearPlane;
   params.farPlane = farPlane;
@@ -1787,6 +1842,7 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
     return false;
   }
 
+  params.fovYInDegrees = viewModelFovYDegrees;
   params.nearPlane = viewModelNearPlane;
   params.farPlane = viewModelFarPlane;
   info.type = REMIXAPI_CAMERA_TYPE_VIEW_MODEL;

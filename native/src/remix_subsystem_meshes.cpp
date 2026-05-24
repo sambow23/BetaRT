@@ -23,6 +23,136 @@ using namespace mcrtx::detail;
 
 namespace {
 
+struct BlockOutlineStyleParameters {
+  float inflate;
+  float alpha;
+  float edgeHalfThickness;
+  bool filled;
+  bool glow;
+  bool rgbCycle;
+  float colorR;
+  float colorG;
+  float colorB;
+};
+
+struct BlockOutlineAnimatedColor {
+  float colorR;
+  float colorG;
+  float colorB;
+  std::size_t materialIndex;
+};
+
+constexpr ULONGLONG kBlockOutlineRgbCycleIntervalMilliseconds = 180;
+
+BlockOutlineAnimatedColor currentBlockOutlineRgbColor() {
+  constexpr std::array<std::array<float, 3>, 6> kBlockOutlineRgbPalette {{
+      {1.0f, 0.2f, 0.2f},
+      {1.0f, 0.7f, 0.15f},
+      {0.25f, 1.0f, 0.25f},
+      {0.2f, 1.0f, 1.0f},
+      {0.3f, 0.45f, 1.0f},
+      {1.0f, 0.2f, 1.0f},
+  }};
+
+  const std::size_t materialIndex = static_cast<std::size_t>(
+      (GetTickCount64() / kBlockOutlineRgbCycleIntervalMilliseconds) % kBlockOutlineRgbPalette.size());
+  const std::array<float, 3>& color = kBlockOutlineRgbPalette[materialIndex];
+  return {color[0], color[1], color[2], materialIndex};
+}
+
+BlockOutlineStyleParameters blockOutlineStyleParametersFor(int style) {
+  switch (style) {
+    case 0:
+      return {0.004f, 0.30f, 0.010f, false, false, false, 1.0f, 1.0f, 1.0f};
+    case 3:
+      return {0.004f, 0.30f, 0.010f, false, true, false, 1.0f, 1.0f, 1.0f};
+    case 4:
+      return {0.004f, 0.30f, 0.010f, false, true, true, 1.0f, 0.2f, 0.2f};
+    case 2:
+      return {0.010f, 0.22f, 0.0f, true, false, false, 1.0f, 1.0f, 1.0f};
+    case 1:
+    default:
+      return {0.006f, 0.55f, 0.018f, false, false, false, 1.0f, 1.0f, 1.0f};
+  }
+}
+
+void appendBlockOutlineBoxGeometry(
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    std::uint32_t outlineColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const std::array<std::int16_t, 6> outlineTerrainTiles {};
+  appendBoxGeometry(
+      minX,
+      minY,
+      minZ,
+      maxX,
+      maxY,
+      maxZ,
+      outlineTerrainTiles,
+      outlineColor,
+      vertices,
+      indices);
+}
+
+void appendBlockOutlineFillGeometry(
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    std::uint32_t outlineColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  appendBlockOutlineBoxGeometry(minX, minY, minZ, maxX, maxY, maxZ, outlineColor, vertices, indices);
+}
+
+void appendBlockOutlineWireGeometry(
+    float minX,
+    float minY,
+    float minZ,
+    float maxX,
+    float maxY,
+    float maxZ,
+    float edgeHalfThickness,
+    std::uint32_t outlineColor,
+    std::vector<remixapi_HardcodedVertex>& vertices,
+    std::vector<std::uint32_t>& indices) {
+  const float minYEdge0 = minY - edgeHalfThickness;
+  const float minYEdge1 = minY + edgeHalfThickness;
+  const float maxYEdge0 = maxY - edgeHalfThickness;
+  const float maxYEdge1 = maxY + edgeHalfThickness;
+  const float minZEdge0 = minZ - edgeHalfThickness;
+  const float minZEdge1 = minZ + edgeHalfThickness;
+  const float maxZEdge0 = maxZ - edgeHalfThickness;
+  const float maxZEdge1 = maxZ + edgeHalfThickness;
+  const float minXEdge0 = minX - edgeHalfThickness;
+  const float minXEdge1 = minX + edgeHalfThickness;
+  const float maxXEdge0 = maxX - edgeHalfThickness;
+  const float maxXEdge1 = maxX + edgeHalfThickness;
+
+  appendBlockOutlineBoxGeometry(minX, minYEdge0, minZEdge0, maxX, minYEdge1, minZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(minX, minYEdge0, maxZEdge0, maxX, minYEdge1, maxZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(minX, maxYEdge0, minZEdge0, maxX, maxYEdge1, minZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(minX, maxYEdge0, maxZEdge0, maxX, maxYEdge1, maxZEdge1, outlineColor, vertices, indices);
+
+  appendBlockOutlineBoxGeometry(minXEdge0, minY, minZEdge0, minXEdge1, maxY, minZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(minXEdge0, minY, maxZEdge0, minXEdge1, maxY, maxZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(maxXEdge0, minY, minZEdge0, maxXEdge1, maxY, minZEdge1, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(maxXEdge0, minY, maxZEdge0, maxXEdge1, maxY, maxZEdge1, outlineColor, vertices, indices);
+
+  appendBlockOutlineBoxGeometry(minXEdge0, minYEdge0, minZ, minXEdge1, minYEdge1, maxZ, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(minXEdge0, maxYEdge0, minZ, minXEdge1, maxYEdge1, maxZ, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(maxXEdge0, minYEdge0, minZ, maxXEdge1, minYEdge1, maxZ, outlineColor, vertices, indices);
+  appendBlockOutlineBoxGeometry(maxXEdge0, maxYEdge0, minZ, maxXEdge1, maxYEdge1, maxZ, outlineColor, vertices, indices);
+}
+
 bool isTorchLightItemId(int itemId) {
   return itemId == kTorchBlockId || itemId == kRedstoneTorchOnBlockId;
 }
@@ -266,6 +396,69 @@ void RemixRenderer::setHeldTorchLightsEnabled(bool enabled) {
   clearHeldTorchLightsLocked();
 }
 
+void RemixRenderer::setBlockOutlineEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setBlockOutlineEnabled");
+  std::scoped_lock lock(mutex_);
+  blockOutlineEnabled_ = enabled;
+}
+
+void RemixRenderer::setBlockOutlineStyle(int style) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setBlockOutlineStyle");
+  std::scoped_lock lock(mutex_);
+  if (style < 0 || style > 4) {
+    style = 1;
+  }
+  blockOutlineStyle_ = style;
+}
+
+void RemixRenderer::setBlockOutlineEmissiveIntensity(float intensity) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setBlockOutlineEmissiveIntensity");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(intensity)) {
+    intensity = 4.5f;
+  }
+
+  if (intensity < 0.0f) {
+    intensity = 0.0f;
+  } else if (intensity > 10.0f) {
+    intensity = 10.0f;
+  }
+
+  if (std::abs(blockOutlineEmissiveIntensity_ - intensity) < 0.001f) {
+    return;
+  }
+
+  blockOutlineEmissiveIntensity_ = intensity;
+  if (!initialized_) {
+    return;
+  }
+
+  destroyBlockOutlineMesh();
+  destroyBlockOutlineMaterials();
+  createBlockOutlineMaterials();
+  if (!blockOutlineInstances_.empty()) {
+    rebuildBlockOutlineMesh();
+  }
+}
+
+void RemixRenderer::setViewModelFovDegrees(float fovYDegrees) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setViewModelFovDegrees");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(fovYDegrees)) {
+    fovYDegrees = 70.0f;
+  }
+
+  if (fovYDegrees < 1.0f) {
+    fovYDegrees = 1.0f;
+  } else if (fovYDegrees > 179.0f) {
+    fovYDegrees = 179.0f;
+  }
+
+  viewModelFovDegrees_ = fovYDegrees;
+}
+
 void RemixRenderer::setRtQuality(int rtQuality) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setRtQuality");
   std::scoped_lock lock(mutex_);
@@ -418,6 +611,17 @@ void RemixRenderer::beginDestroyOverlayFrame() {
   destroyOverlayInstances_.clear();
 }
 
+void RemixRenderer::beginBlockOutlineFrame() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginBlockOutlineFrame");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    return;
+  }
+
+  blockOutlineInstances_.clear();
+}
+
 void RemixRenderer::captureDestroyOverlay(
     int blockX,
     int blockY,
@@ -442,6 +646,21 @@ void RemixRenderer::captureDestroyOverlay(
   overlay.renderType = renderType;
   overlay.destroyStage = destroyStage;
   destroyOverlayInstances_.push_back(overlay);
+}
+
+void RemixRenderer::captureBlockOutline(int blockX, int blockY, int blockZ) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureBlockOutline");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || !blockOutlineEnabled_) {
+    return;
+  }
+
+  BlockOutlineInstance outline;
+  outline.blockX = blockX;
+  outline.blockY = blockY;
+  outline.blockZ = blockZ;
+  blockOutlineInstances_.push_back(outline);
 }
 
 void RemixRenderer::beginParticleFrame() {
@@ -519,10 +738,12 @@ void RemixRenderer::clearWorldScene() {
 
   destroyFireMesh();
   destroyDestroyOverlayMesh();
+  destroyBlockOutlineMesh();
   destroyParticleMesh();
   destroyDynamicEntityMeshes();
   clearDynamicEntityFrameInstances();
   destroyOverlayInstances_.clear();
+  blockOutlineInstances_.clear();
   particleQuads_.clear();
   while (!entityHeldTorchLightHandles_.empty()) {
     destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
@@ -538,6 +759,7 @@ void RemixRenderer::clearWorldScene() {
   lastSubmittedFireQuadCount_ = 0;
   lastSubmittedDynamicEntityQuadCount_ = 0;
   lastSubmittedDestroyOverlayCount_ = 0;
+  lastSubmittedBlockOutlineCount_ = 0;
   lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
@@ -958,6 +1180,12 @@ void RemixRenderer::destroyDestroyOverlayMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyDestroyOverlayMesh");
   destroyMeshHandle(destroyOverlayMeshHandle_);
   destroyOverlayCount_ = 0;
+}
+
+void RemixRenderer::destroyBlockOutlineMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyBlockOutlineMesh");
+  destroyMeshHandle(blockOutlineMeshHandle_);
+  blockOutlineCount_ = 0;
 }
 
 void RemixRenderer::destroyParticleMesh() {
@@ -1426,6 +1654,157 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       std::string("Rebuilt destroy overlay mesh overlays=") + std::to_string(overlayCount)
       + " vertices=" + std::to_string(vertices.size())
       + " indices=" + std::to_string(indices.size()));
+  return true;
+}
+
+bool RemixRenderer::rebuildBlockOutlineMesh() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildBlockOutlineMesh");
+  if (!blockOutlineEnabled_ || blockOutlineInstances_.empty()) {
+    destroyBlockOutlineMesh();
+    return true;
+  }
+
+  const BlockOutlineStyleParameters styleParameters = blockOutlineStyleParametersFor(blockOutlineStyle_);
+  const BlockOutlineAnimatedColor animatedRgbColor = styleParameters.rgbCycle
+      ? currentBlockOutlineRgbColor()
+      : BlockOutlineAnimatedColor {
+            styleParameters.colorR,
+            styleParameters.colorG,
+            styleParameters.colorB,
+            0,
+        };
+  remixapi_MaterialHandle outlineMaterial = destroyOverlayMaterialHandle_;
+  if (styleParameters.rgbCycle) {
+    outlineMaterial = blockOutlineRgbMaterialHandles_[animatedRgbColor.materialIndex];
+    if (outlineMaterial == nullptr) {
+      outlineMaterial = blockOutlineGlowMaterialHandle_;
+    }
+  } else if (styleParameters.glow) {
+    outlineMaterial = blockOutlineGlowMaterialHandle_;
+  }
+  if (outlineMaterial == nullptr) {
+    outlineMaterial = destroyOverlayMaterialHandle_;
+  }
+
+  if (outlineMaterial == nullptr) {
+    destroyBlockOutlineMesh();
+    return true;
+  }
+
+  const auto chunkOriginForWorld = [](int coordinate) {
+    return coordinate >= 0
+        ? (coordinate / kChunkDimension) * kChunkDimension
+        : (((coordinate + 1) / kChunkDimension) - 1) * kChunkDimension;
+  };
+
+  const auto findWorldCell = [this, &chunkOriginForWorld](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
+    const int originX = chunkOriginForWorld(worldX);
+    const int originY = chunkOriginForWorld(worldY);
+    const int originZ = chunkOriginForWorld(worldZ);
+    const int localX = worldX - originX;
+    const int localY = worldY - originY;
+    const int localZ = worldZ - originZ;
+    const int cellIndex = blockIndex(localX, localY, localZ);
+
+    for (int renderPass = 0; renderPass <= 1; ++renderPass) {
+      const ChunkKey chunkKey {originX, originY, originZ, renderPass};
+      const auto it = chunkMeshes_.find(chunkKey);
+      if (it == chunkMeshes_.end() || !it->second.hasOccupancy || it->second.occupancy[cellIndex] == 0) {
+        continue;
+      }
+      return &it->second.cells[cellIndex];
+    }
+
+    return nullptr;
+  };
+
+  std::vector<remixapi_HardcodedVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  vertices.reserve(blockOutlineInstances_.size() * 288);
+  indices.reserve(blockOutlineInstances_.size() * 432);
+
+  std::unordered_set<WorldBlockPosition, WorldBlockPositionHash> seenOutlines;
+  seenOutlines.reserve(blockOutlineInstances_.size());
+  const std::uint32_t outlineColor = packVertexColorRgba(
+      animatedRgbColor.colorR,
+      animatedRgbColor.colorG,
+      animatedRgbColor.colorB,
+      styleParameters.alpha);
+
+  std::size_t outlineCount = 0;
+  for (const BlockOutlineInstance& outline : blockOutlineInstances_) {
+    const WorldBlockPosition position {outline.blockX, outline.blockY, outline.blockZ};
+    if (!seenOutlines.insert(position).second) {
+      continue;
+    }
+
+    float minX = static_cast<float>(outline.blockX) - styleParameters.inflate;
+    float minY = static_cast<float>(outline.blockY) - styleParameters.inflate;
+    float minZ = static_cast<float>(outline.blockZ) - styleParameters.inflate;
+    float maxX = static_cast<float>(outline.blockX) + 1.0f + styleParameters.inflate;
+    float maxY = static_cast<float>(outline.blockY) + 1.0f + styleParameters.inflate;
+    float maxZ = static_cast<float>(outline.blockZ) + 1.0f + styleParameters.inflate;
+
+    if (const ChunkBlockCell* worldCell = findWorldCell(outline.blockX, outline.blockY, outline.blockZ); worldCell != nullptr) {
+      minX = static_cast<float>(outline.blockX) + worldCell->bounds[0] - styleParameters.inflate;
+      minY = static_cast<float>(outline.blockY) + worldCell->bounds[1] - styleParameters.inflate;
+      minZ = static_cast<float>(outline.blockZ) + worldCell->bounds[2] - styleParameters.inflate;
+      maxX = static_cast<float>(outline.blockX) + worldCell->bounds[3] + styleParameters.inflate;
+      maxY = static_cast<float>(outline.blockY) + worldCell->bounds[4] + styleParameters.inflate;
+      maxZ = static_cast<float>(outline.blockZ) + worldCell->bounds[5] + styleParameters.inflate;
+    }
+
+    if (styleParameters.filled) {
+      appendBlockOutlineFillGeometry(minX, minY, minZ, maxX, maxY, maxZ, outlineColor, vertices, indices);
+    } else {
+      appendBlockOutlineWireGeometry(
+          minX,
+          minY,
+          minZ,
+          maxX,
+          maxY,
+          maxZ,
+          styleParameters.edgeHalfThickness,
+          outlineColor,
+          vertices,
+          indices);
+    }
+    ++outlineCount;
+  }
+
+  if (indices.empty()) {
+    destroyBlockOutlineMesh();
+    return true;
+  }
+
+  remixapi_MeshInfoSurfaceTriangles surface {};
+  surface.vertices_values = vertices.data();
+  surface.vertices_count = vertices.size();
+  surface.indices_values = indices.data();
+  surface.indices_count = indices.size();
+  surface.skinning_hasvalue = FALSE;
+  surface.material = outlineMaterial;
+
+  remixapi_MeshInfo meshInfo {};
+  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  meshInfo.hash = makeBlockOutlineMeshHash(nextBlockOutlineMeshHash_++);
+  meshInfo.surfaces_values = &surface;
+  meshInfo.surfaces_count = 1;
+
+  remixapi_MeshHandle newMeshHandle = nullptr;
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.blockOutline");
+    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("CreateMesh failed: " + errorCodeToString(result));
+    destroyBlockOutlineMesh();
+    return false;
+  }
+
+  destroyBlockOutlineMesh();
+  blockOutlineMeshHandle_ = newMeshHandle;
+  blockOutlineCount_ = outlineCount;
   return true;
 }
 

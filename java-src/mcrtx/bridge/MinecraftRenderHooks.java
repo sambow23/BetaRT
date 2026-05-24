@@ -93,6 +93,10 @@ public final class MinecraftRenderHooks {
         }
     }
 
+    public static synchronized Minecraft getRememberedMinecraft() {
+        return currentMinecraft;
+    }
+
     public static synchronized boolean restoreIngameFocusIfNeeded() {
         if (currentMinecraft == null) {
             return false;
@@ -302,6 +306,34 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetHeldTorchLightsEnabled(enabled);
     }
 
+    public static synchronized void setBlockOutlineEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetBlockOutlineEnabled(enabled);
+    }
+
+    public static synchronized void setBlockOutlineStyle(int style) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetBlockOutlineStyle(style);
+    }
+
+    public static synchronized void setBlockOutlineEmissiveIntensity(float intensity) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetBlockOutlineEmissiveIntensity(intensity);
+    }
+
+    public static synchronized void setViewModelFovDegrees(int fovDegrees) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetViewModelFovDegrees((float) fovDegrees);
+    }
+
     public static synchronized void setRtQuality(int rtQuality) {
         if (!initialized) {
             return;
@@ -391,6 +423,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nBeginDestroyOverlayFrame();
     }
 
+    public static synchronized void beginBlockOutlineFrame() {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nBeginBlockOutlineFrame();
+    }
+
     public static synchronized void captureDestroyOverlay(
             int blockX,
             int blockY,
@@ -410,6 +449,13 @@ public final class MinecraftRenderHooks {
                 blockMetadata,
                 renderType,
                 destroyStage);
+    }
+
+    public static synchronized void captureBlockOutline(int blockX, int blockY, int blockZ) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nCaptureBlockOutline(blockX, blockY, blockZ);
     }
 
     public static synchronized void beginParticleFrame() {

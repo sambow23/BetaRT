@@ -915,6 +915,7 @@ public final class RemixDynamicEntityCapture {
         long beginFrameStartNanos = System.nanoTime();
         MinecraftRenderHooks.beginDynamicEntityFrame();
         MinecraftRenderHooks.beginDestroyOverlayFrame();
+        MinecraftRenderHooks.beginBlockOutlineFrame();
         dynamicCaptureFrameActive = true;
         HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.dynamicEntity.ensureFrame.beginFrame",
                 System.nanoTime() - beginFrameStartNanos);

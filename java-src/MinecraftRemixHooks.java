@@ -60,6 +60,7 @@ public final class MinecraftRemixHooks {
     private static int perfMaxSectionsRecaptured;
     private static long activeRenderMethodStartNanos;
     private static long activeUiRenderBeginNanos;
+    private static float lastCameraPartialTicks;
 
     static {
         System.out.println("[mcrtx] MinecraftRemixHooks loaded");
@@ -137,6 +138,7 @@ public final class MinecraftRemixHooks {
     public static void onCamera(ls entity, float partialTicks, int width, int height, float farPlane, boolean thirdPersonActive) {
         long __perf = HookProfiler.begin();
         try {
+            lastCameraPartialTicks = partialTicks;
             RemixCameraState.onCamera(entity, partialTicks, width, height, farPlane, thirdPersonActive);
         } finally {
             HookProfiler.endHook("hook.onCamera", __perf);
@@ -340,6 +342,26 @@ public final class MinecraftRemixHooks {
             RemixDestroyOverlayCapture.onDestroyOverlayRender(blockX, blockY, blockZ, destroyProgress);
         } finally {
             HookProfiler.endHook("hook.onDestroyOverlayRender", __perf);
+        }
+    }
+
+    public static void onBlockOutlineRender(gs player, vf movingobjectposition, int renderMode, float partialTicks) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixBlockOutlineCapture.onBlockOutlineRender(player, movingobjectposition, renderMode, partialTicks);
+        } finally {
+            HookProfiler.endHook("hook.onBlockOutlineRender", __perf);
+        }
+    }
+
+    public static void onBlockOutlineRender(vf movingobjectposition, int renderMode) {
+        long __perf = HookProfiler.begin();
+        try {
+            Minecraft minecraft = MinecraftRenderHooks.getRememberedMinecraft();
+            gs player = minecraft != null && minecraft.h instanceof gs ? (gs) minecraft.h : null;
+            RemixBlockOutlineCapture.onBlockOutlineRender(player, movingobjectposition, renderMode, lastCameraPartialTicks);
+        } finally {
+            HookProfiler.endHook("hook.onBlockOutlineRender", __perf);
         }
     }
 
@@ -618,6 +640,34 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isHeldTorchLightsEnabled();
     }
 
+    public static int getGameplayFovDegrees() {
+        return McrtxRuntimeSettings.getGameplayFovDegrees();
+    }
+
+    public static int getViewModelFovDegrees() {
+        return McrtxRuntimeSettings.getViewModelFovDegrees();
+    }
+
+    public static int getNoCullDistanceBlocks() {
+        return McrtxRuntimeSettings.getNoCullDistanceBlocks();
+    }
+
+    public static boolean isBlockOutlineEnabled() {
+        return McrtxRuntimeSettings.isBlockOutlineEnabled();
+    }
+
+    public static int getBlockOutlineStyle() {
+        return McrtxRuntimeSettings.getBlockOutlineStyle();
+    }
+
+    public static int getBlockOutlineEmissiveIntensityTenths() {
+        return McrtxRuntimeSettings.getBlockOutlineEmissiveIntensityTenths();
+    }
+
+    public static boolean shouldShowBlockOutlineIntensitySlider() {
+        return isBlockOutlineEnabled() && isBlockOutlineEmissiveStyle(getBlockOutlineStyle());
+    }
+
     public static String getPlayerShadowsButtonLabel() {
         return "Player Shadows: " + formatToggleState(isPlayerShadowsEnabled());
     }
@@ -653,6 +703,14 @@ public final class MinecraftRemixHooks {
         return "Ray Reconstruction: " + formatToggleState(McrtxRuntimeSettings.isRayReconstructionEnabled());
     }
 
+    public static String getBlockOutlineButtonLabel() {
+        return "Block Outline: " + formatToggleState(isBlockOutlineEnabled());
+    }
+
+    public static String getBlockOutlineStyleButtonLabel() {
+        return "Outline Style: " + describeBlockOutlineStyle(getBlockOutlineStyle());
+    }
+
     public static void setPlayerShadowsEnabled(boolean enabled) {
         McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
         RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
@@ -663,6 +721,53 @@ public final class MinecraftRemixHooks {
         McrtxRuntimeSettings.setHeldTorchLightsEnabled(enabled);
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(enabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(enabled);
+    }
+
+    public static void setGameplayFovDegrees(int fovDegrees) {
+        McrtxRuntimeSettings.setGameplayFovDegrees(fovDegrees);
+    }
+
+    public static void setViewModelFovDegrees(int fovDegrees) {
+        McrtxRuntimeSettings.setViewModelFovDegrees(fovDegrees);
+        MinecraftRenderHooks.setViewModelFovDegrees(fovDegrees);
+    }
+
+    public static void setNoCullDistanceBlocks(int blockDistance) {
+        McrtxRuntimeSettings.setNoCullDistanceBlocks(blockDistance);
+        RemixCameraState.setNoCullDistanceBlocks(blockDistance);
+    }
+
+    public static void setBlockOutlineEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setBlockOutlineEnabled(enabled);
+        MinecraftRenderHooks.setBlockOutlineEnabled(enabled);
+    }
+
+    public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
+        McrtxRuntimeSettings.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
+        MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
+    }
+
+    public static void cycleBlockOutlineStyle() {
+        int style = McrtxRuntimeSettings.getBlockOutlineStyle();
+        switch (style) {
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW);
+                break;
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB);
+                break;
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD);
+                break;
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID);
+                break;
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID:
+            default:
+                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE);
+                break;
+        }
+        MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
     }
 
     public static void cycleRtQuality() {
@@ -913,12 +1018,38 @@ public final class MinecraftRemixHooks {
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
         MinecraftRenderHooks.setPlayerShadowsEnabled(playerShadowsEnabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+        MinecraftRenderHooks.setBlockOutlineEnabled(McrtxRuntimeSettings.isBlockOutlineEnabled());
+        MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
+        MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
+        RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
+        MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
         applyRtQualitySettings();
         applyUpscalerSettings();
     }
 
     private static String formatToggleState(boolean enabled) {
         return enabled ? "ON" : "OFF";
+    }
+
+    private static String describeBlockOutlineStyle(int style) {
+        switch (style) {
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
+                return "Subtle";
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
+                return "Glow";
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB:
+                return "RGB";
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID:
+                return "Solid Fill";
+            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD:
+            default:
+                return "Bold";
+        }
+    }
+
+    private static boolean isBlockOutlineEmissiveStyle(int style) {
+        return style == McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW
+                || style == McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB;
     }
 
     private static void cycleDlssPreset() {

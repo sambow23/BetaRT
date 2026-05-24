@@ -3,6 +3,7 @@ import mcrtx.bridge.CameraPose;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.McrtxRuntimeConfig;
+import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
@@ -14,8 +15,8 @@ public final class RemixCameraState {
     private static final double DEFAULT_NO_CULL_DISTANCE_BLOCKS = 200.0;
     private static final FloatBuffer VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final float[] FRUSTUM_PLANES = new float[FRUSTUM_PLANE_COUNT * 4];
-    private static final double NO_CULL_DISTANCE_BLOCKS = loadNoCullDistanceBlocks();
-    private static final double NO_CULL_DISTANCE_SQ = NO_CULL_DISTANCE_BLOCKS * NO_CULL_DISTANCE_BLOCKS;
+    private static volatile double noCullDistanceBlocks = loadNoCullDistanceBlocks();
+    private static volatile double noCullDistanceSq = noCullDistanceBlocks * noCullDistanceBlocks;
 
     static float cameraPositionX;
     static float cameraPositionY;
@@ -94,7 +95,7 @@ public final class RemixCameraState {
         }
 
         float aspect = height <= 0 ? 1.0f : (float) width / (float) height;
-        RemixCameraState.fovYDegrees = 70.0f;
+        RemixCameraState.fovYDegrees = (float) McrtxRuntimeSettings.getGameplayFovDegrees();
         RemixCameraState.aspect = aspect;
         RemixCameraState.nearPlane = 0.05f;
         RemixCameraState.farPlane = farPlane * 2.0f;
@@ -219,7 +220,16 @@ public final class RemixCameraState {
         double dx = axisDistance(cameraPositionX, minX, maxX);
         double dy = axisDistance(cameraPositionY, minY, maxY);
         double dz = axisDistance(cameraPositionZ, minZ, maxZ);
-        return dx * dx + dy * dy + dz * dz <= NO_CULL_DISTANCE_SQ;
+        return dx * dx + dy * dy + dz * dz <= noCullDistanceSq;
+    }
+
+    public static void setNoCullDistanceBlocks(int blockDistance) {
+        double clampedDistance = blockDistance;
+        if (!Double.isFinite(clampedDistance) || clampedDistance < 0.0) {
+            clampedDistance = 0.0;
+        }
+        noCullDistanceBlocks = clampedDistance;
+        noCullDistanceSq = clampedDistance * clampedDistance;
     }
 
     static boolean shouldCaptureBounds(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {

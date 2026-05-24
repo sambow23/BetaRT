@@ -614,6 +614,10 @@ std::uint64_t makeDestroyOverlayMeshHash(std::uint64_t sequence) {
   return kDestroyOverlayMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
 }
 
+std::uint64_t makeBlockOutlineMeshHash(std::uint64_t sequence) {
+  return kBlockOutlineMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
+}
+
 std::uint64_t makeParticleMeshHash(std::uint64_t sequence) {
   return kParticleMeshHashSeed | (sequence & 0x0000FFFFFFFFFFFFull);
 }
