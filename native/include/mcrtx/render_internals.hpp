@@ -334,13 +334,10 @@ std::uint32_t packVertexColorRgba(float red, float green, float blue, float alph
 std::uint64_t computeChunkFingerprint(
     const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
     const std::array<ChunkBlockCell, kBlocksPerChunk>& cells);
+std::uint64_t beginDynamicEntityFingerprint(std::uint32_t hurtStage, std::uint32_t creeperFuseStage);
 void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& value);
-std::uint32_t computeDynamicEntityBoneCount(const std::vector<DynamicEntityQuad>& quads);
-std::uint64_t computeDynamicEntityFingerprint(
-    const std::vector<DynamicEntityQuad>& quads,
-    std::uint32_t boneCount,
-    std::uint32_t hurtStage,
-    std::uint32_t creeperFuseStage);
+void hashDynamicEntityQuad(std::uint64_t& fingerprint, const DynamicEntityQuad& quad);
+std::uint64_t finalizeDynamicEntityFingerprint(std::uint64_t quadFingerprint, std::uint32_t boneCount);
 std::uint32_t packVertexColor(std::uint32_t rgbColor);
 
 // ---- Tile / bounds helpers ------------------------------------------------

@@ -42,6 +42,15 @@ cmake -S . -B build -G "Visual Studio 17 2022" -A x64
 cmake --build build --config Debug
 ```
 
+Native Tracy instrumentation in the JNI bridge is enabled by default. Pass
+`-DMCRTX_ENABLE_TRACY=OFF` at configure time to disable it. This first-pass
+integration is native C++ only.
+
+mc-rtx uses Tracy port `8087` by default so it does not collide with other
+local Tracy-enabled projects using the stock port. Override it at configure
+time with `-DMCRTX_TRACY_PORT=<port>`, or at runtime with the standard
+`TRACY_PORT` environment variable.
+
 ## Decompilation workflow
 
 The helper script reruns extraction and both decompilers:

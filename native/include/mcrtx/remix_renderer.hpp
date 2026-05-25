@@ -15,6 +15,8 @@
 
 #include <windows.h>
 
+#include "mcrtx/tracy.hpp"
+
 #include <remix/remix_c.h>
 
 namespace mcrtx {
@@ -227,6 +229,8 @@ struct DynamicEntityBuildState {
   int entityId {-1};
   std::uint32_t hurtStage {0};
   std::uint32_t creeperFuseStage {0};
+  std::uint32_t maxBoneCount {0};
+  std::uint64_t quadFingerprint {0};
   std::string currentTexturePath {};
   std::vector<DynamicEntityQuad> quads {};
   std::vector<remixapi_Transform> boneTransforms {};
@@ -589,7 +593,7 @@ private:
   bool startStandaloneWorker(std::filesystem::path remixDllPath);
   bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
   void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
-  bool presentLocked(std::unique_lock<std::mutex>& lock,
+  bool presentLocked(TracyUniqueLock& lock,
                      std::string& perfSummary,
                      std::uint64_t lockWaitNanoseconds);
   void resetPerFramePerfCounters() noexcept;
@@ -597,8 +601,8 @@ private:
   void setError(std::string message);
   static void log(const std::string& message);
 
-  mutable std::mutex mutex_;
-  std::condition_variable standaloneWorkerEvent_ {};
+  mutable MCRTX_TRACY_LOCKABLE_N(std::mutex, mutex_, "RemixRenderer::mutex_");
+  TracyConditionVariable standaloneWorkerEvent_ {};
   std::thread standaloneWorker_ {};
   remixapi_Interface remix_ {};
   HMODULE remixDll_ {nullptr};

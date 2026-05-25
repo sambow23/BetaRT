@@ -231,12 +231,14 @@ void RemixRenderer::clearCloudLayer() {
 
 void RemixRenderer::beginDynamicEntityFrame() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDynamicEntityFrame");
+  MCRTX_TRACY_SCOPE("RemixRenderer::beginDynamicEntityFrame");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
     return;
   }
 
+  MCRTX_TRACY_VALUE(dynamicEntityFrameInstances_.size());
   clearDynamicEntityFrameInstances();
   activeDynamicEntity_ = {};
   heldItemId_ = -1;
@@ -245,6 +247,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
 
 void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, std::uint32_t creeperFuseStage) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginDynamicEntity");
+  MCRTX_TRACY_SCOPE("RemixRenderer::beginDynamicEntity");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -255,6 +258,9 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, st
   activeDynamicEntity_.entityId = entityId;
   activeDynamicEntity_.hurtStage = std::min(hurtStage, kDynamicEntityMaxHurtStage);
   activeDynamicEntity_.creeperFuseStage = std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage);
+  activeDynamicEntity_.quadFingerprint = beginDynamicEntityFingerprint(
+      activeDynamicEntity_.hurtStage,
+      activeDynamicEntity_.creeperFuseStage);
   activeDynamicEntity_.active = entityId >= 0;
   activeDynamicEntity_.quads.reserve(256);
   activeDynamicEntity_.boneTransforms.reserve(32);
@@ -273,6 +279,7 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
 
 void RemixRenderer::setFirstPersonHeldItem(int itemId) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setFirstPersonHeldItem");
+  MCRTX_TRACY_SCOPE("RemixRenderer::setFirstPersonHeldItem");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -284,6 +291,7 @@ void RemixRenderer::setFirstPersonHeldItem(int itemId) {
 
 void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setEntityHeldTorch");
+  MCRTX_TRACY_SCOPE("RemixRenderer::setEntityHeldTorch");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_ || entityId < 0) {
@@ -302,6 +310,7 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   }
 
   entityHeldTorchLightsSeenThisFrame_.insert(entityId);
+  MCRTX_TRACY_VALUE(entityHeldTorchLightHandles_.size());
 
   remixapi_LightInfoSphereEXT sphereInfo {};
   sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
@@ -339,6 +348,7 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
 
   auto lightIt = entityHeldTorchLightHandles_.find(entityId);
   if (lightIt == entityHeldTorchLightHandles_.end() || lightIt->second == nullptr) {
+    MCRTX_TRACY_SCOPE("setEntityHeldTorch.createLight");
     remixapi_LightHandle lightHandle = nullptr;
     const remixapi_ErrorCode result = createLight(lightHandle);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -351,6 +361,7 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {
+    MCRTX_TRACY_SCOPE("setEntityHeldTorch.recreateLight");
     destroyEntityHeldTorchLight(entityId);
     remixapi_LightHandle lightHandle = nullptr;
     const remixapi_ErrorCode result = createLight(lightHandle);
@@ -364,6 +375,7 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   }
 
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("setEntityHeldTorch.updateLight");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.entityHeldTorch");
     return remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
   }();
@@ -574,20 +586,27 @@ void RemixRenderer::captureDynamicEntityQuad(
   quad.texturePath = activeDynamicEntity_.currentTexturePath;
   quad.blendEnabled = blendEnabled;
   quad.boneIndex = boneIndex;
+  activeDynamicEntity_.maxBoneCount = std::max(activeDynamicEntity_.maxBoneCount, boneIndex + 1);
+  hashDynamicEntityQuad(activeDynamicEntity_.quadFingerprint, quad);
   activeDynamicEntity_.quads.push_back(std::move(quad));
 }
 
 void RemixRenderer::endDynamicEntity() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endDynamicEntity");
+  MCRTX_TRACY_SCOPE("RemixRenderer::endDynamicEntity");
   std::scoped_lock lock(mutex_);
 
   if (!activeDynamicEntity_.active) {
     return;
   }
 
+  MCRTX_TRACY_VALUE(activeDynamicEntity_.quads.size());
   if (!activeDynamicEntity_.quads.empty()) {
-    const std::uint32_t boneCount = computeDynamicEntityBoneCount(activeDynamicEntity_.quads);
+    const std::uint32_t boneCount = activeDynamicEntity_.maxBoneCount;
+    MCRTX_TRACY_VALUE(boneCount);
     if (boneCount != 0 && boneCount <= activeDynamicEntity_.boneTransforms.size()) {
+      {
+        MCRTX_TRACY_SCOPE("endDynamicEntity.findOrCreateMesh");
       if (DynamicEntityMeshData* meshData = findOrCreateDynamicEntityMesh(activeDynamicEntity_); meshData != nullptr) {
         DynamicEntityFrameInstance frameInstance;
         frameInstance.entityId = activeDynamicEntity_.entityId;
@@ -597,6 +616,7 @@ void RemixRenderer::endDynamicEntity() {
             activeDynamicEntity_.boneTransforms.begin(),
             activeDynamicEntity_.boneTransforms.begin() + boneCount);
         dynamicEntityFrameInstances_.push_back(std::move(frameInstance));
+      }
       }
     }
   }
@@ -860,6 +880,8 @@ bool RemixRenderer::reconcileChunkTorchLights(
     ChunkMeshData& meshData,
     const std::vector<TorchLightPlacement>& desiredTorchLights) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileChunkTorchLights");
+  MCRTX_TRACY_SCOPE("RemixRenderer::reconcileChunkTorchLights");
+  MCRTX_TRACY_VALUE(desiredTorchLights.size());
   if (remix_.CreateLight == nullptr) {
     destroyChunkTorchLights(meshData);
     return true;
@@ -892,6 +914,7 @@ bool RemixRenderer::reconcileChunkTorchLights(
 
 bool RemixRenderer::reconcileHeldItemTorchLight() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileHeldItemTorchLight");
+  MCRTX_TRACY_SCOPE("RemixRenderer::reconcileHeldItemTorchLight");
 
   const bool supportsLightCreation = remix_.CreateLight != nullptr || remix_.CreateLightBatched != nullptr;
   const bool isTorch = heldItemId_ == kTorchBlockId;
@@ -928,6 +951,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
   lightInfo.ignoreFirstPersonPlayerShadow = TRUE;
 
   if (heldItemTorchLightHandle_ == nullptr) {
+    MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.create");
     remixapi_ErrorCode result;
     if (remix_.CreateLightBatched != nullptr) {
       result = [&]() {
@@ -949,11 +973,13 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {
+    MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.recreate");
     destroyHeldItemTorchLight();
     return reconcileHeldItemTorchLight();
   }
 
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.update");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.heldTorch");
     return remix_.UpdateLightDefinition(heldItemTorchLightHandle_, &lightInfo);
   }();
@@ -1045,22 +1071,21 @@ bool RemixRenderer::rebuildCloudMesh(
 
 DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::findOrCreateDynamicEntityMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::findOrCreateDynamicEntityMesh");
   if (buildState.quads.empty()) {
     return nullptr;
   }
 
-  const std::uint32_t boneCount = computeDynamicEntityBoneCount(buildState.quads);
+  MCRTX_TRACY_VALUE(buildState.quads.size());
+
+  const std::uint32_t boneCount = buildState.maxBoneCount;
   if (boneCount == 0
       || boneCount > buildState.boneTransforms.size()
       || boneCount > REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
     return nullptr;
   }
 
-  const std::uint64_t geometryFingerprint = computeDynamicEntityFingerprint(
-      buildState.quads,
-      boneCount,
-      buildState.hurtStage,
-      buildState.creeperFuseStage);
+  const std::uint64_t geometryFingerprint = finalizeDynamicEntityFingerprint(buildState.quadFingerprint, boneCount);
   const std::uint64_t meshKey = makeDynamicEntityMeshKey(buildState.entityId, geometryFingerprint);
   if (const auto existing = dynamicEntityMeshes_.find(meshKey); existing != dynamicEntityMeshes_.end()) {
     return &existing->second;
@@ -1088,59 +1113,67 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   };
 
   std::size_t quadCount = 0;
-  for (const DynamicEntityQuad& quad : buildState.quads) {
-    const DynamicEntityMaterialClass materialClass = dynamicEntityMaterialClassForQuad(quad);
-    remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(
-        quad.texturePath,
-        materialClass,
-      buildState.hurtStage,
-      buildState.creeperFuseStage);
-    if (materialHandle == nullptr) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("findOrCreateDynamicEntityMesh.buildSurfaces");
+    for (const DynamicEntityQuad& quad : buildState.quads) {
+      const DynamicEntityMaterialClass materialClass = dynamicEntityMaterialClassForQuad(quad);
+      remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(
+          quad.texturePath,
+          materialClass,
+        buildState.hurtStage,
+        buildState.creeperFuseStage);
+      if (materialHandle == nullptr) {
+        continue;
+      }
 
-    const auto normal = computeQuadNormal(
-        quad.positions[0], quad.positions[1], quad.positions[2],
-        quad.positions[3], quad.positions[4], quad.positions[5],
-        quad.positions[6], quad.positions[7], quad.positions[8]);
-    SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+      const auto normal = computeQuadNormal(
+          quad.positions[0], quad.positions[1], quad.positions[2],
+          quad.positions[3], quad.positions[4], quad.positions[5],
+          quad.positions[6], quad.positions[7], quad.positions[8]);
+      SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
       const std::size_t vertexBase = surface.vertices.size();
-    appendCloudQuad(
-        quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
-        quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
-        quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
-        quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
-        normal[0], normal[1], normal[2],
-        quad.color,
-        surface.vertices,
-        surface.indices);
+      appendCloudQuad(
+          quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
+          quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
+          quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
+          quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
+          normal[0], normal[1], normal[2],
+          quad.color,
+          surface.vertices,
+          surface.indices);
       const std::size_t addedVertices = surface.vertices.size() - vertexBase;
       surface.blendWeights.insert(surface.blendWeights.end(), addedVertices, 1.0f);
       surface.blendIndices.insert(surface.blendIndices.end(), addedVertices, quad.boneIndex);
-    ++quadCount;
+      ++quadCount;
+    }
   }
+  MCRTX_TRACY_VALUE(quadCount);
 
   std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
-  surfaces.reserve(surfacesToBuild.size());
-  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
-    if (surfaceBuild.indices.empty()) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("findOrCreateDynamicEntityMesh.finalizeSurfaces");
+    surfaces.reserve(surfacesToBuild.size());
+    for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+      if (surfaceBuild.indices.empty()) {
+        continue;
+      }
 
-    remixapi_MeshInfoSurfaceTriangles surface {};
-    surface.vertices_values = surfaceBuild.vertices.data();
-    surface.vertices_count = surfaceBuild.vertices.size();
-    surface.indices_values = surfaceBuild.indices.data();
-    surface.indices_count = surfaceBuild.indices.size();
-    surface.skinning_hasvalue = TRUE;
-    surface.skinning_value.bonesPerVertex = 1;
-    surface.skinning_value.blendWeights_values = surfaceBuild.blendWeights.data();
-    surface.skinning_value.blendWeights_count = static_cast<std::uint32_t>(surfaceBuild.blendWeights.size());
-    surface.skinning_value.blendIndices_values = surfaceBuild.blendIndices.data();
-    surface.skinning_value.blendIndices_count = static_cast<std::uint32_t>(surfaceBuild.blendIndices.size());
-    surface.material = surfaceBuild.materialHandle;
-    surfaces.push_back(surface);
+      remixapi_MeshInfoSurfaceTriangles surface {};
+      surface.vertices_values = surfaceBuild.vertices.data();
+      surface.vertices_count = surfaceBuild.vertices.size();
+      surface.indices_values = surfaceBuild.indices.data();
+      surface.indices_count = surfaceBuild.indices.size();
+      surface.skinning_hasvalue = TRUE;
+      surface.skinning_value.bonesPerVertex = 1;
+      surface.skinning_value.blendWeights_values = surfaceBuild.blendWeights.data();
+      surface.skinning_value.blendWeights_count = static_cast<std::uint32_t>(surfaceBuild.blendWeights.size());
+      surface.skinning_value.blendIndices_values = surfaceBuild.blendIndices.data();
+      surface.skinning_value.blendIndices_count = static_cast<std::uint32_t>(surfaceBuild.blendIndices.size());
+      surface.material = surfaceBuild.materialHandle;
+      surfaces.push_back(surface);
+    }
   }
+  MCRTX_TRACY_VALUE(surfaces.size());
 
   if (surfaces.empty()) {
     return nullptr;
@@ -1154,6 +1187,7 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
 
   remixapi_MeshHandle meshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("findOrCreateDynamicEntityMesh.createMesh");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.entity");
     return remix_.CreateMesh(&meshInfo, &meshHandle);
   }();
@@ -1281,10 +1315,12 @@ void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
 
 bool RemixRenderer::rebuildDestroyOverlayMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildDestroyOverlayMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildDestroyOverlayMesh");
   if (destroyOverlayInstances_.empty()) {
     destroyDestroyOverlayMesh();
     return true;
   }
+  MCRTX_TRACY_VALUE(destroyOverlayInstances_.size());
 
   remixapi_MaterialHandle overlayMaterial = destroyOverlayMaterialHandle_;
   if (overlayMaterial == nullptr) {
@@ -1346,6 +1382,8 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   indices.reserve(destroyOverlayInstances_.size() * 36);
 
   std::size_t overlayCount = 0;
+  {
+    MCRTX_TRACY_SCOPE("rebuildDestroyOverlayMesh.buildGeometry");
   for (const DestroyOverlayInstance& overlay : destroyOverlayInstances_) {
     const int destroyTile = 240 + std::clamp(overlay.destroyStage, 0, 9);
     ChunkBlockCell resolvedCell {};
@@ -1629,6 +1667,7 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
       ++overlayCount;
     }
   }
+  }
 
   if (indices.empty()) {
     destroyDestroyOverlayMesh();
@@ -1651,6 +1690,7 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("rebuildDestroyOverlayMesh.createMesh");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.destroy");
     return remix_.CreateMesh(&meshInfo, &newMeshHandle);
   }();
@@ -1671,10 +1711,12 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
 
 bool RemixRenderer::rebuildBlockOutlineMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildBlockOutlineMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildBlockOutlineMesh");
   if (!blockOutlineEnabled_ || blockOutlineInstances_.empty()) {
     destroyBlockOutlineMesh();
     return true;
   }
+  MCRTX_TRACY_VALUE(blockOutlineInstances_.size());
 
   const BlockOutlineStyleParameters styleParameters = blockOutlineStyleParametersFor(blockOutlineStyle_);
   const BlockOutlineAnimatedColor animatedRgbColor = styleParameters.rgbCycle
@@ -1744,6 +1786,8 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
       styleParameters.alpha);
 
   std::size_t outlineCount = 0;
+  {
+    MCRTX_TRACY_SCOPE("rebuildBlockOutlineMesh.buildGeometry");
   for (const BlockOutlineInstance& outline : blockOutlineInstances_) {
     const WorldBlockPosition position {outline.blockX, outline.blockY, outline.blockZ};
     if (!seenOutlines.insert(position).second) {
@@ -1783,6 +1827,7 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
     }
     ++outlineCount;
   }
+  }
 
   if (indices.empty()) {
     destroyBlockOutlineMesh();
@@ -1805,6 +1850,7 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("rebuildBlockOutlineMesh.createMesh");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.blockOutline");
     return remix_.CreateMesh(&meshInfo, &newMeshHandle);
   }();
@@ -1822,6 +1868,7 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
 
 bool RemixRenderer::rebuildFireMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildFireMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildFireMesh");
   if (fireMaterialHandle_ == nullptr) {    destroyFireMesh();
     return true;
   }
@@ -1866,6 +1913,8 @@ bool RemixRenderer::rebuildFireMesh() {
   indices.reserve(384);
 
   std::size_t fireCount = 0;
+  {
+    MCRTX_TRACY_SCOPE("rebuildFireMesh.buildGeometry");
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (chunkKey.renderPass != 0 || !meshData.hasOccupancy || meshData.fireCellIndices.empty()) {
       continue;
@@ -1903,6 +1952,8 @@ bool RemixRenderer::rebuildFireMesh() {
       ++fireCount;
     }
   }
+  }
+  MCRTX_TRACY_VALUE(fireCount);
 
   if (indices.empty()) {
     destroyFireMesh();
@@ -1927,6 +1978,7 @@ bool RemixRenderer::rebuildFireMesh() {
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("rebuildFireMesh.createMesh");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.fire");
     return remix_.CreateMesh(&meshInfo, &newMeshHandle);
   }();
@@ -1945,10 +1997,12 @@ bool RemixRenderer::rebuildFireMesh() {
 
 bool RemixRenderer::rebuildParticleMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildParticleMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildParticleMesh");
   if (particleQuads_.empty()) {
     destroyParticleMesh();
     return true;
   }
+  MCRTX_TRACY_VALUE(particleQuads_.size());
 
   std::vector<SurfaceBuildBuffers> surfacesToBuild;
   surfacesToBuild.reserve(4);
@@ -1972,45 +2026,53 @@ bool RemixRenderer::rebuildParticleMesh() {
   };
 
   std::size_t quadCount = 0;
-  for (const ParticleQuad& quad : particleQuads_) {
-    remixapi_MaterialHandle materialHandle = acquireParticleMaterial(quad.textureKind);
-    if (materialHandle == nullptr) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("rebuildParticleMesh.buildSurfaces");
+    for (const ParticleQuad& quad : particleQuads_) {
+      remixapi_MaterialHandle materialHandle = acquireParticleMaterial(quad.textureKind);
+      if (materialHandle == nullptr) {
+        continue;
+      }
 
-    const auto normal = computeQuadNormal(
-        quad.positions[0], quad.positions[1], quad.positions[2],
-        quad.positions[3], quad.positions[4], quad.positions[5],
-        quad.positions[6], quad.positions[7], quad.positions[8]);
-    SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
-    appendCloudQuad(
-        quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
-        quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
-        quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
-        quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
-        normal[0], normal[1], normal[2],
-        quad.color,
-        surface.vertices,
-        surface.indices);
-    ++quadCount;
+      const auto normal = computeQuadNormal(
+          quad.positions[0], quad.positions[1], quad.positions[2],
+          quad.positions[3], quad.positions[4], quad.positions[5],
+          quad.positions[6], quad.positions[7], quad.positions[8]);
+      SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+      appendCloudQuad(
+          quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
+          quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
+          quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
+          quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
+          normal[0], normal[1], normal[2],
+          quad.color,
+          surface.vertices,
+          surface.indices);
+      ++quadCount;
+    }
   }
+  MCRTX_TRACY_VALUE(quadCount);
 
   std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
-  surfaces.reserve(surfacesToBuild.size());
-  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
-    if (surfaceBuild.indices.empty()) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("rebuildParticleMesh.finalizeSurfaces");
+    surfaces.reserve(surfacesToBuild.size());
+    for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+      if (surfaceBuild.indices.empty()) {
+        continue;
+      }
 
-    remixapi_MeshInfoSurfaceTriangles surface {};
-    surface.vertices_values = surfaceBuild.vertices.data();
-    surface.vertices_count = surfaceBuild.vertices.size();
-    surface.indices_values = surfaceBuild.indices.data();
-    surface.indices_count = surfaceBuild.indices.size();
-    surface.skinning_hasvalue = FALSE;
-    surface.material = surfaceBuild.materialHandle;
-    surfaces.push_back(surface);
+      remixapi_MeshInfoSurfaceTriangles surface {};
+      surface.vertices_values = surfaceBuild.vertices.data();
+      surface.vertices_count = surfaceBuild.vertices.size();
+      surface.indices_values = surfaceBuild.indices.data();
+      surface.indices_count = surfaceBuild.indices.size();
+      surface.skinning_hasvalue = FALSE;
+      surface.material = surfaceBuild.materialHandle;
+      surfaces.push_back(surface);
+    }
   }
+  MCRTX_TRACY_VALUE(surfaces.size());
 
   if (surfaces.empty()) {
     destroyParticleMesh();

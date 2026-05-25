@@ -783,6 +783,15 @@ std::uint64_t computeChunkFingerprint(
   return fingerprint;
 }
 
+std::uint64_t beginDynamicEntityFingerprint(std::uint32_t hurtStage, std::uint32_t creeperFuseStage) {
+  std::uint64_t fingerprint = 1469598103934665603ull;
+  fingerprint ^= static_cast<std::uint64_t>(std::min(hurtStage, kDynamicEntityMaxHurtStage));
+  fingerprint *= 1099511628211ull;
+  fingerprint ^= static_cast<std::uint64_t>(std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage));
+  fingerprint *= 1099511628211ull;
+  return fingerprint;
+}
+
 void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& value) {
   for (const unsigned char character : value) {
     fingerprint ^= static_cast<std::uint64_t>(character);
@@ -792,43 +801,28 @@ void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& valu
   fingerprint *= 1099511628211ull;
 }
 
-std::uint32_t computeDynamicEntityBoneCount(const std::vector<DynamicEntityQuad>& quads) {
-  std::uint32_t boneCount = 0;
-  for (const DynamicEntityQuad& quad : quads) {
-    boneCount = std::max(boneCount, quad.boneIndex + 1);
+void hashDynamicEntityQuad(std::uint64_t& fingerprint, const DynamicEntityQuad& quad) {
+  fingerprint ^= static_cast<std::uint64_t>(quad.boneIndex);
+  fingerprint *= 1099511628211ull;
+  for (const float position : quad.positions) {
+    fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(position));
+    fingerprint *= 1099511628211ull;
   }
-  return boneCount;
+  for (const float texcoord : quad.texcoords) {
+    fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(texcoord));
+    fingerprint *= 1099511628211ull;
+  }
+  fingerprint ^= static_cast<std::uint64_t>(quad.color);
+  fingerprint *= 1099511628211ull;
+  fingerprint ^= quad.blendEnabled ? 1ull : 0ull;
+  fingerprint *= 1099511628211ull;
+  hashDynamicEntityString(fingerprint, quad.texturePath);
 }
 
-std::uint64_t computeDynamicEntityFingerprint(
-    const std::vector<DynamicEntityQuad>& quads,
-    std::uint32_t boneCount,
-    std::uint32_t hurtStage,
-    std::uint32_t creeperFuseStage) {
-  std::uint64_t fingerprint = 1469598103934665603ull;
+std::uint64_t finalizeDynamicEntityFingerprint(std::uint64_t quadFingerprint, std::uint32_t boneCount) {
+  std::uint64_t fingerprint = quadFingerprint;
   fingerprint ^= static_cast<std::uint64_t>(boneCount);
   fingerprint *= 1099511628211ull;
-  fingerprint ^= static_cast<std::uint64_t>(std::min(hurtStage, kDynamicEntityMaxHurtStage));
-  fingerprint *= 1099511628211ull;
-  fingerprint ^= static_cast<std::uint64_t>(std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage));
-  fingerprint *= 1099511628211ull;
-  for (const DynamicEntityQuad& quad : quads) {
-    fingerprint ^= static_cast<std::uint64_t>(quad.boneIndex);
-    fingerprint *= 1099511628211ull;
-    for (const float position : quad.positions) {
-      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(position));
-      fingerprint *= 1099511628211ull;
-    }
-    for (const float texcoord : quad.texcoords) {
-      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(texcoord));
-      fingerprint *= 1099511628211ull;
-    }
-    fingerprint ^= static_cast<std::uint64_t>(quad.color);
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= quad.blendEnabled ? 1ull : 0ull;
-    fingerprint *= 1099511628211ull;
-    hashDynamicEntityString(fingerprint, quad.texturePath);
-  }
   return fingerprint;
 }
 

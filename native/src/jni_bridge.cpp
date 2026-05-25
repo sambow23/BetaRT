@@ -1,15 +1,119 @@
 #include "mcrtx/remix_renderer.hpp"
 #include "mcrtx/perf_log.hpp"
+#include "mcrtx/render_internals.hpp"
+#include "mcrtx/tracy.hpp"
+
+#if defined(MCRTX_ENABLE_TRACY)
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#endif
 
 #include <jni.h>
 #include <jawt.h>
 #include <jawt_md.h>
+
+#include <cstdint>
+#include <fstream>
 #include <string>
 
 namespace {
 
 using mcrtx::CameraState;
 using mcrtx::RemixRenderer;
+
+#if defined(MCRTX_ENABLE_TRACY)
+constexpr std::uint16_t kCompiledTracyPort = TRACY_PORT;
+
+std::string readProcessEnvironmentVariable(const char* name) {
+  char* value = nullptr;
+  std::size_t length = 0;
+  if (_dupenv_s(&value, &length, name) != 0 || value == nullptr || length == 0) {
+    return {};
+  }
+
+  std::string result(value);
+  std::free(value);
+  return result;
+}
+
+std::uint16_t parsePortOrZero(const std::string& value) {
+  if (value.empty()) {
+    return 0;
+  }
+
+  try {
+    const unsigned long parsed = std::stoul(value);
+    if (parsed > 0 && parsed <= 65535) {
+      return static_cast<std::uint16_t>(parsed);
+    }
+  } catch (...) {
+  }
+
+  return 0;
+}
+
+bool canConnectToLoopbackPort(std::uint16_t port) {
+  if (port == 0) {
+    return false;
+  }
+
+  WSADATA wsaData {};
+  if (WSAStartup(MAKEWORD(2, 2), &wsaData) != 0) {
+    return false;
+  }
+
+  SOCKET socketHandle = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+  if (socketHandle == INVALID_SOCKET) {
+    WSACleanup();
+    return false;
+  }
+
+  sockaddr_in address {};
+  address.sin_family = AF_INET;
+  address.sin_port = htons(port);
+  address.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+  const bool connected = connect(
+      socketHandle,
+      reinterpret_cast<const sockaddr*>(&address),
+      static_cast<int>(sizeof(address))) == 0;
+
+  closesocket(socketHandle);
+  WSACleanup();
+  return connected;
+}
+
+void appendTracyDiagnostic(const char* phase, bool initializeResult) {
+  const std::string configuredPort = mcrtx::detail::readEnvironmentVariable("TRACY_PORT");
+  const std::string processEnvPort = readProcessEnvironmentVariable("TRACY_PORT");
+  const std::uint16_t envPort = parsePortOrZero(processEnvPort);
+  const std::uint16_t effectivePort = envPort != 0 ? envPort : kCompiledTracyPort;
+  const bool listenerReachable = canConnectToLoopbackPort(effectivePort);
+
+  std::filesystem::path logPath = mcrtx::detail::getRuntimeConfigPath().parent_path();
+  if (logPath.empty()) {
+    logPath = std::filesystem::current_path();
+  }
+  logPath /= "mcrtx-tracy.log";
+
+  std::ofstream stream(logPath, std::ios::out | std::ios::app);
+  if (!stream.is_open()) {
+    return;
+  }
+
+  stream
+      << "phase=" << phase
+      << " pid=" << GetCurrentProcessId()
+      << " initOk=" << (initializeResult ? 1 : 0)
+      << " compiledPort=" << kCompiledTracyPort
+      << " runtimeConfigOrEnvPort=" << (configuredPort.empty() ? "<empty>" : configuredPort)
+      << " processEnvPort=" << (processEnvPort.empty() ? "<empty>" : processEnvPort)
+      << " effectivePort=" << effectivePort
+      << " listenerReachable=" << (listenerReachable ? 1 : 0)
+      << " connected=" << (TracyIsConnected ? 1 : 0)
+      << '\n';
+}
+#endif
 
 bool fromJniBoolean(bool value) {
   return value;
@@ -154,11 +258,16 @@ extern "C" {
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nInitialize(
     JNIEnv*, jclass, jlong hwnd, jint width, jint height) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nInitialize");
+  MCRTX_TRACY_SCOPE("nInitialize");
+  MCRTX_TRACY_SET_THREAD_NAME("mc-rtx JNI/Main");
   auto& renderer = RemixRenderer::instance();
   const bool ok = renderer.initialize(
       reinterpret_cast<HWND>(static_cast<intptr_t>(hwnd)),
       static_cast<std::uint32_t>(width),
       static_cast<std::uint32_t>(height));
+#if defined(MCRTX_ENABLE_TRACY)
+  appendTracyDiagnostic("nInitialize", ok);
+#endif
   return static_cast<jboolean>(fromJniBoolean(ok));
 }
 
@@ -194,6 +303,10 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsEmbeddedWindow
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nShutdown(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nShutdown");
+  MCRTX_TRACY_SCOPE("nShutdown");
+#if defined(MCRTX_ENABLE_TRACY)
+  appendTracyDiagnostic("nShutdown", true);
+#endif
   RemixRenderer::instance().shutdown();
   ::mcrtx::perf::shutdown();
 }

@@ -44,6 +44,7 @@ bool RemixRenderer::beginChunkBuild(
   int dirtyMaxZ,
   int renderPass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::beginChunkBuild");
+  MCRTX_TRACY_SCOPE("RemixRenderer::beginChunkBuild");
   std::scoped_lock lock(mutex_);
 
   if (!initialized_) {
@@ -143,6 +144,7 @@ void RemixRenderer::captureBlock(
 
 void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh, bool allowNeighborRefresh) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild");
+  MCRTX_TRACY_SCOPE("RemixRenderer::endChunkBuild");
   std::scoped_lock lock(mutex_);
   const auto buildStart = std::chrono::steady_clock::now();
 
@@ -157,6 +159,7 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
       || activeChunkBuild_.dirtyMax[0] != activeChunkBuild_.origin[0] + activeChunkBuild_.size[0] - 1
       || activeChunkBuild_.dirtyMax[1] != activeChunkBuild_.origin[1] + activeChunkBuild_.size[1] - 1
       || activeChunkBuild_.dirtyMax[2] != activeChunkBuild_.origin[2] + activeChunkBuild_.size[2] - 1;
+  MCRTX_TRACY_VALUE(activeChunkBuild_.blockCount);
 
   // When deferring, enqueue neighbor keys into a set so multiple sibling
   // rebuilds in the same flush collapse into one refresh per unique neighbor.
@@ -183,6 +186,8 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
     const auto rebuildStart = std::chrono::steady_clock::now();
     {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.rebuildChunkMesh");
+      MCRTX_TRACY_SCOPE("endChunkBuild.rebuildChunkMesh");
+      MCRTX_TRACY_VALUE(activeChunkBlocks_.size());
       if (!rebuildChunkMesh(activeChunkBuild_, activeChunkBlocks_, meshData)) {
         activeChunkBlocks_.clear();
         chunkBuildActive_ = false;
@@ -199,9 +204,11 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
     if (allowNeighborRefresh) {
       if (deferNeighborRefresh) {
         MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.deferNeighborRefresh");
+        MCRTX_TRACY_SCOPE("endChunkBuild.deferNeighborRefresh");
         scheduleNeighbors();
       } else {
         MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.refreshNeighborRefresh");
+        MCRTX_TRACY_SCOPE("endChunkBuild.refreshNeighborRefresh");
         refreshNeighborChunkMeshes(chunkKey);
       }
     }
@@ -215,9 +222,11 @@ void RemixRenderer::endChunkBuild(bool emittedGeometry, bool deferNeighborRefres
       if (allowNeighborRefresh) {
         if (deferNeighborRefresh) {
           MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.deferNeighborRefresh");
+          MCRTX_TRACY_SCOPE("endChunkBuild.deferNeighborRefresh");
           scheduleNeighbors();
         } else {
           MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endChunkBuild.refreshNeighborRefresh");
+          MCRTX_TRACY_SCOPE("endChunkBuild.refreshNeighborRefresh");
           refreshNeighborChunkMeshes(chunkKey);
         }
       }
@@ -270,6 +279,7 @@ bool RemixRenderer::rebuildChunkMesh(
     const std::vector<CapturedBlockInstance>& blocks,
     ChunkMeshData& meshData) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMesh");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildChunkMesh");
   const ChunkKey chunkKey = makeChunkKey(chunkBuild);
   const bool partialChunkBuild = chunkBuild.dirtyMin[0] != chunkBuild.origin[0]
       || chunkBuild.dirtyMin[1] != chunkBuild.origin[1]
@@ -277,6 +287,7 @@ bool RemixRenderer::rebuildChunkMesh(
       || chunkBuild.dirtyMax[0] != chunkBuild.origin[0] + chunkBuild.size[0] - 1
       || chunkBuild.dirtyMax[1] != chunkBuild.origin[1] + chunkBuild.size[1] - 1
       || chunkBuild.dirtyMax[2] != chunkBuild.origin[2] + chunkBuild.size[2] - 1;
+  MCRTX_TRACY_VALUE(blocks.size());
 
   if (blocks.empty() && !partialChunkBuild) {
     destroyChunkMesh(meshData);
@@ -292,6 +303,7 @@ bool RemixRenderer::rebuildChunkMesh(
   std::array<std::uint8_t, kBlocksPerChunk> occupancy {};
   std::array<ChunkBlockCell, kBlocksPerChunk> cells {};
   if (partialChunkBuild && meshData.hasOccupancy) {
+    MCRTX_TRACY_SCOPE("rebuildChunkMesh.mergeDirtyRegion");
     occupancy = meshData.occupancy;
     cells = meshData.cells;
 
@@ -313,43 +325,50 @@ bool RemixRenderer::rebuildChunkMesh(
     }
   }
 
-  for (const CapturedBlockInstance& block : blocks) {
-    const int localX = block.position[0] - chunkKey.originX;
-    const int localY = block.position[1] - chunkKey.originY;
-    const int localZ = block.position[2] - chunkKey.originZ;
-    if (localX < 0 || localX >= kChunkDimension
-        || localY < 0 || localY >= kChunkDimension
-        || localZ < 0 || localZ >= kChunkDimension) {
-      continue;
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMesh.copyCapturedBlocks");
+    for (const CapturedBlockInstance& block : blocks) {
+      const int localX = block.position[0] - chunkKey.originX;
+      const int localY = block.position[1] - chunkKey.originY;
+      const int localZ = block.position[2] - chunkKey.originZ;
+      if (localX < 0 || localX >= kChunkDimension
+          || localY < 0 || localY >= kChunkDimension
+          || localZ < 0 || localZ >= kChunkDimension) {
+        continue;
+      }
+      const int occupancyIndex = blockIndex(localX, localY, localZ);
+      occupancy[occupancyIndex] = 1;
+      cells[occupancyIndex].terrainTiles = block.terrainTiles;
+      cells[occupancyIndex].materialClass = block.materialClass < kTerrainMaterialClassCount
+          ? block.materialClass
+          : kOpaqueTerrainMaterialClass;
+      cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
+      cells[occupancyIndex].blockMetadata = static_cast<std::uint8_t>(block.blockMetadata & 0xFF);
+      cells[occupancyIndex].renderType = static_cast<std::uint8_t>(block.renderType & 0xFF);
+      cells[occupancyIndex].bounds = block.bounds;
+      cells[occupancyIndex].liquidVisibilityMask = block.liquidVisibilityMask;
+      cells[occupancyIndex].liquidHeights = block.liquidHeights;
+      cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
+      cells[occupancyIndex].blockColor = block.blockColor;
     }
-    const int occupancyIndex = blockIndex(localX, localY, localZ);
-    occupancy[occupancyIndex] = 1;
-    cells[occupancyIndex].terrainTiles = block.terrainTiles;
-    cells[occupancyIndex].materialClass = block.materialClass < kTerrainMaterialClassCount
-        ? block.materialClass
-        : kOpaqueTerrainMaterialClass;
-    cells[occupancyIndex].blockId = static_cast<std::uint8_t>(block.blockId & 0xFF);
-    cells[occupancyIndex].blockMetadata = static_cast<std::uint8_t>(block.blockMetadata & 0xFF);
-    cells[occupancyIndex].renderType = static_cast<std::uint8_t>(block.renderType & 0xFF);
-    cells[occupancyIndex].bounds = block.bounds;
-    cells[occupancyIndex].liquidVisibilityMask = block.liquidVisibilityMask;
-    cells[occupancyIndex].liquidHeights = block.liquidHeights;
-    cells[occupancyIndex].liquidFlowAngle = block.liquidFlowAngle;
-    cells[occupancyIndex].blockColor = block.blockColor;
   }
 
   std::vector<std::uint16_t> fireCellIndices;
   fireCellIndices.reserve(16);
   std::size_t occupiedBlocks = 0;
-  for (int occupancyIndex = 0; occupancyIndex < kBlocksPerChunk; ++occupancyIndex) {
-    if (occupancy[occupancyIndex] == 0) {
-      continue;
-    }
-    ++occupiedBlocks;
-    if (isFireRenderType(cells[occupancyIndex].renderType)) {
-      fireCellIndices.push_back(static_cast<std::uint16_t>(occupancyIndex));
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMesh.scanOccupancy");
+    for (int occupancyIndex = 0; occupancyIndex < kBlocksPerChunk; ++occupancyIndex) {
+      if (occupancy[occupancyIndex] == 0) {
+        continue;
+      }
+      ++occupiedBlocks;
+      if (isFireRenderType(cells[occupancyIndex].renderType)) {
+        fireCellIndices.push_back(static_cast<std::uint16_t>(occupancyIndex));
+      }
     }
   }
+  MCRTX_TRACY_VALUE(occupiedBlocks);
 
   if (occupiedBlocks == 0) {
     destroyChunkMesh(meshData);
@@ -375,7 +394,10 @@ bool RemixRenderer::rebuildChunkMesh(
   meshData.fireCellIndices = std::move(fireCellIndices);
   meshData.hasOccupancy = true;
 
-  return rebuildChunkMeshFromData(chunkKey, meshData, false);
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMesh.rebuildChunkMeshFromData");
+    return rebuildChunkMeshFromData(chunkKey, meshData, false);
+  }
 }
 
 bool RemixRenderer::rebuildChunkMeshFromData(
@@ -383,7 +405,9 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     ChunkMeshData& meshData,
     bool forceRebuild) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMeshFromData");
+  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildChunkMeshFromData");
   (void)forceRebuild;
+  MCRTX_TRACY_VALUE(meshData.blockCount);
 
   if (!meshData.hasOccupancy || meshData.blockCount == 0) {
     destroyChunkMesh(meshData);
@@ -519,9 +543,11 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return neighborCell != nullptr && isRedstoneConnectionCell(*neighborCell, direction);
   };
 
-  for (int localY = 0; localY < kChunkDimension; ++localY) {
-    for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
-      for (int localX = 0; localX < kChunkDimension; ++localX) {
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.emitGeometry");
+    for (int localY = 0; localY < kChunkDimension; ++localY) {
+      for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
+        for (int localX = 0; localX < kChunkDimension; ++localX) {
         const int cellIndex = blockIndex(localX, localY, localZ);
         if (meshData.occupancy[cellIndex] == 0) {
           continue;
@@ -950,23 +976,29 @@ bool RemixRenderer::rebuildChunkMeshFromData(
       }
     }
   }
+  }
+  MCRTX_TRACY_VALUE(desiredTorchLights.size());
 
   std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
-  surfaces.reserve(surfacesToBuild.size());
-  for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
-    if (surfaceBuild.indices.empty()) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.finalizeSurfaces");
+    surfaces.reserve(surfacesToBuild.size());
+    for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
+      if (surfaceBuild.indices.empty()) {
+        continue;
+      }
 
-    remixapi_MeshInfoSurfaceTriangles surface {};
-    surface.vertices_values = surfaceBuild.vertices.data();
-    surface.vertices_count = surfaceBuild.vertices.size();
-    surface.indices_values = surfaceBuild.indices.data();
-    surface.indices_count = surfaceBuild.indices.size();
-    surface.skinning_hasvalue = FALSE;
-    surface.material = surfaceBuild.materialHandle;
-    surfaces.push_back(surface);
+      remixapi_MeshInfoSurfaceTriangles surface {};
+      surface.vertices_values = surfaceBuild.vertices.data();
+      surface.vertices_count = surfaceBuild.vertices.size();
+      surface.indices_values = surfaceBuild.indices.data();
+      surface.indices_count = surfaceBuild.indices.size();
+      surface.skinning_hasvalue = FALSE;
+      surface.material = surfaceBuild.materialHandle;
+      surfaces.push_back(surface);
+    }
   }
+  MCRTX_TRACY_VALUE(surfaces.size());
 
   if (surfaces.empty()) {
     destroyChunkMesh(meshData);
@@ -977,6 +1009,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 
   const std::uint64_t meshFingerprint = computeChunkMeshFingerprint(surfacesToBuild);
   if (meshData.meshHandle != nullptr && meshData.meshFingerprint == meshFingerprint) {
+    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.reuseExistingMesh");
     if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
       return false;
     }
@@ -992,6 +1025,7 @@ bool RemixRenderer::rebuildChunkMeshFromData(
 
   remixapi_MeshHandle newMeshHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {
+    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.createMesh");
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.chunk");
     return remix_.CreateMesh(&meshInfo, &newMeshHandle);
   }();
@@ -1000,9 +1034,12 @@ bool RemixRenderer::rebuildChunkMeshFromData(
     return false;
   }
 
-  if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
-    destroyMeshHandle(newMeshHandle);
-    return false;
+  {
+    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.reconcileTorchLights");
+    if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
+      destroyMeshHandle(newMeshHandle);
+      return false;
+    }
   }
 
   destroyChunkMeshHandle(meshData);
@@ -1184,11 +1221,13 @@ void RemixRenderer::evictDistantChunks(int cameraChunkX, int cameraChunkZ, int e
 
 void RemixRenderer::flushChunkNeighborRefreshes() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::flushChunkNeighborRefreshes");
+  MCRTX_TRACY_SCOPE("RemixRenderer::flushChunkNeighborRefreshes");
   std::scoped_lock lock(mutex_);
   if (pendingNeighborRefresh_.empty()) {
     recentlyRebuiltChunks_.clear();
     return;
   }
+  MCRTX_TRACY_VALUE(pendingNeighborRefresh_.size());
 
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::flushChunkNeighborRefreshes.iterateNeighbors");
@@ -1215,8 +1254,10 @@ void RemixRenderer::flushChunkNeighborRefreshes() {
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::refreshNeighborChunkMeshes");
+  MCRTX_TRACY_SCOPE("RemixRenderer::refreshNeighborChunkMeshes");
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::refreshNeighborChunkMeshes.iterateNeighbors");
+    MCRTX_TRACY_SCOPE("refreshNeighborChunkMeshes.iterateNeighbors");
     for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
       ChunkKey neighborKey = chunkKey;
       neighborKey.originX += kNeighborOffsets[faceIndex][0] * kChunkDimension;

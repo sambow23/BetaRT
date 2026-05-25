@@ -165,7 +165,9 @@ bool RemixRenderer::initialize(
   std::uint32_t height,
   std::filesystem::path remixDllPath) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::initialize");
-  std::unique_lock<std::mutex> lock(mutex_);
+  MCRTX_TRACY_SCOPE("RemixRenderer::initialize");
+  TracyUniqueLock lock(mutex_);
+  MCRTX_TRACY_LOCK_MARK(mutex_);
 
   if (initialized_) {
     return true;
@@ -277,9 +279,11 @@ bool RemixRenderer::initialize(
 
 void RemixRenderer::shutdown() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::shutdown");
+  MCRTX_TRACY_SCOPE("RemixRenderer::shutdown");
   std::thread standaloneWorker;
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     if (standaloneWorkerActive_) {
       standaloneWorkerStopRequested_ = true;
       standaloneWorkerPresentRequested_ = true;
@@ -297,9 +301,11 @@ void RemixRenderer::shutdown() {
 }
 
 bool RemixRenderer::startStandaloneWorker(std::filesystem::path remixDllPath) {
+  MCRTX_TRACY_SCOPE("RemixRenderer::startStandaloneWorker");
   std::thread standaloneWorker;
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     standaloneWorkerInitReady_ = false;
     standaloneWorkerStopRequested_ = false;
     standaloneWorkerPresentRequested_ = false;
@@ -320,6 +326,7 @@ bool RemixRenderer::startStandaloneWorker(std::filesystem::path remixDllPath) {
 }
 
 bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPath) {
+  MCRTX_TRACY_SCOPE("RemixRenderer::initializeStandaloneWorker");
   if (!createOutputWindow(sourceHwnd_)) {
     return false;
   }
@@ -347,7 +354,8 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
   initializeTerrainMaterials();
   createPrimingMesh();
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     initialized_ = true;
   }
   log("Remix renderer initialized in standalone mode (async worker threadId=" + std::to_string(GetCurrentThreadId()) + ")");
@@ -355,15 +363,19 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
 }
 
 void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPath) {
+  MCRTX_TRACY_SET_THREAD_NAME("mc-rtx Standalone Worker");
+  MCRTX_TRACY_SCOPE("RemixRenderer::standaloneRenderWorkerMain");
   const DWORD workerThreadId = GetCurrentThreadId();
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     standaloneWorkerThreadId_ = workerThreadId;
   }
 
   const bool initialized = initializeStandaloneWorker(std::move(remixDllPath));
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     standaloneWorkerInitReady_ = true;
     if (!initialized) {
       standaloneWorkerActive_ = false;
@@ -380,10 +392,11 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
     std::string perfSummary;
     bool presentOk = true;
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      TracyUniqueLock lock(mutex_);
       standaloneWorkerEvent_.wait_until(lock, nextStandaloneRenderAt, [this]() {
         return standaloneWorkerStopRequested_ || standaloneWorkerPresentRequested_;
       });
+      MCRTX_TRACY_LOCK_MARK(mutex_);
       if (standaloneWorkerStopRequested_) {
         break;
       }
@@ -396,11 +409,12 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
 
     {
       const auto lockRequestedAt = std::chrono::steady_clock::now();
-      std::unique_lock<std::mutex> lock(mutex_, std::try_to_lock);
+      TracyUniqueLock lock(mutex_, std::try_to_lock);
       if (!lock.owns_lock()) {
         Sleep(1);
         continue;
       }
+      MCRTX_TRACY_LOCK_MARK(mutex_);
       presentOk = presentLocked(
           lock,
           perfSummary,
@@ -416,7 +430,8 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
   }
 
   {
-    std::unique_lock<std::mutex> lock(mutex_);
+    TracyUniqueLock lock(mutex_);
+    MCRTX_TRACY_LOCK_MARK(mutex_);
     shutdownLocked();
     standaloneWorkerInitReady_ = false;
     standaloneWorkerStopRequested_ = false;
@@ -939,9 +954,11 @@ void RemixRenderer::updateCamera(const CameraState& camera) {
 
 bool RemixRenderer::present() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::present");
+  MCRTX_TRACY_SCOPE("RemixRenderer::present");
   const auto lockRequestedAt = std::chrono::steady_clock::now();
-  std::unique_lock<std::mutex> lock(mutex_);
+  TracyUniqueLock lock(mutex_);
   const auto lockAcquiredAt = std::chrono::steady_clock::now();
+  MCRTX_TRACY_LOCK_MARK(mutex_);
 
   if (standaloneOutputWindow_) {
     if (!initialized_) {
@@ -1022,24 +1039,31 @@ void RemixRenderer::flushDeferredDestroyQueuesLocked() {
 
 bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::prepareFrameSnapshotLocked");
-  if (!rebuildFireMesh()) {
-    return false;
-  }
+  MCRTX_TRACY_SCOPE("RemixRenderer::prepareFrameSnapshotLocked");
+  {
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.rebuildTransientMeshes");
+    if (!rebuildFireMesh()) {
+      return false;
+    }
 
-  if (!rebuildDestroyOverlayMesh()) {
-    return false;
-  }
+    if (!rebuildDestroyOverlayMesh()) {
+      return false;
+    }
 
-  if (!rebuildBlockOutlineMesh()) {
-    return false;
-  }
+    if (!rebuildBlockOutlineMesh()) {
+      return false;
+    }
 
-  if (!rebuildParticleMesh()) {
-    return false;
+    if (!rebuildParticleMesh()) {
+      return false;
+    }
   }
 
   snapshot = {};
   snapshot.camera = camera_;
+  {
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectChunkMeshes");
+    MCRTX_TRACY_VALUE(chunkMeshes_.size());
   snapshot.chunkMeshes.reserve(chunkMeshes_.size());
   for (const auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.meshHandle == nullptr) {
@@ -1062,7 +1086,11 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     snapshot.cachedChunkMeshes += 1;
     snapshot.submittedChunkBlocks += meshData.blockCount;
   }
+  }
 
+  {
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectDynamicEntities");
+    MCRTX_TRACY_VALUE(dynamicEntityFrameInstances_.size());
   snapshot.dynamicEntities.reserve(dynamicEntityFrameInstances_.size());
   for (const DynamicEntityFrameInstance& frameInstance : dynamicEntityFrameInstances_) {
     if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
@@ -1071,6 +1099,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
     snapshot.submittedDynamicEntityQuads += frameInstance.quadCount;
     snapshot.dynamicEntities.push_back(frameInstance);
+  }
   }
 
   snapshot.cloudMeshHandle = cloudMeshHandle_;
@@ -1087,6 +1116,9 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.submittedBlockOutlines = blockOutlineMeshHandle_ != nullptr ? blockOutlineCount_ : 0;
   snapshot.submittedParticleQuads = particleMeshHandle_ != nullptr ? particleQuadCount_ : 0;
 
+  {
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.reconcileTorchLights");
+    MCRTX_TRACY_VALUE(torchLights_.size() + entityHeldTorchLightHandles_.size());
   if (heldTorchLightsEnabled_) {
     if (!reconcileHeldItemTorchLight()) {
       return false;
@@ -1106,7 +1138,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   } else {
     clearHeldTorchLightsLocked();
   }
+  }
 
+  {
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectTorchLights");
   snapshot.torchLights.reserve(
       torchLights_.size() + entityHeldTorchLightHandles_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
   for (const auto& [position, lightHandle] : torchLights_) {
@@ -1125,6 +1160,8 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     snapshot.torchLights.push_back(heldItemTorchLightHandle_);
   }
   snapshot.submittedTorchLights = snapshot.torchLights.size();
+  MCRTX_TRACY_VALUE(snapshot.submittedTorchLights);
+  }
 
   if (!snapshot.hasScene()) {
     logNoCapturedScene = presentedFrames_ < 4;
@@ -1138,11 +1175,13 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   return true;
 }
 
-bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
+bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
                                   std::string& perfSummary,
                                   std::uint64_t lockWaitNanoseconds) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::presentLocked");
+  MCRTX_TRACY_SCOPE("RemixRenderer::presentLocked");
   const auto lockAcquiredAt = std::chrono::steady_clock::now();
+  MCRTX_TRACY_LOCK_MARK(mutex_);
 
   if (!initialized_) {
     setError("present called before initialize");
@@ -1152,6 +1191,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   const auto outputWindowStart = std::chrono::steady_clock::now();
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.outputWindow");
+    MCRTX_TRACY_SCOPE("presentLocked.outputWindow");
     updateOutputWindowSize();
     pumpOutputWindowMessages();
   }
@@ -1161,6 +1201,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   bool logNoCapturedScene = false;
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.prepareSnapshot");
+    MCRTX_TRACY_SCOPE("presentLocked.prepareSnapshot");
     if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
       return false;
     }
@@ -1168,6 +1209,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
 
   if (!chunkBuildActive_) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.evictDistantChunks");
+    MCRTX_TRACY_SCOPE("presentLocked.evictDistantChunks");
     const int cameraChunkX = static_cast<int>(camera_.position[0]) / kChunkDimension;
     const int cameraChunkZ = static_cast<int>(camera_.position[2]) / kChunkDimension;
     evictDistantChunks(cameraChunkX, cameraChunkZ, evictRadiusChunks_);
@@ -1197,6 +1239,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   const auto remixPresentStart = std::chrono::steady_clock::now();
   const remixapi_ErrorCode result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Present");
+    MCRTX_TRACY_SCOPE("Present");
     return remix_.Present(nullptr);
   }();
   const auto remixPresentEnd = std::chrono::steady_clock::now();
@@ -1213,14 +1256,17 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   bool hasUiState = false;
   if (remix_.GetUIState != nullptr) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "GetUIState.presentSync");
+    MCRTX_TRACY_SCOPE("GetUIState.presentSync");
     uiState = remix_.GetUIState();
     hasUiState = true;
   }
 
   lock.lock();
+  MCRTX_TRACY_LOCK_MARK(mutex_);
   const auto secondLockAcquiredAt = std::chrono::steady_clock::now();
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.postPresent");
+    MCRTX_TRACY_SCOPE("presentLocked.postPresent");
     renderSubmissionInFlight_ = false;
     flushDeferredDestroyQueuesLocked();
     if (hasUiState) {
@@ -1273,6 +1319,7 @@ bool RemixRenderer::presentLocked(std::unique_lock<std::mutex>& lock,
   lastSubmittedParticleQuadCount_ = snapshot.submittedParticleQuads;
   lastSubmittedTorchLightCount_ = snapshot.submittedTorchLights;
   ++presentedFrames_;
+  MCRTX_TRACY_FRAME_MARK();
 
   const auto frameEnd = std::chrono::steady_clock::now();
   const auto cameraSubmitNanoseconds = toNanoseconds(cameraSubmitEnd - cameraSubmitStart);
@@ -1450,7 +1497,10 @@ bool RemixRenderer::createPrimingMesh() {
 
 bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::drawCapturedGeometry");
+  MCRTX_TRACY_SCOPE("RemixRenderer::drawCapturedGeometry");
+  MCRTX_TRACY_VALUE(snapshot.chunkMeshes.size() + snapshot.dynamicEntities.size() + snapshot.torchLights.size());
   if (!snapshot.hasScene() && primingMeshHandle_ != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.priming");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -1479,95 +1529,104 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
     }
   }
 
-  for (const ChunkRenderInstance& chunkInstance : snapshot.chunkMeshes) {
-    if (chunkInstance.meshHandle == nullptr) {
-      continue;
-    }
+  {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.chunkInstances");
+    MCRTX_TRACY_VALUE(snapshot.chunkMeshes.size());
+    for (const ChunkRenderInstance& chunkInstance : snapshot.chunkMeshes) {
+      if (chunkInstance.meshHandle == nullptr) {
+        continue;
+      }
 
-    remixapi_InstanceInfoBlendEXT blendInfo {};
-    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
-    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
-    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
-    blendInfo.textureColorOperation = kRtTextureOpModulate;
-    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
-    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
-    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
-    blendInfo.isVertexColorBakedLighting = FALSE;
-    if (chunkInstance.chunkKey.renderPass == 1) {
-      blendInfo.alphaBlendEnabled = TRUE;
-      blendInfo.srcColorBlendFactor = 6;
-      blendInfo.dstColorBlendFactor = 7;
-      blendInfo.colorBlendOp = 0;
-      blendInfo.srcAlphaBlendFactor = 1;
-      blendInfo.dstAlphaBlendFactor = 0;
-      blendInfo.alphaBlendOp = 0;
-    }
+      remixapi_InstanceInfoBlendEXT blendInfo {};
+      blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+      blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+      blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+      blendInfo.textureColorOperation = kRtTextureOpModulate;
+      blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+      blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+      blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+      blendInfo.isVertexColorBakedLighting = FALSE;
+      if (chunkInstance.chunkKey.renderPass == 1) {
+        blendInfo.alphaBlendEnabled = TRUE;
+        blendInfo.srcColorBlendFactor = 6;
+        blendInfo.dstColorBlendFactor = 7;
+        blendInfo.colorBlendOp = 0;
+        blendInfo.srcAlphaBlendFactor = 1;
+        blendInfo.dstAlphaBlendFactor = 0;
+        blendInfo.alphaBlendOp = 0;
+      }
 
-    remixapi_InstanceInfo instanceInfo {};
-    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-    instanceInfo.pNext = &blendInfo;
-    instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
-    instanceInfo.mesh = chunkInstance.meshHandle;
-    instanceInfo.transform = makeTranslationTransform(
-        static_cast<float>(chunkInstance.chunkKey.originX),
-        static_cast<float>(chunkInstance.chunkKey.originY),
-        static_cast<float>(chunkInstance.chunkKey.originZ));
-    instanceInfo.doubleSided = chunkInstance.chunkKey.renderPass == 1 ? TRUE : FALSE;
+      remixapi_InstanceInfo instanceInfo {};
+      instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+      instanceInfo.pNext = &blendInfo;
+      instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+      instanceInfo.mesh = chunkInstance.meshHandle;
+      instanceInfo.transform = makeTranslationTransform(
+          static_cast<float>(chunkInstance.chunkKey.originX),
+          static_cast<float>(chunkInstance.chunkKey.originY),
+          static_cast<float>(chunkInstance.chunkKey.originZ));
+      instanceInfo.doubleSided = chunkInstance.chunkKey.renderPass == 1 ? TRUE : FALSE;
 
-    const remixapi_ErrorCode result = [&]() {
-      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.chunk");
-      return remix_.DrawInstance(&instanceInfo);
-    }();
-    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-      setError("DrawInstance failed: " + errorCodeToString(result));
-      return false;
+      const remixapi_ErrorCode result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.chunk");
+        return remix_.DrawInstance(&instanceInfo);
+      }();
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+        setError("DrawInstance failed: " + errorCodeToString(result));
+        return false;
+      }
     }
   }
 
-  for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
+  {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities");
+    MCRTX_TRACY_VALUE(snapshot.dynamicEntities.size());
+    for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
 
-    remixapi_InstanceInfoBlendEXT blendInfo {};
-    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
-    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
-    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
-    blendInfo.textureColorOperation = kRtTextureOpModulate;
-    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
-    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
-    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
-    blendInfo.isVertexColorBakedLighting = FALSE;
+      remixapi_InstanceInfoBlendEXT blendInfo {};
+      blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+      blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+      blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+      blendInfo.textureColorOperation = kRtTextureOpModulate;
+      blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+      blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+      blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+      blendInfo.isVertexColorBakedLighting = FALSE;
 
-    remixapi_InstanceInfoBoneTransformsEXT boneTransformsInfo {};
-    boneTransformsInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
-    boneTransformsInfo.pNext = &blendInfo;
-    boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
-    boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
+      remixapi_InstanceInfoBoneTransformsEXT boneTransformsInfo {};
+      boneTransformsInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
+      boneTransformsInfo.pNext = &blendInfo;
+      boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
+      boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
 
-    remixapi_InstanceInfo instanceInfo {};
-    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-    instanceInfo.pNext = &boneTransformsInfo;
-    instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
-      ? (playerShadowsEnabled_
-        ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
-          | REMIXAPI_INSTANCE_CATEGORY_BIT_FIRST_PERSON_PLAYER_SHADOW)
-        : REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL)
-      : (frameInstance.entityId == kFirstPersonDynamicEntityId
-          ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
-          : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);
-    instanceInfo.mesh = frameInstance.meshHandle;
-    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
-    instanceInfo.doubleSided = TRUE;
+      remixapi_InstanceInfo instanceInfo {};
+      instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+      instanceInfo.pNext = &boneTransformsInfo;
+      instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
+        ? (playerShadowsEnabled_
+          ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
+            | REMIXAPI_INSTANCE_CATEGORY_BIT_FIRST_PERSON_PLAYER_SHADOW)
+          : REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL)
+        : (frameInstance.entityId == kFirstPersonDynamicEntityId
+            ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
+            : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);
+      instanceInfo.mesh = frameInstance.meshHandle;
+      instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+      instanceInfo.doubleSided = TRUE;
 
-    const remixapi_ErrorCode result = [&]() {
-      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.entity");
-      return remix_.DrawInstance(&instanceInfo);
-    }();
-    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-      setError("DrawInstance failed: " + errorCodeToString(result));
-      return false;
+      const remixapi_ErrorCode result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.entity");
+        return remix_.DrawInstance(&instanceInfo);
+      }();
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+        setError("DrawInstance failed: " + errorCodeToString(result));
+        return false;
+      }
     }
   }
 
   if (snapshot.cloudMeshHandle != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.cloud");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -1612,6 +1671,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   }
 
   if (snapshot.fireMeshHandle != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.fire");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -1648,6 +1708,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   }
 
   if (snapshot.destroyOverlayMeshHandle != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.destroyOverlay");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.alphaTestEnabled = TRUE;
@@ -1687,6 +1748,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   }
 
   if (snapshot.blockOutlineMeshHandle != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.blockOutline");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.alphaTestEnabled = TRUE;
@@ -1726,6 +1788,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   }
 
   if (snapshot.particleMeshHandle != nullptr) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.particles");
     remixapi_InstanceInfoBlendEXT blendInfo {};
     blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
     blendInfo.textureColorArg1Source = kRtTextureArgTexture;
@@ -1762,6 +1825,8 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   }
 
   if (!snapshot.torchLights.empty()) {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.torchLights");
+    MCRTX_TRACY_VALUE(snapshot.torchLights.size());
     if (!loggedLightSubmissionPath_) {
       loggedLightSubmissionPath_ = true;
       std::ostringstream pathStream;
@@ -1809,6 +1874,7 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
 
 bool RemixRenderer::submitCamera(const CameraState& camera) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::submitCamera");
+  MCRTX_TRACY_SCOPE("RemixRenderer::submitCamera");
   const float nearPlane = camera.nearPlane > 0.001f ? camera.nearPlane : 0.05f;
   const float farPlane = camera.farPlane > nearPlane ? camera.farPlane : (nearPlane + 1024.0f);
   const float aspect = camera.aspect > 0.001f ? camera.aspect : 1.0f;
@@ -1835,6 +1901,7 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
 
   remixapi_ErrorCode result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetupCamera.world");
+    MCRTX_TRACY_SCOPE("submitCamera.world");
     return remix_.SetupCamera(&info);
   }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -1848,6 +1915,7 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
   info.type = REMIXAPI_CAMERA_TYPE_VIEW_MODEL;
   result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetupCamera.viewmodel");
+    MCRTX_TRACY_SCOPE("submitCamera.viewmodel");
     return remix_.SetupCamera(&info);
   }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
