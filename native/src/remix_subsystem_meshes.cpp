@@ -23,6 +23,20 @@ using namespace mcrtx::detail;
 
 namespace {
 
+void clearActiveDynamicEntityState(DynamicEntityBuildState& state) {
+  state.entityId = -1;
+  state.hurtStage = 0;
+  state.creeperFuseStage = 0;
+  state.maxBoneCount = 0;
+  state.quadFingerprint = 0;
+  state.currentTextureIndex = 0xFFFFFFFFu;
+  state.currentTextureFingerprint = 0;
+  state.texturePaths.clear();
+  state.quads.clear();
+  state.boneTransforms.clear();
+  state.active = false;
+}
+
 struct BlockOutlineStyleParameters {
   float inflate;
   float alpha;
@@ -238,9 +252,9 @@ void RemixRenderer::beginDynamicEntityFrame() {
     return;
   }
 
-  MCRTX_TRACY_VALUE(dynamicEntityFrameInstances_.size());
+  MCRTX_TRACY_VALUE(dynamicEntityFrameInstanceCount_);
   clearDynamicEntityFrameInstances();
-  activeDynamicEntity_ = {};
+  clearActiveDynamicEntityState(activeDynamicEntity_);
   heldItemId_ = -1;
   entityHeldTorchLightsSeenThisFrame_.clear();
 }
@@ -254,7 +268,7 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, st
     return;
   }
 
-  activeDynamicEntity_ = {};
+  clearActiveDynamicEntityState(activeDynamicEntity_);
   activeDynamicEntity_.entityId = entityId;
   activeDynamicEntity_.hurtStage = std::min(hurtStage, kDynamicEntityMaxHurtStage);
   activeDynamicEntity_.creeperFuseStage = std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage);
@@ -262,6 +276,7 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, st
       activeDynamicEntity_.hurtStage,
       activeDynamicEntity_.creeperFuseStage);
   activeDynamicEntity_.active = entityId >= 0;
+  activeDynamicEntity_.texturePaths.reserve(4);
   activeDynamicEntity_.quads.reserve(256);
   activeDynamicEntity_.boneTransforms.reserve(32);
 }
@@ -274,7 +289,17 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
     return;
   }
 
-  activeDynamicEntity_.currentTexturePath = texturePath;
+  for (std::size_t index = 0; index < activeDynamicEntity_.texturePaths.size(); ++index) {
+    if (activeDynamicEntity_.texturePaths[index] == texturePath) {
+      activeDynamicEntity_.currentTextureIndex = static_cast<std::uint32_t>(index);
+      activeDynamicEntity_.currentTextureFingerprint = computeDynamicEntityTextureFingerprint(texturePath);
+      return;
+    }
+  }
+
+  activeDynamicEntity_.currentTextureIndex = static_cast<std::uint32_t>(activeDynamicEntity_.texturePaths.size());
+  activeDynamicEntity_.currentTextureFingerprint = computeDynamicEntityTextureFingerprint(texturePath);
+  activeDynamicEntity_.texturePaths.push_back(texturePath);
 }
 
 void RemixRenderer::setFirstPersonHeldItem(int itemId) {
@@ -561,7 +586,7 @@ void RemixRenderer::captureDynamicEntityQuad(
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDynamicEntityQuad");
   std::scoped_lock lock(mutex_);
 
-  if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTexturePath.empty()) {
+  if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTextureIndex == 0xFFFFFFFFu) {
     return;
   }
 
@@ -583,7 +608,8 @@ void RemixRenderer::captureDynamicEntityQuad(
       u3, v3,
   };
   quad.color = colorRgba;
-  quad.texturePath = activeDynamicEntity_.currentTexturePath;
+  quad.textureIndex = activeDynamicEntity_.currentTextureIndex;
+  quad.textureFingerprint = activeDynamicEntity_.currentTextureFingerprint;
   quad.blendEnabled = blendEnabled;
   quad.boneIndex = boneIndex;
   activeDynamicEntity_.maxBoneCount = std::max(activeDynamicEntity_.maxBoneCount, boneIndex + 1);
@@ -608,20 +634,25 @@ void RemixRenderer::endDynamicEntity() {
       {
         MCRTX_TRACY_SCOPE("endDynamicEntity.findOrCreateMesh");
       if (DynamicEntityMeshData* meshData = findOrCreateDynamicEntityMesh(activeDynamicEntity_); meshData != nullptr) {
-        DynamicEntityFrameInstance frameInstance;
-        frameInstance.entityId = activeDynamicEntity_.entityId;
-        frameInstance.meshHandle = meshData->meshHandle;
-        frameInstance.quadCount = meshData->quadCount;
-        frameInstance.boneTransforms.assign(
-            activeDynamicEntity_.boneTransforms.begin(),
-            activeDynamicEntity_.boneTransforms.begin() + boneCount);
-        dynamicEntityFrameInstances_.push_back(std::move(frameInstance));
+        DynamicEntityFrameInstance* frameInstance = nullptr;
+        if (dynamicEntityFrameInstanceCount_ < dynamicEntityFrameInstances_.size()) {
+          frameInstance = &dynamicEntityFrameInstances_[dynamicEntityFrameInstanceCount_];
+        } else {
+          dynamicEntityFrameInstances_.emplace_back();
+          frameInstance = &dynamicEntityFrameInstances_.back();
+        }
+        frameInstance->entityId = activeDynamicEntity_.entityId;
+        frameInstance->meshHandle = meshData->meshHandle;
+        frameInstance->quadCount = meshData->quadCount;
+        activeDynamicEntity_.boneTransforms.resize(boneCount);
+        frameInstance->boneTransforms = std::move(activeDynamicEntity_.boneTransforms);
+        ++dynamicEntityFrameInstanceCount_;
       }
       }
     }
   }
 
-  activeDynamicEntity_ = {};
+  clearActiveDynamicEntityState(activeDynamicEntity_);
 }
 
 void RemixRenderer::beginDestroyOverlayFrame() {
@@ -1116,9 +1147,12 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   {
     MCRTX_TRACY_SCOPE("findOrCreateDynamicEntityMesh.buildSurfaces");
     for (const DynamicEntityQuad& quad : buildState.quads) {
+      if (quad.textureIndex >= buildState.texturePaths.size()) {
+        continue;
+      }
       const DynamicEntityMaterialClass materialClass = dynamicEntityMaterialClassForQuad(quad);
       remixapi_MaterialHandle materialHandle = acquireDynamicEntityMaterial(
-          quad.texturePath,
+          buildState.texturePaths[quad.textureIndex],
           materialClass,
         buildState.hurtStage,
         buildState.creeperFuseStage);
@@ -1291,7 +1325,7 @@ void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
 }
 
 void RemixRenderer::clearDynamicEntityFrameInstances() {
-  dynamicEntityFrameInstances_.clear();
+  dynamicEntityFrameInstanceCount_ = 0;
 }
 
 void RemixRenderer::destroyDynamicEntityMeshes() {
@@ -1302,6 +1336,7 @@ void RemixRenderer::destroyDynamicEntityMeshes() {
     destroyDynamicEntityMesh(meshData);
   }
   dynamicEntityMeshes_.clear();
+  dynamicEntityFrameInstances_.clear();
 }
 
 void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {

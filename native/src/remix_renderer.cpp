@@ -505,6 +505,7 @@ void RemixRenderer::shutdownLocked() {
   chunkMeshes_.clear();
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
+  dynamicEntityFrameInstanceCount_ = 0;
   destroyOverlayInstances_.clear();
   blockOutlineInstances_.clear();
   particleQuads_.clear();
@@ -530,6 +531,7 @@ void RemixRenderer::shutdownLocked() {
   lastSubmittedBlockOutlineCount_ = 0;
   lastSubmittedParticleQuadCount_ = 0;
   lastSubmittedTorchLightCount_ = 0;
+  loggedPopulatedSubmissionSummaryCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
   fireTexturePath_.clear();
@@ -1090,9 +1092,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectDynamicEntities");
-    MCRTX_TRACY_VALUE(dynamicEntityFrameInstances_.size());
-  snapshot.dynamicEntities.reserve(dynamicEntityFrameInstances_.size());
-  for (const DynamicEntityFrameInstance& frameInstance : dynamicEntityFrameInstances_) {
+    MCRTX_TRACY_VALUE(dynamicEntityFrameInstanceCount_);
+  snapshot.dynamicEntities.reserve(dynamicEntityFrameInstanceCount_);
+  for (std::size_t index = 0; index < dynamicEntityFrameInstanceCount_; ++index) {
+    const DynamicEntityFrameInstance& frameInstance = dynamicEntityFrameInstances_[index];
     if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
       continue;
     }
@@ -1282,30 +1285,59 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
     }
   }
 
-  if (presentedFrames_ < 8
-      || snapshot.chunkMeshes.size() != lastSubmittedChunkCount_
+  const bool submissionCountsChanged = snapshot.chunkMeshes.size() != lastSubmittedChunkCount_
       || snapshot.submittedChunkBlocks != lastSubmittedBlockCount_
       || snapshot.submittedCloudQuads != lastSubmittedCloudQuadCount_
       || snapshot.submittedFireQuads != lastSubmittedFireQuadCount_
       || snapshot.submittedDynamicEntityQuads != lastSubmittedDynamicEntityQuadCount_
+      || snapshot.submittedDynamicEntityDrawCalls != lastSubmittedDynamicEntityDrawCallCount_
+      || snapshot.submittedDynamicEntityFallbackDrawCalls != lastSubmittedDynamicEntityFallbackDrawCallCount_
+      || snapshot.submittedDynamicEntityInstancedDrawCalls != lastSubmittedDynamicEntityInstancedDrawCallCount_
+      || snapshot.submittedDynamicEntityInstancedTransforms != lastSubmittedDynamicEntityInstancedTransformCount_
+      || snapshot.submittedDynamicEntityRigidCandidates != lastSubmittedDynamicEntityRigidCandidateCount_
+      || snapshot.submittedDynamicEntitySingletonRigidFallbacks != lastSubmittedDynamicEntitySingletonRigidFallbackCount_
+      || snapshot.submittedDynamicEntitySkinnedFallbacks != lastSubmittedDynamicEntitySkinnedFallbackCount_
       || snapshot.submittedDestroyOverlays != lastSubmittedDestroyOverlayCount_
       || snapshot.submittedBlockOutlines != lastSubmittedBlockOutlineCount_
       || snapshot.submittedParticleQuads != lastSubmittedParticleQuadCount_
-      || snapshot.submittedTorchLights != lastSubmittedTorchLightCount_) {
-    if (presentedFrames_ < 8) {
-      std::ostringstream stream;
-      stream << "Submitted " << snapshot.chunkMeshes.size()
-             << " chunk meshes covering " << snapshot.submittedChunkBlocks
-             << " blocks and " << snapshot.submittedCloudQuads
-             << " cloud quads and " << snapshot.submittedFireQuads
-             << " fire quads and " << snapshot.submittedDynamicEntityQuads
-             << " dynamic entity quads and " << snapshot.submittedDestroyOverlays
-             << " destroy overlays and " << snapshot.submittedBlockOutlines
-             << " block outlines and "
-             << snapshot.submittedParticleQuads << " particle quads and "
-             << snapshot.submittedTorchLights
-             << " torch lights";
-      log(stream.str());
+      || snapshot.submittedTorchLights != lastSubmittedTorchLightCount_;
+  const bool hasMeaningfulSubmissionSummary = snapshot.chunkMeshes.size() != 0
+      || snapshot.submittedChunkBlocks != 0
+      || snapshot.submittedCloudQuads != 0
+      || snapshot.submittedFireQuads != 0
+      || snapshot.submittedDynamicEntityQuads != 0
+      || snapshot.submittedDynamicEntityDrawCalls != 0
+      || snapshot.submittedDestroyOverlays != 0
+      || snapshot.submittedBlockOutlines != 0
+      || snapshot.submittedParticleQuads != 0
+      || snapshot.submittedTorchLights != 0;
+  const bool shouldLogPopulatedSubmissionSummary = hasMeaningfulSubmissionSummary
+      && loggedPopulatedSubmissionSummaryCount_ < 8;
+  const bool shouldLogSubmissionSummary = presentedFrames_ < 8
+      || shouldLogPopulatedSubmissionSummary;
+  if (submissionCountsChanged && shouldLogSubmissionSummary) {
+    std::ostringstream stream;
+    stream << "Submitted " << snapshot.chunkMeshes.size()
+           << " chunk meshes covering " << snapshot.submittedChunkBlocks
+           << " blocks and " << snapshot.submittedCloudQuads
+           << " cloud quads and " << snapshot.submittedFireQuads
+           << " fire quads and " << snapshot.submittedDynamicEntityQuads
+           << " dynamic entity quads across " << snapshot.submittedDynamicEntityDrawCalls
+           << " draw calls (fallback=" << snapshot.submittedDynamicEntityFallbackDrawCalls
+           << ", instancedDraws=" << snapshot.submittedDynamicEntityInstancedDrawCalls
+           << ", instancedTransforms=" << snapshot.submittedDynamicEntityInstancedTransforms
+           << ", rigidCandidates=" << snapshot.submittedDynamicEntityRigidCandidates
+           << ", singletonRigidFallbacks=" << snapshot.submittedDynamicEntitySingletonRigidFallbacks
+           << ", skinnedFallbacks=" << snapshot.submittedDynamicEntitySkinnedFallbacks
+           << ") and " << snapshot.submittedDestroyOverlays
+           << " destroy overlays and " << snapshot.submittedBlockOutlines
+           << " block outlines and "
+           << snapshot.submittedParticleQuads << " particle quads and "
+           << snapshot.submittedTorchLights
+           << " torch lights";
+    log(stream.str());
+    if (hasMeaningfulSubmissionSummary) {
+      ++loggedPopulatedSubmissionSummaryCount_;
     }
   }
 
@@ -1314,6 +1346,13 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
   lastSubmittedCloudQuadCount_ = snapshot.submittedCloudQuads;
   lastSubmittedFireQuadCount_ = snapshot.submittedFireQuads;
   lastSubmittedDynamicEntityQuadCount_ = snapshot.submittedDynamicEntityQuads;
+  lastSubmittedDynamicEntityDrawCallCount_ = snapshot.submittedDynamicEntityDrawCalls;
+  lastSubmittedDynamicEntityFallbackDrawCallCount_ = snapshot.submittedDynamicEntityFallbackDrawCalls;
+  lastSubmittedDynamicEntityInstancedDrawCallCount_ = snapshot.submittedDynamicEntityInstancedDrawCalls;
+  lastSubmittedDynamicEntityInstancedTransformCount_ = snapshot.submittedDynamicEntityInstancedTransforms;
+  lastSubmittedDynamicEntityRigidCandidateCount_ = snapshot.submittedDynamicEntityRigidCandidates;
+  lastSubmittedDynamicEntitySingletonRigidFallbackCount_ = snapshot.submittedDynamicEntitySingletonRigidFallbacks;
+  lastSubmittedDynamicEntitySkinnedFallbackCount_ = snapshot.submittedDynamicEntitySkinnedFallbacks;
   lastSubmittedDestroyOverlayCount_ = snapshot.submittedDestroyOverlays;
   lastSubmittedBlockOutlineCount_ = snapshot.submittedBlockOutlines;
   lastSubmittedParticleQuadCount_ = snapshot.submittedParticleQuads;
@@ -1495,7 +1534,7 @@ bool RemixRenderer::createPrimingMesh() {
   return true;
 }
 
-bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
+bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::drawCapturedGeometry");
   MCRTX_TRACY_SCOPE("RemixRenderer::drawCapturedGeometry");
   MCRTX_TRACY_VALUE(snapshot.chunkMeshes.size() + snapshot.dynamicEntities.size() + snapshot.torchLights.size());
@@ -1581,47 +1620,200 @@ bool RemixRenderer::drawCapturedGeometry(const FrameRenderSnapshot& snapshot) {
   {
     MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities");
     MCRTX_TRACY_VALUE(snapshot.dynamicEntities.size());
+    std::size_t dynamicEntityBoneCount = 0;
     for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
+      dynamicEntityBoneCount += frameInstance.boneTransforms.size();
+    }
+    MCRTX_TRACY_VALUE(dynamicEntityBoneCount);
 
-      remixapi_InstanceInfoBlendEXT blendInfo {};
-      blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
-      blendInfo.textureColorArg1Source = kRtTextureArgTexture;
-      blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
-      blendInfo.textureColorOperation = kRtTextureOpModulate;
-      blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
-      blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
-      blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
-      blendInfo.isVertexColorBakedLighting = FALSE;
-
-      remixapi_InstanceInfoBoneTransformsEXT boneTransformsInfo {};
-      boneTransformsInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
-      boneTransformsInfo.pNext = &blendInfo;
-      boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
-      boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
-
-      remixapi_InstanceInfo instanceInfo {};
-      instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
-      instanceInfo.pNext = &boneTransformsInfo;
-      instanceInfo.categoryFlags = frameInstance.entityId == kFirstPersonPlayerShadowEntityId
+    const auto dynamicEntityCategoryFlags = [this](int entityId) {
+      return entityId == kFirstPersonPlayerShadowEntityId
         ? (playerShadowsEnabled_
           ? (REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL
             | REMIXAPI_INSTANCE_CATEGORY_BIT_FIRST_PERSON_PLAYER_SHADOW)
           : REMIXAPI_INSTANCE_CATEGORY_BIT_THIRD_PERSON_PLAYER_MODEL)
-        : (frameInstance.entityId == kFirstPersonDynamicEntityId
+        : (entityId == kFirstPersonDynamicEntityId
             ? REMIXAPI_INSTANCE_CATEGORY_BIT_VIEW_MODEL
             : REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN);
-      instanceInfo.mesh = frameInstance.meshHandle;
-      instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
-      instanceInfo.doubleSided = TRUE;
+    };
 
-      const remixapi_ErrorCode result = [&]() {
+    struct RigidDynamicBatchKey {
+      remixapi_MeshHandle meshHandle {nullptr};
+      remixapi_InstanceCategoryFlags categoryFlags {0};
+      remixapi_Bool doubleSided {TRUE};
+
+      bool operator==(const RigidDynamicBatchKey& other) const noexcept {
+        return meshHandle == other.meshHandle
+            && categoryFlags == other.categoryFlags
+            && doubleSided == other.doubleSided;
+      }
+    };
+
+    struct RigidDynamicBatchKeyHash {
+      std::size_t operator()(const RigidDynamicBatchKey& key) const noexcept {
+        std::size_t hash = std::hash<std::uintptr_t> {}(reinterpret_cast<std::uintptr_t>(key.meshHandle));
+        hash ^= std::hash<std::uint32_t> {}(key.categoryFlags) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+        hash ^= std::hash<int> {}(static_cast<int>(key.doubleSided)) + 0x9e3779b9u + (hash << 6) + (hash >> 2);
+        return hash;
+      }
+    };
+
+    struct RigidDynamicBatch {
+      RigidDynamicBatchKey key {};
+      const DynamicEntityFrameInstance* representative {nullptr};
+      std::vector<remixapi_Transform> instanceTransforms {};
+    };
+
+    std::vector<const DynamicEntityFrameInstance*> fallbackDynamicEntities;
+    fallbackDynamicEntities.reserve(snapshot.dynamicEntities.size());
+    std::vector<RigidDynamicBatch> rigidDynamicBatches;
+    rigidDynamicBatches.reserve(snapshot.dynamicEntities.size());
+    std::unordered_map<RigidDynamicBatchKey, std::size_t, RigidDynamicBatchKeyHash> rigidDynamicBatchIndex;
+    rigidDynamicBatchIndex.reserve(snapshot.dynamicEntities.size());
+    std::size_t rigidDynamicCandidates = 0;
+    std::size_t singletonRigidFallbacks = 0;
+    std::size_t skinnedDynamicFallbacks = 0;
+
+    {
+      MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.groupCandidates");
+      for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
+        if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
+          continue;
+        }
+
+        if (frameInstance.boneTransforms.size() != 1) {
+          ++skinnedDynamicFallbacks;
+          fallbackDynamicEntities.push_back(&frameInstance);
+          continue;
+        }
+
+        ++rigidDynamicCandidates;
+
+        const RigidDynamicBatchKey key {
+          .meshHandle = frameInstance.meshHandle,
+          .categoryFlags = static_cast<remixapi_InstanceCategoryFlags>(dynamicEntityCategoryFlags(frameInstance.entityId)),
+          .doubleSided = TRUE,
+        };
+        const auto [it, inserted] = rigidDynamicBatchIndex.try_emplace(key, rigidDynamicBatches.size());
+        if (inserted) {
+          RigidDynamicBatch batch;
+          batch.key = key;
+          batch.representative = &frameInstance;
+          batch.instanceTransforms.reserve(8);
+          rigidDynamicBatches.push_back(std::move(batch));
+        }
+
+        rigidDynamicBatches[it->second].instanceTransforms.push_back(frameInstance.boneTransforms[0]);
+      }
+    }
+
+    remixapi_InstanceInfoBlendEXT blendInfo {};
+    blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+    blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+    blendInfo.textureColorOperation = kRtTextureOpModulate;
+    blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+    blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+    blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+    blendInfo.isVertexColorBakedLighting = FALSE;
+
+    remixapi_InstanceInfoBoneTransformsEXT boneTransformsInfo {};
+    boneTransformsInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BONE_TRANSFORMS_EXT;
+    boneTransformsInfo.pNext = &blendInfo;
+
+    remixapi_InstanceInfoGpuInstancingEXT gpuInstancingInfo {};
+    gpuInstancingInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_GPU_INSTANCING_EXT;
+    gpuInstancingInfo.pNext = &boneTransformsInfo;
+
+    remixapi_InstanceInfo instanceInfo {};
+    instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    instanceInfo.pNext = &boneTransformsInfo;
+    instanceInfo.transform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+    instanceInfo.doubleSided = TRUE;
+
+    const remixapi_Transform rigidBoneTransform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
+
+    const auto submitDynamicEntity = [&](const DynamicEntityFrameInstance& frameInstance) {
+      boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
+      boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
+      instanceInfo.pNext = &boneTransformsInfo;
+      instanceInfo.categoryFlags = dynamicEntityCategoryFlags(frameInstance.entityId);
+      instanceInfo.mesh = frameInstance.meshHandle;
+
+      return [&]() {
+        MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.drawInstance");
         MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.entity");
         return remix_.DrawInstance(&instanceInfo);
       }();
-      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-        setError("DrawInstance failed: " + errorCodeToString(result));
-        return false;
+    };
+
+    std::size_t instancedDynamicDrawCalls = 0;
+    std::size_t instancedDynamicTransforms = 0;
+    std::size_t fallbackDynamicDrawCalls = 0;
+
+    {
+      MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.instancedRigid");
+      for (const RigidDynamicBatch& batch : rigidDynamicBatches) {
+        if (batch.instanceTransforms.size() < 2 || batch.representative == nullptr) {
+          if (batch.representative != nullptr) {
+            ++singletonRigidFallbacks;
+            fallbackDynamicEntities.push_back(batch.representative);
+          }
+          continue;
+        }
+
+        boneTransformsInfo.boneTransforms_values = &rigidBoneTransform;
+        boneTransformsInfo.boneTransforms_count = 1;
+        gpuInstancingInfo.instanceTransforms_values = batch.instanceTransforms.data();
+        gpuInstancingInfo.instanceTransforms_count = static_cast<std::uint32_t>(batch.instanceTransforms.size());
+        instanceInfo.pNext = &gpuInstancingInfo;
+        instanceInfo.categoryFlags = batch.key.categoryFlags;
+        instanceInfo.mesh = batch.key.meshHandle;
+        instanceInfo.doubleSided = batch.key.doubleSided;
+
+        const remixapi_ErrorCode result = [&]() {
+          MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.instancedDraw");
+          MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.entityInstanced");
+          return remix_.DrawInstance(&instanceInfo);
+        }();
+        if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+          setError("DrawInstance failed: " + errorCodeToString(result));
+          return false;
+        }
+
+        ++instancedDynamicDrawCalls;
+        instancedDynamicTransforms += batch.instanceTransforms.size();
       }
+    }
+
+    {
+      MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.fallback");
+      for (const DynamicEntityFrameInstance* frameInstance : fallbackDynamicEntities) {
+        if (frameInstance == nullptr || frameInstance->meshHandle == nullptr || frameInstance->boneTransforms.empty()) {
+          continue;
+        }
+
+        const remixapi_ErrorCode result = submitDynamicEntity(*frameInstance);
+        if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+          setError("DrawInstance failed: " + errorCodeToString(result));
+          return false;
+        }
+        ++fallbackDynamicDrawCalls;
+      }
+    }
+
+    snapshot.submittedDynamicEntityDrawCalls = instancedDynamicDrawCalls + fallbackDynamicDrawCalls;
+    snapshot.submittedDynamicEntityFallbackDrawCalls = fallbackDynamicDrawCalls;
+    snapshot.submittedDynamicEntityInstancedDrawCalls = instancedDynamicDrawCalls;
+    snapshot.submittedDynamicEntityInstancedTransforms = instancedDynamicTransforms;
+    snapshot.submittedDynamicEntityRigidCandidates = rigidDynamicCandidates;
+    snapshot.submittedDynamicEntitySingletonRigidFallbacks = singletonRigidFallbacks;
+    snapshot.submittedDynamicEntitySkinnedFallbacks = skinnedDynamicFallbacks;
+
+    if (instancedDynamicTransforms != 0) {
+      MCRTX_TRACY_VALUE(instancedDynamicTransforms);
+    } else if (instancedDynamicDrawCalls != 0 || fallbackDynamicDrawCalls != 0) {
+      MCRTX_TRACY_VALUE(instancedDynamicDrawCalls + fallbackDynamicDrawCalls);
     }
   }
 

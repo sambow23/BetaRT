@@ -792,6 +792,17 @@ std::uint64_t beginDynamicEntityFingerprint(std::uint32_t hurtStage, std::uint32
   return fingerprint;
 }
 
+std::uint64_t computeDynamicEntityTextureFingerprint(std::string_view value) {
+  std::uint64_t fingerprint = 1469598103934665603ull;
+  for (const unsigned char character : value) {
+    fingerprint ^= static_cast<std::uint64_t>(character);
+    fingerprint *= 1099511628211ull;
+  }
+  fingerprint ^= 0xFFull;
+  fingerprint *= 1099511628211ull;
+  return fingerprint;
+}
+
 void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& value) {
   for (const unsigned char character : value) {
     fingerprint ^= static_cast<std::uint64_t>(character);
@@ -816,7 +827,9 @@ void hashDynamicEntityQuad(std::uint64_t& fingerprint, const DynamicEntityQuad& 
   fingerprint *= 1099511628211ull;
   fingerprint ^= quad.blendEnabled ? 1ull : 0ull;
   fingerprint *= 1099511628211ull;
-  hashDynamicEntityString(fingerprint, quad.texturePath);
+  fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(quad.textureIndex));
+  fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(quad.textureFingerprint));
+  fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(quad.textureFingerprint >> 32));
 }
 
 std::uint64_t finalizeDynamicEntityFingerprint(std::uint64_t quadFingerprint, std::uint32_t boneCount) {

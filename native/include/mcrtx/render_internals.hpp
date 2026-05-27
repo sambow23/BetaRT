@@ -335,6 +335,7 @@ std::uint64_t computeChunkFingerprint(
     const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
     const std::array<ChunkBlockCell, kBlocksPerChunk>& cells);
 std::uint64_t beginDynamicEntityFingerprint(std::uint32_t hurtStage, std::uint32_t creeperFuseStage);
+std::uint64_t computeDynamicEntityTextureFingerprint(std::string_view value);
 void hashDynamicEntityString(std::uint64_t& fingerprint, const std::string& value);
 void hashDynamicEntityQuad(std::uint64_t& fingerprint, const DynamicEntityQuad& quad);
 std::uint64_t finalizeDynamicEntityFingerprint(std::uint64_t quadFingerprint, std::uint32_t boneCount);
