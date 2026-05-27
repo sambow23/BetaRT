@@ -74,6 +74,7 @@ public final class RemixDynamicEntityCapture {
     private static boolean firstPersonShadowCaptureAvailable = true;
     private static volatile boolean playerShadowsEnabled = true;
     private static volatile boolean heldTorchLightsEnabled = true;
+    private static volatile boolean dynamicEntityRenderingEnabled = true;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedFirstPersonShadowCaptureFailure;
@@ -492,7 +493,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityRenderStart(sn entity, float partialTicks) {
-        if (!MinecraftRenderHooks.isInitialized() || entity == null) {
+        if (!canCaptureDynamicEntities() || entity == null) {
             return;
         }
         dynamicEntityActive = true;
@@ -532,7 +533,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onItemEntityRenderStart(sn entity) {
-        if (!MinecraftRenderHooks.isInitialized() || entity == null) {
+        if (!canCaptureDynamicEntities() || entity == null) {
             return;
         }
 
@@ -558,7 +559,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onEntityFireOverlayStart(sn entity) {
-        if (!MinecraftRenderHooks.isInitialized() || entity == null || !isTrackedLivingEntity(entity)) {
+        if (!canCaptureDynamicEntities() || entity == null || !isTrackedLivingEntity(entity)) {
             return;
         }
 
@@ -585,7 +586,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onSignRenderStart(yk sign) {
-        if (!MinecraftRenderHooks.isInitialized() || sign == null) {
+        if (!canCaptureDynamicEntities() || sign == null) {
             return;
         }
 
@@ -611,7 +612,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onMovingPistonRenderStart(uk piston) {
-        if (!MinecraftRenderHooks.isInitialized() || piston == null) {
+        if (!canCaptureDynamicEntities() || piston == null) {
             return;
         }
 
@@ -635,11 +636,15 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onPaintingRender(qv painting) {
-        if (!MinecraftRenderHooks.isInitialized() || painting == null || painting.e == null) {
-            return;
+        capturePaintingRender(painting);
+    }
+
+    public static boolean capturePaintingRender(qv painting) {
+        if (!canCaptureDynamicEntities() || painting == null || painting.e == null) {
+            return false;
         }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
-            return;
+            return false;
         }
 
         ensureDynamicCaptureFrame();
@@ -648,7 +653,7 @@ public final class RemixDynamicEntityCapture {
             long renderStartNanos = System.nanoTime();
             float[] modelView = captureModelViewMatrix();
             if (modelView == null) {
-                return;
+                return false;
             }
             float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
             long stateReadEndNanos = System.nanoTime();
@@ -666,6 +671,7 @@ public final class RemixDynamicEntityCapture {
                     setupEndNanos - stateReadEndNanos);
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPaintingRender.captureGeometry",
                     captureEndNanos - setupEndNanos);
+            return true;
         } finally {
             MinecraftRenderHooks.endDynamicEntity();
         }
@@ -778,6 +784,11 @@ public final class RemixDynamicEntityCapture {
         }
 
         ensureDynamicCaptureFrame();
+        MinecraftRenderHooks.setFirstPersonHeldItem(NO_HELD_ITEM);
+        if (!dynamicEntityRenderingEnabled) {
+            return;
+        }
+
         firstPersonActive = true;
         activeFirstPersonTexture = "/mob/char.png";
         activeDynamicEntityHurtStage = 0;
@@ -789,11 +800,10 @@ public final class RemixDynamicEntityCapture {
             activeDynamicEntityHurtStage,
             activeDynamicEntityCreeperFuseStage);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
-        MinecraftRenderHooks.setFirstPersonHeldItem(NO_HELD_ITEM);
     }
 
     public static void onFirstPersonShadowPlayerRender(Minecraft minecraft, float partialTicks) {
-        if (!playerShadowsEnabled || !firstPersonShadowCaptureAvailable || !MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
+        if (!dynamicEntityRenderingEnabled || !playerShadowsEnabled || !firstPersonShadowCaptureAvailable || !MinecraftRenderHooks.isInitialized() || minecraft == null || !(minecraft.h instanceof gs)) {
             return;
         }
 
@@ -906,20 +916,47 @@ public final class RemixDynamicEntityCapture {
         heldTorchLightsEnabled = enabled;
     }
 
+    public static void setDynamicEntityRenderingEnabled(boolean enabled) {
+        dynamicEntityRenderingEnabled = enabled;
+        if (enabled) {
+            return;
+        }
+
+        dynamicEntityActive = false;
+        pickupParticleEntityRenderActive = false;
+        entityFireOverlayActive = false;
+        signRenderActive = false;
+        firstPersonActive = false;
+        firstPersonShadowCaptureActive = false;
+        activeDynamicEntityId = -1;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
+        activeDynamicEntityTexture = "";
+        activeFirstPersonTexture = "";
+        nextDynamicBoneIndex = 0;
+    }
+
     public static void onFramePresented() {
         dynamicCaptureFrameActive = false;
         signRenderActive = false;
     }
 
     public static void onFirstPersonItemRender(iz itemStack) {
-        if (!firstPersonActive || itemStack == null) {
+        if (itemStack == null) {
+            return;
+        }
+
+        if (!firstPersonActive) {
+            MinecraftRenderHooks.setFirstPersonHeldItem(
+                    heldTorchLightsEnabled && isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
             return;
         }
 
         activeFirstPersonTexture = texturePathForItem(itemStack);
         MinecraftRenderHooks.setDynamicEntityTexture(activeFirstPersonTexture);
-    MinecraftRenderHooks.setFirstPersonHeldItem(
-        heldTorchLightsEnabled && isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
+        MinecraftRenderHooks.setFirstPersonHeldItem(
+                heldTorchLightsEnabled && isTorchLikeHeldItem(itemStack.c) ? itemStack.c : NO_HELD_ITEM);
     }
 
     public static void onPlayerEquippedItemRenderStart(gs player, iz itemStack, float partialTicks) {
@@ -1361,6 +1398,10 @@ public final class RemixDynamicEntityCapture {
         dynamicCaptureFrameActive = true;
         HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.dynamicEntity.ensureFrame.beginFrame",
                 System.nanoTime() - beginFrameStartNanos);
+    }
+
+    private static boolean canCaptureDynamicEntities() {
+        return dynamicEntityRenderingEnabled && MinecraftRenderHooks.isInitialized();
     }
 
     private static String normalizeDynamicTexturePath(String primaryTexture, String fallbackTexture) {

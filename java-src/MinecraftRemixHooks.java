@@ -500,6 +500,16 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static boolean tryReplacePaintingRender(qv painting) {
+        long __perf = HookProfiler.begin();
+        try {
+            boolean captured = RemixDynamicEntityCapture.capturePaintingRender(painting);
+            return captured && McrtxRuntimeSettings.isPaintingVanillaSuppressionEnabled();
+        } finally {
+            HookProfiler.endHook("hook.tryReplacePaintingRender", __perf);
+        }
+    }
+
     public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
         long __perf = HookProfiler.begin();
         try {
@@ -703,6 +713,10 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isHeldTorchLightsEnabled();
     }
 
+    public static boolean isDynamicEntityRenderingEnabled() {
+        return McrtxRuntimeSettings.isDynamicEntityRenderingEnabled();
+    }
+
     public static int getGameplayFovDegrees() {
         return McrtxRuntimeSettings.getGameplayFovDegrees();
     }
@@ -737,6 +751,14 @@ public final class MinecraftRemixHooks {
 
     public static String getHeldTorchLightsButtonLabel() {
         return "Held Torch Lights: " + formatToggleState(isHeldTorchLightsEnabled());
+    }
+
+    public static String getDynamicEntityRenderingButtonLabel() {
+        return "Dynamic Entities: " + formatToggleState(isDynamicEntityRenderingEnabled());
+    }
+
+    public static String getPaintingVanillaSuppressionButtonLabel() {
+        return "Replace Paintings: " + formatToggleState(isPaintingVanillaSuppressionEnabled());
     }
 
     public static String getRtQualityButtonLabel() {
@@ -784,6 +806,20 @@ public final class MinecraftRemixHooks {
         McrtxRuntimeSettings.setHeldTorchLightsEnabled(enabled);
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(enabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(enabled);
+    }
+
+    public static void setDynamicEntityRenderingEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setDynamicEntityRenderingEnabled(enabled);
+        RemixDynamicEntityCapture.setDynamicEntityRenderingEnabled(enabled);
+        MinecraftRenderHooks.setDynamicEntityRenderingEnabled(enabled);
+    }
+
+    public static boolean isPaintingVanillaSuppressionEnabled() {
+        return McrtxRuntimeSettings.isPaintingVanillaSuppressionEnabled();
+    }
+
+    public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setPaintingVanillaSuppressionEnabled(enabled);
     }
 
     public static void setGameplayFovDegrees(int fovDegrees) {
@@ -1080,10 +1116,13 @@ public final class MinecraftRemixHooks {
     private static void applySavedMcrtxSettings() {
         boolean playerShadowsEnabled = McrtxRuntimeSettings.isPlayerShadowsEnabled();
         boolean heldTorchLightsEnabled = McrtxRuntimeSettings.isHeldTorchLightsEnabled();
+        boolean dynamicEntityRenderingEnabled = McrtxRuntimeSettings.isDynamicEntityRenderingEnabled();
         RemixDynamicEntityCapture.setPlayerShadowsEnabled(playerShadowsEnabled);
         RemixDynamicEntityCapture.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+        RemixDynamicEntityCapture.setDynamicEntityRenderingEnabled(dynamicEntityRenderingEnabled);
         MinecraftRenderHooks.setPlayerShadowsEnabled(playerShadowsEnabled);
         MinecraftRenderHooks.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
+        MinecraftRenderHooks.setDynamicEntityRenderingEnabled(dynamicEntityRenderingEnabled);
         MinecraftRenderHooks.setBlockOutlineEnabled(McrtxRuntimeSettings.isBlockOutlineEnabled());
         MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
         MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());

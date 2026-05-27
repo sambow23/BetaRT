@@ -923,19 +923,40 @@ public final class ClientPatchTool {
     }
 
     private static void patchPaintingRender(MethodNode method) {
-        if (hasHelperCall(method, "onPaintingRender", "(Lqv;)V")) {
+        if (hasHelperCall(method, "tryReplacePaintingRender", "(Lqv;)Z")
+                || hasHelperCall(method, "onPaintingRender", "(Lqv;)V")) {
             return;
         }
 
+        MethodInsnNode scaleCall = null;
+        MethodInsnNode drawCall = null;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (node instanceof MethodInsnNode methodInsnNode
-                    && methodInsnNode.owner.equals(PAINTING_RENDERER_CLASS)
-                    && methodInsnNode.name.equals("a")
-                    && methodInsnNode.desc.equals("(Lqv;IIII)V")) {
-                method.instructions.insertBefore(node, paintingRenderCall());
-                return;
+            if (node instanceof MethodInsnNode methodInsnNode) {
+                if (methodInsnNode.owner.equals(GL11_CLASS)
+                        && methodInsnNode.name.equals("glScalef")
+                        && methodInsnNode.desc.equals("(FFF)V")) {
+                    scaleCall = methodInsnNode;
+                } else if (methodInsnNode.owner.equals(PAINTING_RENDERER_CLASS)
+                        && methodInsnNode.name.equals("a")
+                        && methodInsnNode.desc.equals("(Lqv;IIII)V")) {
+                    drawCall = methodInsnNode;
+                    break;
+                }
             }
         }
+
+        if (scaleCall == null || drawCall == null) {
+            return;
+        }
+
+        AbstractInsnNode cleanupStart = drawCall.getNext();
+        if (cleanupStart == null) {
+            return;
+        }
+
+        LabelNode cleanupLabel = new LabelNode();
+        method.instructions.insert(scaleCall, paintingRenderReplacementCall(cleanupLabel));
+        method.instructions.insertBefore(cleanupStart, cleanupLabel);
     }
 
     private static void patchSignRender(MethodNode method) {
@@ -1240,10 +1261,11 @@ public final class ClientPatchTool {
         return instructions;
     }
 
-    private static InsnList paintingRenderCall() {
+    private static InsnList paintingRenderReplacementCall(LabelNode cleanupLabel) {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
-        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onPaintingRender", "(Lqv;)V", false));
+        instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "tryReplacePaintingRender", "(Lqv;)Z", false));
+        instructions.add(new JumpInsnNode(Opcodes.IFNE, cleanupLabel));
         return instructions;
     }
 

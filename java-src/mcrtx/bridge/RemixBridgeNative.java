@@ -181,6 +181,8 @@ public final class RemixBridgeNative {
 
             public static native void nSetHeldTorchLightsEnabled(boolean enabled);
 
+            public static native void nSetDynamicEntityRenderingEnabled(boolean enabled);
+
             public static native void nSetBlockOutlineEnabled(boolean enabled);
 
             public static native void nSetBlockOutlineStyle(int style);

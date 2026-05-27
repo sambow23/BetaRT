@@ -12,6 +12,8 @@ import java.util.TreeMap;
 public final class McrtxRuntimeSettings {
     public static final String PLAYER_SHADOWS_ENABLED_KEY = "MCRTX_PLAYER_SHADOWS_ENABLED";
     public static final String HELD_TORCH_LIGHTS_ENABLED_KEY = "MCRTX_HELD_TORCH_LIGHTS_ENABLED";
+    public static final String DYNAMIC_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_DYNAMIC_ENTITY_RENDERING_ENABLED";
+    public static final String PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_PAINTING_VANILLA_SUPPRESSION_ENABLED";
     public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
     public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
@@ -82,6 +84,8 @@ public final class McrtxRuntimeSettings {
     private static boolean loaded;
     private static boolean playerShadowsEnabled = true;
     private static boolean heldTorchLightsEnabled = true;
+    private static boolean dynamicEntityRenderingEnabled = true;
+    private static boolean paintingVanillaSuppressionEnabled;
     private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
     private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
@@ -109,6 +113,20 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return heldTorchLightsEnabled;
+        }
+    }
+
+    public static boolean isDynamicEntityRenderingEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return dynamicEntityRenderingEnabled;
+        }
+    }
+
+    public static boolean isPaintingVanillaSuppressionEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return paintingVanillaSuppressionEnabled;
         }
     }
 
@@ -151,6 +169,28 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             heldTorchLightsEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setDynamicEntityRenderingEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (dynamicEntityRenderingEnabled == enabled) {
+                return;
+            }
+            dynamicEntityRenderingEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (paintingVanillaSuppressionEnabled == enabled) {
+                return;
+            }
+            paintingVanillaSuppressionEnabled = enabled;
             saveLocked();
         }
     }
@@ -375,6 +415,8 @@ public final class McrtxRuntimeSettings {
         Map<String, String> fileValues = McrtxRuntimeConfig.loadFileValuesSnapshot();
         playerShadowsEnabled = readBooleanSetting(fileValues, PLAYER_SHADOWS_ENABLED_KEY, true);
         heldTorchLightsEnabled = readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
+        dynamicEntityRenderingEnabled = readBooleanSetting(fileValues, DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, true);
+        paintingVanillaSuppressionEnabled = readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
         viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
         noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
@@ -702,6 +744,8 @@ public final class McrtxRuntimeSettings {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
         fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, formatBoolean(heldTorchLightsEnabled));
+        fileValues.put(DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(dynamicEntityRenderingEnabled));
+        fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(paintingVanillaSuppressionEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

@@ -306,6 +306,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetHeldTorchLightsEnabled(enabled);
     }
 
+    public static synchronized void setDynamicEntityRenderingEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetDynamicEntityRenderingEnabled(enabled);
+    }
+
     public static synchronized void setBlockOutlineEnabled(boolean enabled) {
         if (!initialized) {
             return;

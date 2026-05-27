@@ -16,6 +16,8 @@ public final class McrtxOptionsScreen extends da {
     private static final int BLOCK_OUTLINE_BUTTON_ID = 10;
     private static final int BLOCK_OUTLINE_STYLE_BUTTON_ID = 11;
     private static final int BLOCK_OUTLINE_INTENSITY_SLIDER_ID = 12;
+    private static final int DYNAMIC_ENTITY_RENDERING_BUTTON_ID = 13;
+    private static final int PAINTING_VANILLA_SUPPRESSION_BUTTON_ID = 14;
     private static final int DONE_BUTTON_ID = 200;
 
     private final da parent;
@@ -55,6 +57,20 @@ public final class McrtxOptionsScreen extends da {
         this.e.add(new ke(RAY_RECONSTRUCTION_BUTTON_ID, rightColumnX, getThirdButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getRayReconstructionButtonLabel()));
         this.e.add(new ke(BLOCK_OUTLINE_BUTTON_ID, leftColumnX, getFourthButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getBlockOutlineButtonLabel()));
         this.e.add(new ke(BLOCK_OUTLINE_STYLE_BUTTON_ID, rightColumnX, getFourthButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getBlockOutlineStyleButtonLabel()));
+        this.e.add(new ke(
+            DYNAMIC_ENTITY_RENDERING_BUTTON_ID,
+            getCenteredFullWidthControlX(),
+            getFifthButtonRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT,
+            MinecraftRemixHooks.getDynamicEntityRenderingButtonLabel()));
+        this.e.add(new ke(
+            PAINTING_VANILLA_SUPPRESSION_BUTTON_ID,
+            getCenteredFullWidthControlX(),
+            getSixthButtonRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT,
+            MinecraftRemixHooks.getPaintingVanillaSuppressionButtonLabel()));
         this.e.add(McrtxFovSlider.createBlockOutlineIntensitySlider(
             BLOCK_OUTLINE_INTENSITY_SLIDER_ID,
             getCenteredFullWidthControlX(),
@@ -118,6 +134,18 @@ public final class McrtxOptionsScreen extends da {
             return;
         }
 
+        if (button.f == DYNAMIC_ENTITY_RENDERING_BUTTON_ID) {
+            MinecraftRemixHooks.setDynamicEntityRenderingEnabled(!MinecraftRemixHooks.isDynamicEntityRenderingEnabled());
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == PAINTING_VANILLA_SUPPRESSION_BUTTON_ID) {
+            MinecraftRemixHooks.setPaintingVanillaSuppressionEnabled(!MinecraftRemixHooks.isPaintingVanillaSuppressionEnabled());
+            refreshButtons();
+            return;
+        }
+
         if (button.f == DONE_BUTTON_ID) {
             this.b.a(this.parent);
         }
@@ -176,6 +204,16 @@ public final class McrtxOptionsScreen extends da {
         ke blockOutlineButton = findButton(BLOCK_OUTLINE_BUTTON_ID);
         if (blockOutlineButton != null) {
             blockOutlineButton.e = MinecraftRemixHooks.getBlockOutlineButtonLabel();
+        }
+
+        ke dynamicEntityRenderingButton = findButton(DYNAMIC_ENTITY_RENDERING_BUTTON_ID);
+        if (dynamicEntityRenderingButton != null) {
+            dynamicEntityRenderingButton.e = MinecraftRemixHooks.getDynamicEntityRenderingButtonLabel();
+        }
+
+        ke paintingVanillaSuppressionButton = findButton(PAINTING_VANILLA_SUPPRESSION_BUTTON_ID);
+        if (paintingVanillaSuppressionButton != null) {
+            paintingVanillaSuppressionButton.e = MinecraftRemixHooks.getPaintingVanillaSuppressionButtonLabel();
         }
 
         boolean showBlockOutlineStyle = MinecraftRemixHooks.isBlockOutlineEnabled();
@@ -243,7 +281,15 @@ public final class McrtxOptionsScreen extends da {
         return getThirdButtonRowY() + 24;
     }
 
-    private int getBlockOutlineIntensitySliderRowY() {
+    private int getFifthButtonRowY() {
         return getFourthButtonRowY() + 24;
+    }
+
+    private int getSixthButtonRowY() {
+        return getFifthButtonRowY() + 24;
+    }
+
+    private int getBlockOutlineIntensitySliderRowY() {
+        return getSixthButtonRowY() + 24;
     }
 }

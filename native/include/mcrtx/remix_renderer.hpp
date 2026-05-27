@@ -363,6 +363,7 @@ public:
   void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
   void setPlayerShadowsEnabled(bool enabled);
   void setHeldTorchLightsEnabled(bool enabled);
+  void setDynamicEntityRenderingEnabled(bool enabled);
   void setBlockOutlineEnabled(bool enabled);
   void setBlockOutlineStyle(int style);
   void setBlockOutlineEmissiveIntensity(float intensity);
@@ -730,6 +731,7 @@ private:
   int heldItemId_ {-1};
   bool playerShadowsEnabled_ {true};
   bool heldTorchLightsEnabled_ {true};
+  bool dynamicEntityRenderingEnabled_ {true};
   bool blockOutlineEnabled_ {true};
   static constexpr int kBlockOutlineStyleSubtle = 0;
   static constexpr int kBlockOutlineStyleBold = 1;

@@ -264,7 +264,8 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, st
   MCRTX_TRACY_SCOPE("RemixRenderer::beginDynamicEntity");
   std::scoped_lock lock(mutex_);
 
-  if (!initialized_) {
+  if (!initialized_ || !dynamicEntityRenderingEnabled_) {
+    clearActiveDynamicEntityState(activeDynamicEntity_);
     return;
   }
 
@@ -285,7 +286,7 @@ void RemixRenderer::setDynamicEntityTexture(const std::string& texturePath) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityTexture");
   std::scoped_lock lock(mutex_);
 
-  if (!initialized_ || !activeDynamicEntity_.active) {
+  if (!initialized_ || !dynamicEntityRenderingEnabled_ || !activeDynamicEntity_.active) {
     return;
   }
 
@@ -437,6 +438,19 @@ void RemixRenderer::setHeldTorchLightsEnabled(bool enabled) {
   clearHeldTorchLightsLocked();
 }
 
+void RemixRenderer::setDynamicEntityRenderingEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityRenderingEnabled");
+  std::scoped_lock lock(mutex_);
+
+  dynamicEntityRenderingEnabled_ = enabled;
+  if (enabled) {
+    return;
+  }
+
+  clearActiveDynamicEntityState(activeDynamicEntity_);
+  clearDynamicEntityFrameInstances();
+}
+
 void RemixRenderer::setBlockOutlineEnabled(bool enabled) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setBlockOutlineEnabled");
   std::scoped_lock lock(mutex_);
@@ -549,7 +563,7 @@ void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityBoneTransform");
   std::scoped_lock lock(mutex_);
 
-  if (!initialized_ || !activeDynamicEntity_.active || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
+  if (!initialized_ || !dynamicEntityRenderingEnabled_ || !activeDynamicEntity_.active || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
     return;
   }
 
@@ -586,7 +600,7 @@ void RemixRenderer::captureDynamicEntityQuad(
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDynamicEntityQuad");
   std::scoped_lock lock(mutex_);
 
-  if (!initialized_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTextureIndex == 0xFFFFFFFFu) {
+  if (!initialized_ || !dynamicEntityRenderingEnabled_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTextureIndex == 0xFFFFFFFFu) {
     return;
   }
 
@@ -621,6 +635,11 @@ void RemixRenderer::endDynamicEntity() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::endDynamicEntity");
   MCRTX_TRACY_SCOPE("RemixRenderer::endDynamicEntity");
   std::scoped_lock lock(mutex_);
+
+  if (!dynamicEntityRenderingEnabled_) {
+    clearActiveDynamicEntityState(activeDynamicEntity_);
+    return;
+  }
 
   if (!activeDynamicEntity_.active) {
     return;

@@ -461,6 +461,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetHeldTorchLightsEn
   RemixRenderer::instance().setHeldTorchLightsEnabled(enabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityRenderingEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDynamicEntityRenderingEnabled");
+  RemixRenderer::instance().setDynamicEntityRenderingEnabled(enabled == JNI_TRUE);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEnabled(
     JNIEnv*, jclass, jboolean enabled) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineEnabled");
