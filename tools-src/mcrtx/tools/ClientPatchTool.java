@@ -508,6 +508,14 @@ public final class ClientPatchTool {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (isStaticCall(node, GL11_CLASS, "glDrawArrays", "(III)V")) {
                 method.instructions.insertBefore(node, firstPersonTessellatorDrawCall());
+                method.instructions.set(
+                        node,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                REMIX_HELPER_CLASS,
+                                "drawTessellator",
+                                "(III)V",
+                                false));
             }
         }
     }

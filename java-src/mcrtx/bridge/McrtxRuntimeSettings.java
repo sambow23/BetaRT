@@ -14,6 +14,7 @@ public final class McrtxRuntimeSettings {
     public static final String HELD_TORCH_LIGHTS_ENABLED_KEY = "MCRTX_HELD_TORCH_LIGHTS_ENABLED";
     public static final String DYNAMIC_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_DYNAMIC_ENTITY_RENDERING_ENABLED";
     public static final String PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_PAINTING_VANILLA_SUPPRESSION_ENABLED";
+    public static final String MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED";
     public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
     public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
@@ -86,6 +87,7 @@ public final class McrtxRuntimeSettings {
     private static boolean heldTorchLightsEnabled = true;
     private static boolean dynamicEntityRenderingEnabled = true;
     private static boolean paintingVanillaSuppressionEnabled;
+    private static boolean movingPistonVanillaSuppressionEnabled;
     private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
     private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
@@ -127,6 +129,13 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return paintingVanillaSuppressionEnabled;
+        }
+    }
+
+    public static boolean isMovingPistonVanillaSuppressionEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return movingPistonVanillaSuppressionEnabled;
         }
     }
 
@@ -191,6 +200,17 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             paintingVanillaSuppressionEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setMovingPistonVanillaSuppressionEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (movingPistonVanillaSuppressionEnabled == enabled) {
+                return;
+            }
+            movingPistonVanillaSuppressionEnabled = enabled;
             saveLocked();
         }
     }
@@ -417,6 +437,7 @@ public final class McrtxRuntimeSettings {
         heldTorchLightsEnabled = readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
         dynamicEntityRenderingEnabled = readBooleanSetting(fileValues, DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, true);
         paintingVanillaSuppressionEnabled = readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        movingPistonVanillaSuppressionEnabled = readBooleanSetting(fileValues, MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
         viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
         noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
@@ -746,6 +767,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, formatBoolean(heldTorchLightsEnabled));
         fileValues.put(DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(dynamicEntityRenderingEnabled));
         fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(paintingVanillaSuppressionEnabled));
+        fileValues.put(MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(movingPistonVanillaSuppressionEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

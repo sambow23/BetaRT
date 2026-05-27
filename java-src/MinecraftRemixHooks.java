@@ -9,6 +9,7 @@ import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
 import java.util.Locale;
 import org.lwjgl.opengl.Display;
+import org.lwjgl.opengl.GL11;
 
 /**
  * Thin dispatcher that receives every bytecode-patched callback from the Beta
@@ -510,6 +511,14 @@ public final class MinecraftRemixHooks {
         }
     }
 
+    public static void drawTessellator(int mode, int first, int count) {
+        if (McrtxRuntimeSettings.isMovingPistonVanillaSuppressionEnabled()
+                && RemixDynamicEntityCapture.shouldSuppressMovingPistonVanillaDraw()) {
+            return;
+        }
+        GL11.glDrawArrays(mode, first, count);
+    }
+
     public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
         long __perf = HookProfiler.begin();
         try {
@@ -761,6 +770,10 @@ public final class MinecraftRemixHooks {
         return "Replace Paintings: " + formatToggleState(isPaintingVanillaSuppressionEnabled());
     }
 
+    public static String getMovingPistonVanillaSuppressionButtonLabel() {
+        return "Replace Moving Pistons: " + formatToggleState(isMovingPistonVanillaSuppressionEnabled());
+    }
+
     public static String getRtQualityButtonLabel() {
         return "PT Quality: " + describeRtQuality(McrtxRuntimeSettings.getRtQuality());
     }
@@ -818,8 +831,16 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isPaintingVanillaSuppressionEnabled();
     }
 
+    public static boolean isMovingPistonVanillaSuppressionEnabled() {
+        return McrtxRuntimeSettings.isMovingPistonVanillaSuppressionEnabled();
+    }
+
     public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
         McrtxRuntimeSettings.setPaintingVanillaSuppressionEnabled(enabled);
+    }
+
+    public static void setMovingPistonVanillaSuppressionEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setMovingPistonVanillaSuppressionEnabled(enabled);
     }
 
     public static void setGameplayFovDegrees(int fovDegrees) {

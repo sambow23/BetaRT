@@ -54,6 +54,7 @@ public final class RemixDynamicEntityCapture {
 
     private static boolean dynamicCaptureFrameActive;
     private static boolean signRenderActive;
+    private static boolean movingPistonRenderActive;
     private static boolean dynamicEntityActive;
     private static boolean pickupParticleEntityRenderActive;
     private static boolean entityFireOverlayActive;
@@ -617,6 +618,7 @@ public final class RemixDynamicEntityCapture {
         }
 
         ensureDynamicCaptureFrame();
+        movingPistonRenderActive = true;
         dynamicEntityActive = true;
         activeDynamicEntityId = stableTileEntityId(piston.e, piston.f, piston.g, 0x50495354);
         activeDynamicEntityHurtStage = 0;
@@ -632,7 +634,12 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onMovingPistonRenderEnd() {
+        movingPistonRenderActive = false;
         onLivingEntityRenderEnd();
+    }
+
+    public static boolean shouldSuppressMovingPistonVanillaDraw() {
+        return movingPistonRenderActive && dynamicEntityActive;
     }
 
     public static void onPaintingRender(qv painting) {
