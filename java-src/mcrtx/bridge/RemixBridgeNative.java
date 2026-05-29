@@ -308,6 +308,26 @@ public final class RemixBridgeNative {
 
     public static native boolean nClearScreenOverlay();
 
+    public static native boolean nRegisterUiTexture(
+            ByteBuffer pixelData,
+            long id,
+            int width,
+            int height,
+            int format);
+
+    public static native boolean nFreeUiTexture(long id);
+
+    public static native boolean nSubmitUiDrawList(
+            float[] vertexXYZUV,
+            int[] vertexColor,
+            int vertexCount,
+            long[] cmdTextureIds,
+            int[] cmdQuadCounts,
+            int[] cmdFlags,
+            int cmdCount,
+            int displayWidth,
+            int displayHeight);
+
     public static native void nSetScreenTint(float r, float g, float b, float a);
 
     public static native int nGetUiState();

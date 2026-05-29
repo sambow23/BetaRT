@@ -807,6 +807,118 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearScreenOverl
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().clearScreenOverlay()));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRegisterUiTexture(
+    JNIEnv* env,
+    jclass,
+    jobject pixelBuffer,
+    jlong id,
+    jint width,
+    jint height,
+    jint format) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nRegisterUiTexture");
+  if (pixelBuffer == nullptr || width <= 0 || height <= 0) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  void* pixelData = env->GetDirectBufferAddress(pixelBuffer);
+  if (pixelData == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  const std::uint64_t dataSize =
+      static_cast<std::uint64_t>(width) * static_cast<std::uint64_t>(height) * 4ull;
+  const bool ok = RemixRenderer::instance().registerUiTexture(
+      static_cast<std::uint64_t>(id),
+      static_cast<std::uint32_t>(width),
+      static_cast<std::uint32_t>(height),
+      static_cast<remixapi_Format>(format),
+      pixelData,
+      dataSize);
+  return static_cast<jboolean>(fromJniBoolean(ok));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nFreeUiTexture(
+    JNIEnv*, jclass, jlong id) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nFreeUiTexture");
+  return static_cast<jboolean>(fromJniBoolean(
+      RemixRenderer::instance().freeUiTexture(static_cast<std::uint64_t>(id))));
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSubmitUiDrawList(
+    JNIEnv* env,
+    jclass,
+    jfloatArray vertexXYZUV,
+    jintArray vertexColor,
+    jint vertexCount,
+    jlongArray cmdTextureIds,
+    jintArray cmdQuadCounts,
+    jintArray cmdFlags,
+    jint cmdCount,
+    jint displayWidth,
+    jint displayHeight) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSubmitUiDrawList");
+
+  // Empty list (clear) — no arrays needed.
+  if (vertexCount <= 0 || cmdCount <= 0) {
+    return static_cast<jboolean>(fromJniBoolean(
+        RemixRenderer::instance().submitUiDrawListFromArrays(
+            nullptr, nullptr, 0, nullptr, nullptr, nullptr, 0,
+            static_cast<std::uint32_t>(displayWidth),
+            static_cast<std::uint32_t>(displayHeight))));
+  }
+
+  if (vertexXYZUV == nullptr || vertexColor == nullptr
+      || cmdTextureIds == nullptr || cmdQuadCounts == nullptr || cmdFlags == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+  if (env->GetArrayLength(vertexXYZUV) < static_cast<jsize>(vertexCount) * 5
+      || env->GetArrayLength(vertexColor) < static_cast<jsize>(vertexCount)
+      || env->GetArrayLength(cmdTextureIds) < static_cast<jsize>(cmdCount)
+      || env->GetArrayLength(cmdQuadCounts) < static_cast<jsize>(cmdCount)
+      || env->GetArrayLength(cmdFlags) < static_cast<jsize>(cmdCount)) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  auto* xyzuv = static_cast<jfloat*>(env->GetPrimitiveArrayCritical(vertexXYZUV, nullptr));
+  auto* colors = static_cast<jint*>(env->GetPrimitiveArrayCritical(vertexColor, nullptr));
+  auto* texIds = static_cast<jlong*>(env->GetPrimitiveArrayCritical(cmdTextureIds, nullptr));
+  auto* quadCounts = static_cast<jint*>(env->GetPrimitiveArrayCritical(cmdQuadCounts, nullptr));
+  auto* flags = static_cast<jint*>(env->GetPrimitiveArrayCritical(cmdFlags, nullptr));
+
+  bool ok = false;
+  if (xyzuv != nullptr && colors != nullptr && texIds != nullptr
+      && quadCounts != nullptr && flags != nullptr) {
+    ok = RemixRenderer::instance().submitUiDrawListFromArrays(
+        reinterpret_cast<const float*>(xyzuv),
+        reinterpret_cast<const std::uint32_t*>(colors),
+        static_cast<std::uint32_t>(vertexCount),
+        reinterpret_cast<const std::uint64_t*>(texIds),
+        reinterpret_cast<const std::int32_t*>(quadCounts),
+        reinterpret_cast<const std::uint32_t*>(flags),
+        static_cast<std::uint32_t>(cmdCount),
+        static_cast<std::uint32_t>(displayWidth),
+        static_cast<std::uint32_t>(displayHeight));
+  }
+
+  if (flags != nullptr) {
+    env->ReleasePrimitiveArrayCritical(cmdFlags, flags, JNI_ABORT);
+  }
+  if (quadCounts != nullptr) {
+    env->ReleasePrimitiveArrayCritical(cmdQuadCounts, quadCounts, JNI_ABORT);
+  }
+  if (texIds != nullptr) {
+    env->ReleasePrimitiveArrayCritical(cmdTextureIds, texIds, JNI_ABORT);
+  }
+  if (colors != nullptr) {
+    env->ReleasePrimitiveArrayCritical(vertexColor, colors, JNI_ABORT);
+  }
+  if (xyzuv != nullptr) {
+    env->ReleasePrimitiveArrayCritical(vertexXYZUV, xyzuv, JNI_ABORT);
+  }
+
+  return static_cast<jboolean>(fromJniBoolean(ok));
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetScreenTint(
     JNIEnv*, jclass, jfloat r, jfloat g, jfloat b, jfloat a) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetScreenTint");

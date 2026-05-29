@@ -1306,6 +1306,7 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\RemixDestroyOverlayCapture.java"),
     (Join-Path $repoRoot "java-src\RemixDynamicEntityCapture.java"),
     (Join-Path $repoRoot "java-src\RemixParticleCapture.java"),
+    (Join-Path $repoRoot "java-src\RemixUiCapture.java"),
     (Join-Path $repoRoot "java-src\RemixWorldListener.java"),
     (Join-Path $repoRoot "java-src\DirtyChunkSection.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\CameraPose.java"),

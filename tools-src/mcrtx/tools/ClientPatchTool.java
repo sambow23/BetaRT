@@ -1073,7 +1073,7 @@ public final class ClientPatchTool {
     }
 
     private static void patchFontRender(MethodNode method) {
-        if (hasHelperCall(method, "onSignTextRender", "(Ljava/lang/String;IIIZ[I)V")) {
+        if (hasHelperCall(method, "onSignTextRender", "(Ljava/lang/String;IIIZ[II)V")) {
             return;
         }
 
@@ -1350,11 +1350,13 @@ public final class ClientPatchTool {
         instructions.add(new VarInsnNode(Opcodes.ILOAD, 5));
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FONT_RENDERER_CLASS, "b", "[I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FONT_RENDERER_CLASS, "a", "I"));
         instructions.add(new MethodInsnNode(
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
                 "onSignTextRender",
-                "(Ljava/lang/String;IIIZ[I)V",
+                "(Ljava/lang/String;IIIZ[II)V",
                 false));
         return instructions;
     }

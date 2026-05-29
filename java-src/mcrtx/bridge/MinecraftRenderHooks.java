@@ -603,6 +603,44 @@ public final class MinecraftRenderHooks {
         return RemixBridgeNative.nClearScreenOverlay();
     }
 
+    public static synchronized boolean registerUiTexture(
+            ByteBuffer pixelData,
+            long id,
+            int width,
+            int height,
+            int format) {
+        if (!initialized || pixelData == null) {
+            return false;
+        }
+        return RemixBridgeNative.nRegisterUiTexture(pixelData, id, width, height, format);
+    }
+
+    public static synchronized boolean freeUiTexture(long id) {
+        if (!initialized) {
+            return true;
+        }
+        return RemixBridgeNative.nFreeUiTexture(id);
+    }
+
+    public static synchronized boolean submitUiDrawList(
+            float[] vertexXYZUV,
+            int[] vertexColor,
+            int vertexCount,
+            long[] cmdTextureIds,
+            int[] cmdQuadCounts,
+            int[] cmdFlags,
+            int cmdCount,
+            int displayWidth,
+            int displayHeight) {
+        if (!initialized) {
+            return false;
+        }
+        return RemixBridgeNative.nSubmitUiDrawList(
+                vertexXYZUV, vertexColor, vertexCount,
+                cmdTextureIds, cmdQuadCounts, cmdFlags, cmdCount,
+                displayWidth, displayHeight);
+    }
+
     public static synchronized void setScreenTint(float r, float g, float b, float a) {
         if (!initialized) {
             return;

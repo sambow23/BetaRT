@@ -89,6 +89,7 @@ public final class MinecraftRemixHooks {
             resetRemixUiTracking();
             resetPerfTracking();
             UiOverlayCapture.reset();
+            RemixUiCapture.reset();
             MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
             applySavedMcrtxSettings();
         } finally {
@@ -103,6 +104,7 @@ public final class MinecraftRemixHooks {
             resetRemixUiTracking();
             resetPerfTracking();
             UiOverlayCapture.reset();
+            RemixUiCapture.reset();
             MinecraftRenderHooks.shutdown();
         } finally {
             HookProfiler.endHook("hook.onShutdown", __perf);
@@ -120,6 +122,7 @@ public final class MinecraftRemixHooks {
             resetRemixUiTracking();
             resetPerfTracking();
             UiOverlayCapture.reset();
+            RemixUiCapture.reset();
             MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
             applySavedMcrtxSettings();
         } finally {
@@ -229,7 +232,7 @@ public final class MinecraftRemixHooks {
             if (STANDALONE_WINDOW_MODE) {
                 return;
             }
-            UiOverlayCapture.begin(width, height);
+            RemixUiCapture.begin(width, height);
         } finally {
             HookProfiler.endHook("hook.onUiRenderBegin", __perf);
         }
@@ -241,7 +244,7 @@ public final class MinecraftRemixHooks {
             if (STANDALONE_WINDOW_MODE) {
                 return;
             }
-            UiOverlayCapture.end();
+            RemixUiCapture.end();
         } finally {
             HookProfiler.endHook("hook.onUiRenderEnd", __perf);
         }
@@ -538,10 +541,11 @@ public final class MinecraftRemixHooks {
         fontRenderer.b(text, x, y, colorRgba);
     }
 
-    public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths) {
+    public static void onSignTextRender(String text, int x, int y, int colorRgba, boolean shadow, int[] characterWidths, int fontTextureGlId) {
         long __perf = HookProfiler.begin();
         try {
             RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
+            RemixUiCapture.onFontString(text, x, y, colorRgba, shadow, characterWidths, fontTextureGlId);
         } finally {
             HookProfiler.endHook("hook.onSignTextRender", __perf);
         }
@@ -613,7 +617,13 @@ public final class MinecraftRemixHooks {
     public static void onModelPartRender(tz[] polygons, float scale) {
         long __perf = HookProfiler.begin();
         try {
-            RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
+            if (RemixUiCapture.isActive()) {
+                // GUI phase: 3D model parts (inventory player preview) render
+                // into the screen-space UI pass, not the world.
+                RemixUiCapture.onModelPart(polygons, scale);
+            } else {
+                RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
+            }
         } finally {
             HookProfiler.endHook("hook.onModelPartRender", __perf);
         }
@@ -627,6 +637,7 @@ public final class MinecraftRemixHooks {
             boolean hasColor) {
         long __perf = HookProfiler.begin();
         try {
+            RemixUiCapture.onTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
             RemixDynamicEntityCapture.onFirstPersonTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
             RemixParticleCapture.onTessellatorDraw(rawVertexData, vertexCount, drawMode, hasTexture, hasColor);
         } finally {

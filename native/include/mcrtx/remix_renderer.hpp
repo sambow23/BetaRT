@@ -492,6 +492,41 @@ public:
         remixapi_Format format,
         float opacity);
       bool clearScreenOverlay();
+
+      // Screen-space UI draw-list API (replaces the framebuffer overlay path).
+      // registerUiTexture uploads/caches a UI texture by id; freeUiTexture
+      // releases it; submitUiDrawList queues the per-frame draw list (a null or
+      // empty list clears the UI for the frame). id 0 is reserved for the
+      // built-in white texture.
+      bool registerUiTexture(
+        std::uint64_t   id,
+        std::uint32_t   width,
+        std::uint32_t   height,
+        remixapi_Format format,
+        const void*     pixelData,
+        std::uint64_t   dataSize);
+      bool freeUiTexture(std::uint64_t id);
+      bool submitUiDrawList(const remixapi_UIDrawList* drawList);
+
+      // Builds a remixapi_UIDrawList from flat per-vertex / per-command arrays
+      // (the wire format crossing the JNI boundary) and submits it. Vertices
+      // are 5 floats each (x, y, z, u, v): x/y in display-pixel space, z is
+      // normalized depth [0,1] (0 for flat 2D). Colors are one packed RGBA8 per
+      // vertex. Each command covers cmdQuadCounts[i] quads of 4 consecutive
+      // vertices and carries a REMIXAPI_UI_DRAW_FLAG_* bitmask in cmdFlags[i];
+      // indices (6 per quad) are generated here. An empty list (vertexCount 0)
+      // clears the UI for the frame.
+      bool submitUiDrawListFromArrays(
+        const float*         vertexXYZUV,
+        const std::uint32_t* vertexColor,
+        std::uint32_t        vertexCount,
+        const std::uint64_t* cmdTextureIds,
+        const std::int32_t*  cmdQuadCounts,
+        const std::uint32_t* cmdFlags,
+        std::uint32_t        cmdCount,
+        std::uint32_t        displayWidth,
+        std::uint32_t        displayHeight);
+
   remixapi_UIState getUiState() const;
   bool setUiState(remixapi_UIState state);
       bool hasWindowFocus() const;
@@ -615,6 +650,11 @@ private:
   bool presentLocked(TracyUniqueLock& lock,
                      std::string& perfSummary,
                      std::uint64_t lockWaitNanoseconds);
+  // Phase 1 end-to-end verify of the screen-space UI pass: registers a
+  // checkerboard texture once and submits a two-quad draw list (one solid
+  // vertex-colored, one textured) each frame. Gated by MCRTX_UI_SYNTHETIC_TEST.
+  // Invoked from the present path; calls the Remix UI API directly.
+  void submitSyntheticUiTest();
   void resetPerFramePerfCounters() noexcept;
   void shutdownLocked();
   void setError(std::string message);
@@ -642,6 +682,8 @@ private:
   DWORD standaloneWorkerThreadId_ {0};
   bool renderSubmissionInFlight_ {false};
   bool initialized_ {false};
+  bool syntheticUiTestEnabled_ {false};
+  bool syntheticUiTextureRegistered_ {false};
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
   CameraState camera_ {};
