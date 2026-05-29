@@ -972,21 +972,64 @@ public final class ClientPatchTool {
             return;
         }
 
-        boolean insertedStart = false;
+        MethodInsnNode signModelRenderCall = null;
+        AbstractInsnNode signModelRenderStart = null;
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
                     && methodInsnNode.owner.equals("rf")
                     && methodInsnNode.name.equals("a")
                     && methodInsnNode.desc.equals("()V")) {
-                method.instructions.insertBefore(node, signRenderStartCall());
-                insertedStart = true;
+                signModelRenderCall = methodInsnNode;
+                AbstractInsnNode getFieldNode = node.getPrevious();
+                if (getFieldNode instanceof FieldInsnNode fieldInsnNode
+                        && fieldInsnNode.getOpcode() == Opcodes.GETFIELD
+                        && fieldInsnNode.owner.equals(SIGN_RENDERER_CLASS)
+                        && fieldInsnNode.name.equals("b")
+                        && fieldInsnNode.desc.equals("Lrf;")) {
+                    AbstractInsnNode receiverLoad = getFieldNode.getPrevious();
+                    if (receiverLoad instanceof VarInsnNode varInsnNode
+                            && varInsnNode.getOpcode() == Opcodes.ALOAD
+                            && varInsnNode.var == 0) {
+                        signModelRenderStart = receiverLoad;
+                    }
+                }
                 break;
             }
         }
 
-        if (!insertedStart) {
+        if (signModelRenderCall == null || signModelRenderStart == null) {
             return;
+        }
+
+        method.instructions.insertBefore(signModelRenderStart, signRenderStartCall());
+
+        AbstractInsnNode cleanupStart = signModelRenderCall.getNext();
+        if (cleanupStart == null) {
+            return;
+        }
+
+        LabelNode cleanupLabel = new LabelNode();
+        method.instructions.insertBefore(signModelRenderStart, signModelReplacementCall(cleanupLabel));
+        method.instructions.insertBefore(cleanupStart, cleanupLabel);
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(FONT_RENDERER_CLASS)
+                    && methodInsnNode.name.equals("b")
+                    && methodInsnNode.desc.equals("(Ljava/lang/String;III)V")) {
+                method.instructions.set(
+                        node,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                REMIX_HELPER_CLASS,
+                                "renderSignText",
+                                "(Lsj;Ljava/lang/String;III)V",
+                                false));
+            }
+            node = next;
         }
 
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
@@ -1281,6 +1324,20 @@ public final class ClientPatchTool {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
         instructions.add(new MethodInsnNode(Opcodes.INVOKESTATIC, REMIX_HELPER_CLASS, "onMovingPistonRenderStart", "(Luk;)V", false));
+        return instructions;
+    }
+
+    private static InsnList signModelReplacementCall(LabelNode cleanupLabel) {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, SIGN_RENDERER_CLASS, "b", "Lrf;"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "tryReplaceSignModelRender",
+                "(Lrf;)Z",
+                false));
+        instructions.add(new JumpInsnNode(Opcodes.IFNE, cleanupLabel));
         return instructions;
     }
 

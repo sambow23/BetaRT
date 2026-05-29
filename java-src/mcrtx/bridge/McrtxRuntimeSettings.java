@@ -13,8 +13,13 @@ public final class McrtxRuntimeSettings {
     public static final String PLAYER_SHADOWS_ENABLED_KEY = "MCRTX_PLAYER_SHADOWS_ENABLED";
     public static final String HELD_TORCH_LIGHTS_ENABLED_KEY = "MCRTX_HELD_TORCH_LIGHTS_ENABLED";
     public static final String DYNAMIC_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_DYNAMIC_ENTITY_RENDERING_ENABLED";
+    public static final String LIVING_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_LIVING_ENTITY_RENDERING_ENABLED";
+    public static final String ITEM_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_ITEM_ENTITY_RENDERING_ENABLED";
     public static final String PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_PAINTING_VANILLA_SUPPRESSION_ENABLED";
     public static final String MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED";
+    public static final String SIGN_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_CAPTURE_ENABLED";
+    public static final String SIGN_TEXT_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_TEXT_CAPTURE_ENABLED";
+    public static final String SIGN_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_SIGN_VANILLA_SUPPRESSION_ENABLED";
     public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
     public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
@@ -86,8 +91,13 @@ public final class McrtxRuntimeSettings {
     private static boolean playerShadowsEnabled = true;
     private static boolean heldTorchLightsEnabled = true;
     private static boolean dynamicEntityRenderingEnabled = true;
+    private static boolean livingEntityRenderingEnabled = true;
+    private static boolean itemEntityRenderingEnabled = true;
     private static boolean paintingVanillaSuppressionEnabled;
     private static boolean movingPistonVanillaSuppressionEnabled;
+    private static boolean signCaptureEnabled = true;
+    private static boolean signTextCaptureEnabled = true;
+    private static boolean signVanillaSuppressionEnabled;
     private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
     private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
@@ -125,6 +135,20 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static boolean isLivingEntityRenderingEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return livingEntityRenderingEnabled;
+        }
+    }
+
+    public static boolean isItemEntityRenderingEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return itemEntityRenderingEnabled;
+        }
+    }
+
     public static boolean isPaintingVanillaSuppressionEnabled() {
         synchronized (LOCK) {
             ensureLoaded();
@@ -136,6 +160,27 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return movingPistonVanillaSuppressionEnabled;
+        }
+    }
+
+    public static boolean isSignCaptureEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return signCaptureEnabled;
+        }
+    }
+
+    public static boolean isSignTextCaptureEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return signTextCaptureEnabled;
+        }
+    }
+
+    public static boolean isSignVanillaSuppressionEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return signVanillaSuppressionEnabled;
         }
     }
 
@@ -193,6 +238,28 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setLivingEntityRenderingEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (livingEntityRenderingEnabled == enabled) {
+                return;
+            }
+            livingEntityRenderingEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setItemEntityRenderingEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (itemEntityRenderingEnabled == enabled) {
+                return;
+            }
+            itemEntityRenderingEnabled = enabled;
+            saveLocked();
+        }
+    }
+
     public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -211,6 +278,39 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             movingPistonVanillaSuppressionEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setSignCaptureEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (signCaptureEnabled == enabled) {
+                return;
+            }
+            signCaptureEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setSignTextCaptureEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (signTextCaptureEnabled == enabled) {
+                return;
+            }
+            signTextCaptureEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setSignVanillaSuppressionEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (signVanillaSuppressionEnabled == enabled) {
+                return;
+            }
+            signVanillaSuppressionEnabled = enabled;
             saveLocked();
         }
     }
@@ -436,8 +536,13 @@ public final class McrtxRuntimeSettings {
         playerShadowsEnabled = readBooleanSetting(fileValues, PLAYER_SHADOWS_ENABLED_KEY, true);
         heldTorchLightsEnabled = readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
         dynamicEntityRenderingEnabled = readBooleanSetting(fileValues, DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, true);
+        livingEntityRenderingEnabled = readBooleanSetting(fileValues, LIVING_ENTITY_RENDERING_ENABLED_KEY, true);
+        itemEntityRenderingEnabled = readBooleanSetting(fileValues, ITEM_ENTITY_RENDERING_ENABLED_KEY, true);
         paintingVanillaSuppressionEnabled = readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         movingPistonVanillaSuppressionEnabled = readBooleanSetting(fileValues, MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        signCaptureEnabled = readBooleanSetting(fileValues, SIGN_CAPTURE_ENABLED_KEY, true);
+        signTextCaptureEnabled = readBooleanSetting(fileValues, SIGN_TEXT_CAPTURE_ENABLED_KEY, true);
+        signVanillaSuppressionEnabled = readBooleanSetting(fileValues, SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
         viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
         noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
@@ -766,8 +871,13 @@ public final class McrtxRuntimeSettings {
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
         fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, formatBoolean(heldTorchLightsEnabled));
         fileValues.put(DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(dynamicEntityRenderingEnabled));
+        fileValues.put(LIVING_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(livingEntityRenderingEnabled));
+        fileValues.put(ITEM_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(itemEntityRenderingEnabled));
         fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(paintingVanillaSuppressionEnabled));
         fileValues.put(MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(movingPistonVanillaSuppressionEnabled));
+        fileValues.put(SIGN_CAPTURE_ENABLED_KEY, formatBoolean(signCaptureEnabled));
+        fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, formatBoolean(signTextCaptureEnabled));
+        fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(signVanillaSuppressionEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

@@ -1290,6 +1290,7 @@ $assetsDir = Join-Path $OutputRoot "mcrtx_assets"
 $patchedJarTemp = Join-Path $OutputRoot "minecraft-b1.7.3-client-mcrtx.base.jar"
 $patchedJar = Join-Path $OutputRoot "minecraft-b1.7.3-client-mcrtx.jar"
 $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
+$nativePdb = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.pdb"
 
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
@@ -1424,9 +1425,17 @@ if (-not (Test-Path $nativeDll)) {
 }
 
 Copy-Item $nativeDll (Join-Path $OutputRoot "mcrtx_jni.dll") -Force
+if (Test-Path $nativePdb) {
+    Copy-Item $nativePdb (Join-Path $OutputRoot "mcrtx_jni.pdb") -Force
+} elseif (Test-Path (Join-Path $OutputRoot "mcrtx_jni.pdb")) {
+    Remove-Item (Join-Path $OutputRoot "mcrtx_jni.pdb") -Force
+}
 
 Write-Host "Patched client bundle ready: $OutputRoot"
 Write-Host "Patched jar: $patchedJar"
+if (Test-Path $nativePdb) {
+    Write-Host "Patched native symbols: $(Join-Path $OutputRoot 'mcrtx_jni.pdb')"
+}
 Write-Host "Compile baseline jar: $MinecraftJar"
 Write-Host "Patch source jar: $PatchSourceJar"
 Write-Host "Extracted terrain atlas: $(Join-Path $assetsDir 'terrain.png')"

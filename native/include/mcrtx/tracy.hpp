@@ -10,9 +10,9 @@
 #define MCRTX_TRACY_VALUE(value) ZoneValue(static_cast<uint64_t>(value))
 #define MCRTX_TRACY_FRAME_MARK() FrameMark
 #define MCRTX_TRACY_SET_THREAD_NAME(name_literal) ::tracy::SetThreadName(name_literal)
-#define MCRTX_TRACY_LOCK_MARK(lockable) LockMark(lockable)
-#define MCRTX_TRACY_LOCKABLE_TYPE(type) LockableBase(type)
-#define MCRTX_TRACY_LOCKABLE_N(type, varname, desc) TracyLockableN(type, varname, desc)
+#define MCRTX_TRACY_LOCK_MARK(lockable)
+#define MCRTX_TRACY_LOCKABLE_TYPE(type) type
+#define MCRTX_TRACY_LOCKABLE_N(type, varname, desc) type varname
 #else
 #define MCRTX_TRACY_SCOPE(name_literal)
 #define MCRTX_TRACY_VALUE(value)

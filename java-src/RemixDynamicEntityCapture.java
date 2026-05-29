@@ -32,6 +32,8 @@ public final class RemixDynamicEntityCapture {
     private static final float FONT_ATLAS_SIZE = 128.0f;
     private static final float FONT_GLYPH_TEXEL_SIZE = 8.0f;
     private static final float SIGN_TEXT_DEPTH_OFFSET = -0.30f;
+    private static final int QUAD_VERTEX_COUNT = 4;
+    private static final int QUAD_STRIDE_FLOATS = 20;
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final String FIRST_PERSON_PLAYER_SHADOW_TEXTURE_ALIAS_PREFIX = "/mcrtx_alias/firstperson_shadow/";
@@ -68,6 +70,8 @@ public final class RemixDynamicEntityCapture {
     private static Field livingEntityHurtTimeField;
     private static Field creeperFuseTimeField;
     private static Field creeperPreviousFuseTimeField;
+    private static Field modelPartPolygonsField;
+    private static Field fontCharacterWidthsField;
     private static int nextDynamicBoneIndex;
     private static boolean firstPersonActive;
     private static String activeFirstPersonTexture = "";
@@ -76,6 +80,10 @@ public final class RemixDynamicEntityCapture {
     private static volatile boolean playerShadowsEnabled = true;
     private static volatile boolean heldTorchLightsEnabled = true;
     private static volatile boolean dynamicEntityRenderingEnabled = true;
+    private static volatile boolean livingEntityRenderingEnabled = true;
+    private static volatile boolean itemEntityRenderingEnabled = true;
+    private static volatile boolean signCaptureEnabled = true;
+    private static volatile boolean signTextCaptureEnabled = true;
     private static boolean loggedDynamicEntityHookFailure;
     private static boolean loggedDynamicEntityBoneOverflow;
     private static boolean loggedFirstPersonShadowCaptureFailure;
@@ -84,8 +92,19 @@ public final class RemixDynamicEntityCapture {
     private static final java.util.Map<Integer, boolean[]> textureAlphaCache = new java.util.HashMap<Integer, boolean[]>();
     private static final java.util.Map<Integer, Integer> textureWidthCache = new java.util.HashMap<Integer, Integer>();
     private static final java.util.Map<Integer, Integer> textureHeightCache = new java.util.HashMap<Integer, Integer>();
+    private static final java.util.Map<ps, CachedModelPartMesh> signModelMeshCache = new java.util.IdentityHashMap<ps, CachedModelPartMesh>();
     private static java.nio.ByteBuffer textureReadBuffer = null;
     private static int cachedFontTextureId = -1;
+
+    private static final class CachedModelPartMesh {
+        private final float[] quadData;
+        private final int quadCount;
+
+        private CachedModelPartMesh(float[] quadData, int quadCount) {
+            this.quadData = quadData;
+            this.quadCount = quadCount;
+        }
+    }
 
     private static float[] captureModelViewMatrix() {
         MODEL_VIEW_BUFFER.clear();
@@ -487,6 +506,10 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityFrameBegin() {
+        if (!canCaptureLivingEntities()) {
+            return;
+        }
+
         long beginNanos = System.nanoTime();
         ensureDynamicCaptureFrame();
         HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onLivingEntityFrameBegin.ensureFrame",
@@ -494,7 +517,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onLivingEntityRenderStart(sn entity, float partialTicks) {
-        if (!canCaptureDynamicEntities() || entity == null) {
+        if (!canCaptureLivingEntities() || entity == null) {
             return;
         }
         dynamicEntityActive = true;
@@ -534,7 +557,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onItemEntityRenderStart(sn entity) {
-        if (!canCaptureDynamicEntities() || entity == null) {
+        if (!canCaptureItemEntities() || entity == null) {
             return;
         }
 
@@ -560,7 +583,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onEntityFireOverlayStart(sn entity) {
-        if (!canCaptureDynamicEntities() || entity == null || !isTrackedLivingEntity(entity)) {
+        if (!canCaptureLivingEntities() || entity == null || !isTrackedLivingEntity(entity)) {
             return;
         }
 
@@ -587,7 +610,7 @@ public final class RemixDynamicEntityCapture {
     }
 
     public static void onSignRenderStart(yk sign) {
-        if (!canCaptureDynamicEntities() || sign == null) {
+        if (!canCaptureSigns() || sign == null) {
             return;
         }
 
@@ -640,6 +663,30 @@ public final class RemixDynamicEntityCapture {
 
     public static boolean shouldSuppressMovingPistonVanillaDraw() {
         return movingPistonRenderActive && dynamicEntityActive;
+    }
+
+    public static boolean captureSignModelRender(rf signModel) {
+        if (!signRenderActive || !dynamicEntityActive || signModel == null) {
+            return false;
+        }
+
+        CachedModelPartMesh signBoardMesh = resolveCachedModelPartMesh(signModel.a, 0.0625f);
+        CachedModelPartMesh signPostMesh = resolveCachedModelPartMesh(signModel.b, 0.0625f);
+        return captureCachedSignModel(signBoardMesh, signPostMesh);
+    }
+
+    public static boolean captureSignTextRender(sj fontRenderer, String text, int x, int y, int colorRgba) {
+        if (!canCaptureSignText() || !signRenderActive || !dynamicEntityActive || fontRenderer == null) {
+            return false;
+        }
+
+        int[] characterWidths = resolveFontCharacterWidths(fontRenderer);
+        if (characterWidths == null || characterWidths.length == 0) {
+            return false;
+        }
+
+        onSignTextRender(text, x, y, colorRgba, false, characterWidths);
+        return true;
     }
 
     public static void onPaintingRender(qv painting) {
@@ -782,6 +829,203 @@ public final class RemixDynamicEntityCapture {
             }
         } catch (RuntimeException exception) {
             handleHookFailure(exception);
+        }
+    }
+
+    private static boolean captureSignModelPart(ps modelPart, float scale) {
+        tz[] polygons = resolveModelPartPolygons(modelPart);
+        if (polygons == null || polygons.length == 0) {
+            return false;
+        }
+        onModelPartRender(polygons, scale);
+        return true;
+    }
+
+    private static boolean captureCachedSignModel(CachedModelPartMesh firstMesh, CachedModelPartMesh secondMesh) {
+        if (firstMesh == null && secondMesh == null) {
+            return false;
+        }
+
+        if (!SIGN_TEXTURE_PATH.equals(activeDynamicEntityTexture)) {
+            activeDynamicEntityTexture = SIGN_TEXTURE_PATH;
+            MinecraftRenderHooks.setDynamicEntityTexture(activeDynamicEntityTexture);
+        }
+
+        try {
+            long renderStartNanos = System.nanoTime();
+            float[] modelView = captureModelViewMatrix();
+            if (modelView == null) {
+                return false;
+            }
+
+            float[] color = captureCurrentColor();
+            if (color == null) {
+                return false;
+            }
+            long stateReadEndNanos = System.nanoTime();
+
+            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
+            capturedColor = ColorMath.applyHurtIndicator(
+                    capturedColor[0],
+                    capturedColor[1],
+                    capturedColor[2],
+                    capturedColor[3],
+                    activeDynamicEntityHurtStage);
+            capturedColor = ColorMath.applyCreeperFuseIndicator(
+                    capturedColor[0],
+                    capturedColor[1],
+                    capturedColor[2],
+                    capturedColor[3],
+                    activeDynamicEntityCreeperFuseProgress);
+            int colorRgba = ColorMath.packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
+            int boneIndex = allocateDynamicBoneIndex();
+            if (boneIndex < 0) {
+                return false;
+            }
+            submitDynamicBoneTransform(boneIndex, modelToWorld);
+            long setupEndNanos = System.nanoTime();
+
+            boolean emitted = false;
+            emitted |= emitCachedModelPartMesh(firstMesh, colorRgba, boneIndex);
+            emitted |= emitCachedModelPartMesh(secondMesh, colorRgba, boneIndex);
+            long quadEmitEndNanos = System.nanoTime();
+
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.captureSignModelRender.readState",
+                    stateReadEndNanos - renderStartNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.captureSignModelRender.setupTransform",
+                    setupEndNanos - stateReadEndNanos);
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.captureSignModelRender.emitQuads",
+                    quadEmitEndNanos - setupEndNanos);
+            return emitted;
+        } catch (RuntimeException exception) {
+            handleHookFailure(exception);
+            return false;
+        }
+    }
+
+    private static boolean emitCachedModelPartMesh(CachedModelPartMesh mesh, int colorRgba, int boneIndex) {
+        if (mesh == null || mesh.quadCount == 0) {
+            return false;
+        }
+
+        float[] quadData = mesh.quadData;
+        for (int quadIndex = 0; quadIndex < mesh.quadCount; quadIndex++) {
+            int base = quadIndex * QUAD_STRIDE_FLOATS;
+            MinecraftRenderHooks.captureDynamicEntityQuad(
+                    quadData[base], quadData[base + 1], quadData[base + 2], quadData[base + 3], quadData[base + 4],
+                    quadData[base + 5], quadData[base + 6], quadData[base + 7], quadData[base + 8], quadData[base + 9],
+                    quadData[base + 10], quadData[base + 11], quadData[base + 12], quadData[base + 13], quadData[base + 14],
+                    quadData[base + 15], quadData[base + 16], quadData[base + 17], quadData[base + 18], quadData[base + 19],
+                    colorRgba,
+                    boneIndex);
+        }
+
+        return true;
+    }
+
+    private static CachedModelPartMesh resolveCachedModelPartMesh(ps modelPart, float scale) {
+        if (modelPart == null) {
+            return null;
+        }
+
+        CachedModelPartMesh cachedMesh = signModelMeshCache.get(modelPart);
+        if (cachedMesh != null) {
+            return cachedMesh;
+        }
+
+        tz[] polygons = resolveModelPartPolygons(modelPart);
+        CachedModelPartMesh builtMesh = buildCachedModelPartMesh(polygons, scale);
+        if (builtMesh != null) {
+            signModelMeshCache.put(modelPart, builtMesh);
+        }
+        return builtMesh;
+    }
+
+    private static CachedModelPartMesh buildCachedModelPartMesh(tz[] polygons, float scale) {
+        if (polygons == null || polygons.length == 0) {
+            return null;
+        }
+
+        int quadCount = 0;
+        for (tz polygon : polygons) {
+            if (isRenderableQuad(polygon)) {
+                quadCount += 1;
+            }
+        }
+        if (quadCount == 0) {
+            return null;
+        }
+
+        float[] quadData = new float[quadCount * QUAD_STRIDE_FLOATS];
+        int quadWriteIndex = 0;
+        for (tz polygon : polygons) {
+            if (!isRenderableQuad(polygon)) {
+                continue;
+            }
+
+            int base = quadWriteIndex * QUAD_STRIDE_FLOATS;
+            for (int vertexIndex = 0; vertexIndex < QUAD_VERTEX_COUNT; vertexIndex++) {
+                ib vertex = polygon.a[vertexIndex];
+                int vertexBase = base + vertexIndex * 5;
+                quadData[vertexBase] = (float) vertex.a.a * scale;
+                quadData[vertexBase + 1] = (float) vertex.a.b * scale;
+                quadData[vertexBase + 2] = (float) vertex.a.c * scale;
+                quadData[vertexBase + 3] = vertex.b;
+                quadData[vertexBase + 4] = vertex.c;
+            }
+            quadWriteIndex += 1;
+        }
+
+        return new CachedModelPartMesh(quadData, quadCount);
+    }
+
+    private static boolean isRenderableQuad(tz polygon) {
+        if (polygon == null || polygon.a == null || polygon.a.length != QUAD_VERTEX_COUNT) {
+            return false;
+        }
+
+        for (int vertexIndex = 0; vertexIndex < QUAD_VERTEX_COUNT; vertexIndex++) {
+            ib vertex = polygon.a[vertexIndex];
+            if (vertex == null || vertex.a == null) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static tz[] resolveModelPartPolygons(ps modelPart) {
+        if (modelPart == null) {
+            return null;
+        }
+
+        try {
+            Field polygonsField = modelPartPolygonsField;
+            if (polygonsField == null || !polygonsField.getDeclaringClass().isInstance(modelPart)) {
+                polygonsField = ps.class.getDeclaredField("k");
+                polygonsField.setAccessible(true);
+                modelPartPolygonsField = polygonsField;
+            }
+            return (tz[]) polygonsField.get(modelPart);
+        } catch (ReflectiveOperationException exception) {
+            handleHookFailure(new RuntimeException("Failed to access sign model polygons", exception));
+            return null;
+        }
+    }
+
+    private static int[] resolveFontCharacterWidths(sj fontRenderer) {
+        try {
+            Field widthsField = fontCharacterWidthsField;
+            if (widthsField == null || !widthsField.getDeclaringClass().isInstance(fontRenderer)) {
+                widthsField = sj.class.getDeclaredField("b");
+                widthsField.setAccessible(true);
+                fontCharacterWidthsField = widthsField;
+            }
+            return (int[]) widthsField.get(fontRenderer);
+        } catch (ReflectiveOperationException exception) {
+            handleHookFailure(new RuntimeException("Failed to access sign font widths", exception));
+            return null;
         }
     }
 
@@ -942,6 +1186,62 @@ public final class RemixDynamicEntityCapture {
         activeDynamicEntityTexture = "";
         activeFirstPersonTexture = "";
         nextDynamicBoneIndex = 0;
+    }
+
+    public static void setLivingEntityRenderingEnabled(boolean enabled) {
+        livingEntityRenderingEnabled = enabled;
+        if (enabled) {
+            return;
+        }
+
+        if (!entityFireOverlayActive && !dynamicEntityActive) {
+            return;
+        }
+
+        entityFireOverlayActive = false;
+        dynamicEntityActive = false;
+        activeDynamicEntityId = -1;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
+        activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
+    }
+
+    public static void setItemEntityRenderingEnabled(boolean enabled) {
+        itemEntityRenderingEnabled = enabled;
+        if (enabled || !pickupParticleEntityRenderActive) {
+            return;
+        }
+
+        pickupParticleEntityRenderActive = false;
+        dynamicEntityActive = false;
+        activeDynamicEntityId = -1;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
+        activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
+    }
+
+    public static void setSignCaptureEnabled(boolean enabled) {
+        signCaptureEnabled = enabled;
+        if (enabled || !signRenderActive) {
+            return;
+        }
+
+        signRenderActive = false;
+        dynamicEntityActive = false;
+        activeDynamicEntityId = -1;
+        activeDynamicEntityHurtStage = 0;
+        activeDynamicEntityCreeperFuseStage = 0;
+        activeDynamicEntityCreeperFuseProgress = 0.0f;
+        activeDynamicEntityTexture = "";
+        nextDynamicBoneIndex = 0;
+    }
+
+    public static void setSignTextCaptureEnabled(boolean enabled) {
+        signTextCaptureEnabled = enabled;
     }
 
     public static void onFramePresented() {
@@ -1409,6 +1709,22 @@ public final class RemixDynamicEntityCapture {
 
     private static boolean canCaptureDynamicEntities() {
         return dynamicEntityRenderingEnabled && MinecraftRenderHooks.isInitialized();
+    }
+
+    private static boolean canCaptureLivingEntities() {
+        return livingEntityRenderingEnabled && canCaptureDynamicEntities();
+    }
+
+    private static boolean canCaptureItemEntities() {
+        return itemEntityRenderingEnabled && canCaptureDynamicEntities();
+    }
+
+    private static boolean canCaptureSigns() {
+        return signCaptureEnabled && canCaptureDynamicEntities();
+    }
+
+    private static boolean canCaptureSignText() {
+        return signTextCaptureEnabled && canCaptureSigns();
     }
 
     private static String normalizeDynamicTexturePath(String primaryTexture, String fallbackTexture) {

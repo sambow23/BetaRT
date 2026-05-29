@@ -73,16 +73,21 @@ if (-not $BundleRoot) {
 
 $patchedJar = Join-Path $BundleRoot "minecraft-b1.7.3-client-mcrtx.jar"
 $patchedDll = Join-Path $BundleRoot "mcrtx_jni.dll"
+$patchedPdb = Join-Path $BundleRoot "mcrtx_jni.pdb"
 $bundleAssetsDir = Join-Path $BundleRoot "mcrtx_assets"
 $libraryJarDirectory = Split-Path $MinecraftLibraryJar -Parent
 $deployedDllPath = Join-Path $libraryJarDirectory "mcrtx_jni.dll"
+$deployedPdbPath = Join-Path $libraryJarDirectory "mcrtx_jni.pdb"
 $sharedAssetsDir = Join-Path $libraryJarDirectory "mcrtx_assets"
 $legacyInstanceDllPath = Join-Path (Join-Path $InstanceRoot "natives") "mcrtx_jni.dll"
+$legacyInstancePdbPath = Join-Path (Join-Path $InstanceRoot "natives") "mcrtx_jni.pdb"
 $instanceLibrariesDir = Join-Path $InstanceRoot "libraries"
 $instanceMinecraftDir = Join-Path $InstanceRoot "minecraft"
 $instanceLibraryDllPath = Join-Path $instanceLibrariesDir "mcrtx_jni.dll"
+$instanceLibraryPdbPath = Join-Path $instanceLibrariesDir "mcrtx_jni.pdb"
 $instanceAssetsDir = Join-Path $instanceLibrariesDir "mcrtx_assets"
 $instanceMinecraftDllPath = Join-Path $instanceMinecraftDir "mcrtx_jni.dll"
+$instanceMinecraftPdbPath = Join-Path $instanceMinecraftDir "mcrtx_jni.pdb"
 $runtimeConfigPath = Join-Path $instanceMinecraftDir "mcrtx-runtime.env"
 $instanceConfigPath = Join-Path $InstanceRoot "instance.cfg"
 $instanceMmcPackPath = Join-Path $InstanceRoot "mmc-pack.json"
@@ -703,7 +708,7 @@ if ($Restore) {
         }
     }
 
-    foreach ($pathToRemove in @($instanceLibraryDllPath, $instanceMinecraftDllPath)) {
+    foreach ($pathToRemove in @($deployedPdbPath, $legacyInstancePdbPath, $instanceLibraryDllPath, $instanceLibraryPdbPath, $instanceMinecraftDllPath, $instanceMinecraftPdbPath)) {
         if (Test-Path $pathToRemove) {
             if ($PSCmdlet.ShouldProcess($pathToRemove, "Remove instance-local mcrtx JNI DLL")) {
                 Remove-Item $pathToRemove -Force
@@ -781,10 +786,36 @@ if ($PSCmdlet.ShouldProcess($deployedDllPath, "Deploy mcrtx JNI DLL next to the 
     $didCopyDll = $true
 }
 
+if (Test-Path $patchedPdb) {
+    if ($PSCmdlet.ShouldProcess($deployedPdbPath, "Deploy mcrtx JNI PDB next to the shared PrismLauncher Beta 1.7.3 jar")) {
+        Copy-Item $patchedPdb $deployedPdbPath -Force
+    }
+} elseif (Test-Path $deployedPdbPath) {
+    if ($PSCmdlet.ShouldProcess($deployedPdbPath, "Remove stale shared PrismLauncher mcrtx JNI PDB")) {
+        Remove-Item $deployedPdbPath -Force
+    }
+}
+
 foreach ($dllTarget in @($instanceLibraryDllPath, $instanceMinecraftDllPath)) {
     if ($PSCmdlet.ShouldProcess($dllTarget, "Deploy instance-local mcrtx JNI DLL")) {
         Copy-Item $patchedDll $dllTarget -Force
         $didCopyDll = $true
+    }
+}
+
+if (Test-Path $patchedPdb) {
+    foreach ($pdbTarget in @($instanceLibraryPdbPath, $instanceMinecraftPdbPath)) {
+        if ($PSCmdlet.ShouldProcess($pdbTarget, "Deploy instance-local mcrtx JNI PDB")) {
+            Copy-Item $patchedPdb $pdbTarget -Force
+        }
+    }
+} else {
+    foreach ($pdbTarget in @($instanceLibraryPdbPath, $instanceMinecraftPdbPath)) {
+        if (Test-Path $pdbTarget) {
+            if ($PSCmdlet.ShouldProcess($pdbTarget, "Remove stale instance-local mcrtx JNI PDB")) {
+                Remove-Item $pdbTarget -Force
+            }
+        }
     }
 }
 
@@ -806,13 +837,22 @@ if (Test-Path $legacyInstanceDllPath) {
     }
 }
 
+if (Test-Path $legacyInstancePdbPath) {
+    if ($PSCmdlet.ShouldProcess($legacyInstancePdbPath, "Remove stale instance-native mcrtx JNI PDB")) {
+        Remove-Item $legacyInstancePdbPath -Force
+    }
+}
+
 $deploymentRecord = [ordered]@{
     deployedAt = (Get-Date).ToString("o")
     instanceRoot = $InstanceRoot
     minecraftLibraryJar = $MinecraftLibraryJar
     deployedDll = $deployedDllPath
+    deployedPdb = $deployedPdbPath
     instanceLibraryDll = $instanceLibraryDllPath
+    instanceLibraryPdb = $instanceLibraryPdbPath
     instanceMinecraftDll = $instanceMinecraftDllPath
+    instanceMinecraftPdb = $instanceMinecraftPdbPath
     sharedAssetsDir = $sharedAssetsDir
     instanceAssetsDir = $instanceAssetsDir
     customJarTargets = $customJarTargets
@@ -828,6 +868,7 @@ $deploymentRecord = [ordered]@{
     platformComponentVersion = if ($platformSpec) { $platformSpec.Version } else { "" }
     patchedJar = $patchedJar
     patchedDll = $patchedDll
+    patchedPdb = if (Test-Path $patchedPdb) { $patchedPdb } else { "" }
     runtimeConfigPath = $runtimeConfigPath
 }
 
@@ -875,6 +916,10 @@ if ($customJarTargets.Count -gt 0) {
 if ($didCopyDll) {
     Write-Host "Deployed mcrtx_jni.dll to $deployedDllPath"
     Write-Host "Deployed instance-local mcrtx_jni.dll to $instanceLibraryDllPath"
+    if (Test-Path $patchedPdb) {
+        Write-Host "Deployed mcrtx_jni.pdb to $deployedPdbPath"
+        Write-Host "Deployed instance-local mcrtx_jni.pdb to $instanceLibraryPdbPath"
+    }
 }
 
 Write-Host "Deployed terrain atlas assets to $sharedAssetsDir"

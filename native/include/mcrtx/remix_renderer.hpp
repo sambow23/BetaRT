@@ -216,6 +216,7 @@ struct DynamicEntityQuad {
 
 constexpr std::uint32_t kDynamicEntityMaxHurtStage = 10;
 constexpr std::uint32_t kDynamicEntityMaxCreeperFuseStage = 10;
+constexpr std::size_t kDynamicEntityMaxQuadCount = 2048;
 constexpr std::size_t kDynamicEntityMaterialVariantCount =
   (static_cast<std::size_t>(kDynamicEntityMaxHurtStage) + 1u)
   * (static_cast<std::size_t>(kDynamicEntityMaxCreeperFuseStage) + 1u)
@@ -235,7 +236,8 @@ struct DynamicEntityBuildState {
   std::uint32_t currentTextureIndex {0xFFFFFFFFu};
   std::uint64_t currentTextureFingerprint {0};
   std::vector<std::string> texturePaths {};
-  std::vector<DynamicEntityQuad> quads {};
+  std::array<DynamicEntityQuad, kDynamicEntityMaxQuadCount> quads {};
+  std::size_t quadCount {0};
   std::vector<remixapi_Transform> boneTransforms {};
   bool active {false};
 };

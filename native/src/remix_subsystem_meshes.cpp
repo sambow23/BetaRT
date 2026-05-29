@@ -32,7 +32,7 @@ void clearActiveDynamicEntityState(DynamicEntityBuildState& state) {
   state.currentTextureIndex = 0xFFFFFFFFu;
   state.currentTextureFingerprint = 0;
   state.texturePaths.clear();
-  state.quads.clear();
+  state.quadCount = 0;
   state.boneTransforms.clear();
   state.active = false;
 }
@@ -278,7 +278,6 @@ void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, st
       activeDynamicEntity_.creeperFuseStage);
   activeDynamicEntity_.active = entityId >= 0;
   activeDynamicEntity_.texturePaths.reserve(4);
-  activeDynamicEntity_.quads.reserve(256);
   activeDynamicEntity_.boneTransforms.reserve(32);
 }
 
@@ -608,7 +607,11 @@ void RemixRenderer::captureDynamicEntityQuad(
     return;
   }
 
-  DynamicEntityQuad quad;
+  if (activeDynamicEntity_.quadCount >= activeDynamicEntity_.quads.size()) {
+    return;
+  }
+
+  DynamicEntityQuad& quad = activeDynamicEntity_.quads[activeDynamicEntity_.quadCount++];
   quad.positions = {
       x0, y0, z0,
       x1, y1, z1,
@@ -628,7 +631,6 @@ void RemixRenderer::captureDynamicEntityQuad(
   quad.boneIndex = boneIndex;
   activeDynamicEntity_.maxBoneCount = std::max(activeDynamicEntity_.maxBoneCount, boneIndex + 1);
   hashDynamicEntityQuad(activeDynamicEntity_.quadFingerprint, quad);
-  activeDynamicEntity_.quads.push_back(std::move(quad));
 }
 
 void RemixRenderer::endDynamicEntity() {
@@ -645,8 +647,8 @@ void RemixRenderer::endDynamicEntity() {
     return;
   }
 
-  MCRTX_TRACY_VALUE(activeDynamicEntity_.quads.size());
-  if (!activeDynamicEntity_.quads.empty()) {
+  MCRTX_TRACY_VALUE(activeDynamicEntity_.quadCount);
+  if (activeDynamicEntity_.quadCount != 0) {
     const std::uint32_t boneCount = activeDynamicEntity_.maxBoneCount;
     MCRTX_TRACY_VALUE(boneCount);
     if (boneCount != 0 && boneCount <= activeDynamicEntity_.boneTransforms.size()) {
@@ -1122,11 +1124,11 @@ bool RemixRenderer::rebuildCloudMesh(
 DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::findOrCreateDynamicEntityMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::findOrCreateDynamicEntityMesh");
-  if (buildState.quads.empty()) {
+  if (buildState.quadCount == 0) {
     return nullptr;
   }
 
-  MCRTX_TRACY_VALUE(buildState.quads.size());
+  MCRTX_TRACY_VALUE(buildState.quadCount);
 
   const std::uint32_t boneCount = buildState.maxBoneCount;
   if (boneCount == 0
@@ -1165,7 +1167,8 @@ DynamicEntityMeshData* RemixRenderer::findOrCreateDynamicEntityMesh(const Dynami
   std::size_t quadCount = 0;
   {
     MCRTX_TRACY_SCOPE("findOrCreateDynamicEntityMesh.buildSurfaces");
-    for (const DynamicEntityQuad& quad : buildState.quads) {
+    for (std::size_t quadIndex = 0; quadIndex < buildState.quadCount; ++quadIndex) {
+      const DynamicEntityQuad& quad = buildState.quads[quadIndex];
       if (quad.textureIndex >= buildState.texturePaths.size()) {
         continue;
       }
