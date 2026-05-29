@@ -559,6 +559,39 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntity
       static_cast<std::uint32_t>(boneIndex));
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntityQuadBatch(
+    JNIEnv* env, jclass,
+    jfloatArray vertices,
+    jint quadCount,
+    jint colorRgba,
+    jboolean blendEnabled,
+    jint boneIndex) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureDynamicEntityQuadBatch");
+  if (boneIndex < 0 || quadCount <= 0 || vertices == nullptr) {
+    return;
+  }
+
+  const jsize available = env->GetArrayLength(vertices);
+  const jlong required = static_cast<jlong>(quadCount) * 20;
+  if (required > available) {
+    return;
+  }
+
+  auto* data = static_cast<jfloat*>(env->GetPrimitiveArrayCritical(vertices, nullptr));
+  if (data == nullptr) {
+    return;
+  }
+
+  RemixRenderer::instance().captureDynamicEntityQuadBatch(
+      reinterpret_cast<const float*>(data),
+      static_cast<std::uint32_t>(quadCount),
+      static_cast<std::uint32_t>(colorRgba),
+      blendEnabled == JNI_TRUE,
+      static_cast<std::uint32_t>(boneIndex));
+
+  env->ReleasePrimitiveArrayCritical(vertices, data, JNI_ABORT);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nEndDynamicEntity(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEndDynamicEntity");
   RemixRenderer::instance().endDynamicEntity();

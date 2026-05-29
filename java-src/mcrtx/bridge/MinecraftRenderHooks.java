@@ -449,6 +449,22 @@ public final class MinecraftRenderHooks {
                 boneIndex);
     }
 
+    public static synchronized void captureDynamicEntityQuadBatch(
+            float[] vertices,
+            int quadCount,
+            int colorRgba,
+            int boneIndex) {
+        if (!initialized || vertices == null || quadCount <= 0) {
+            return;
+        }
+        RemixBridgeNative.nCaptureDynamicEntityQuadBatch(
+                vertices,
+                quadCount,
+                colorRgba,
+                GL11.glIsEnabled(GL11.GL_BLEND),
+                boneIndex);
+    }
+
     public static synchronized void endDynamicEntity() {
         if (!initialized) {
             return;

@@ -397,6 +397,12 @@ public:
       std::uint32_t colorRgba,
       bool blendEnabled,
       std::uint32_t boneIndex);
+  void captureDynamicEntityQuadBatch(
+      const float* vertices,
+      std::uint32_t quadCount,
+      std::uint32_t colorRgba,
+      bool blendEnabled,
+      std::uint32_t boneIndex);
   void endDynamicEntity();
   void beginDestroyOverlayFrame();
   void beginBlockOutlineFrame();

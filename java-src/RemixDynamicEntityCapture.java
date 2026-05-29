@@ -909,18 +909,7 @@ public final class RemixDynamicEntityCapture {
             return false;
         }
 
-        float[] quadData = mesh.quadData;
-        for (int quadIndex = 0; quadIndex < mesh.quadCount; quadIndex++) {
-            int base = quadIndex * QUAD_STRIDE_FLOATS;
-            MinecraftRenderHooks.captureDynamicEntityQuad(
-                    quadData[base], quadData[base + 1], quadData[base + 2], quadData[base + 3], quadData[base + 4],
-                    quadData[base + 5], quadData[base + 6], quadData[base + 7], quadData[base + 8], quadData[base + 9],
-                    quadData[base + 10], quadData[base + 11], quadData[base + 12], quadData[base + 13], quadData[base + 14],
-                    quadData[base + 15], quadData[base + 16], quadData[base + 17], quadData[base + 18], quadData[base + 19],
-                    colorRgba,
-                    boneIndex);
-        }
-
+        MinecraftRenderHooks.captureDynamicEntityQuadBatch(mesh.quadData, mesh.quadCount, colorRgba, boneIndex);
         return true;
     }
 

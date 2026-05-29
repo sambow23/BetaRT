@@ -37,6 +37,43 @@ void clearActiveDynamicEntityState(DynamicEntityBuildState& state) {
   state.active = false;
 }
 
+// Appends one quad to the active dynamic entity build. Vertices are packed as
+// four interleaved [x, y, z, u, v] tuples (20 floats), matching the capture
+// hook's argument order. Caller must hold the renderer mutex and have already
+// validated active-entity preconditions. Returns false when the quad buffer is
+// full so batch callers can stop early.
+bool appendDynamicEntityQuadLocked(DynamicEntityBuildState& state,
+                                   const float* vertices,
+                                   std::uint32_t colorRgba,
+                                   bool blendEnabled,
+                                   std::uint32_t boneIndex) {
+  if (state.quadCount >= state.quads.size()) {
+    return false;
+  }
+
+  DynamicEntityQuad& quad = state.quads[state.quadCount++];
+  quad.positions = {
+      vertices[0], vertices[1], vertices[2],
+      vertices[5], vertices[6], vertices[7],
+      vertices[10], vertices[11], vertices[12],
+      vertices[15], vertices[16], vertices[17],
+  };
+  quad.texcoords = {
+      vertices[3], vertices[4],
+      vertices[8], vertices[9],
+      vertices[13], vertices[14],
+      vertices[18], vertices[19],
+  };
+  quad.color = colorRgba;
+  quad.textureIndex = state.currentTextureIndex;
+  quad.textureFingerprint = state.currentTextureFingerprint;
+  quad.blendEnabled = blendEnabled;
+  quad.boneIndex = boneIndex;
+  state.maxBoneCount = std::max(state.maxBoneCount, boneIndex + 1);
+  hashDynamicEntityQuad(state.quadFingerprint, quad);
+  return true;
+}
+
 struct BlockOutlineStyleParameters {
   float inflate;
   float alpha;
@@ -607,30 +644,41 @@ void RemixRenderer::captureDynamicEntityQuad(
     return;
   }
 
-  if (activeDynamicEntity_.quadCount >= activeDynamicEntity_.quads.size()) {
+  const float vertices[20] = {
+      x0, y0, z0, u0, v0,
+      x1, y1, z1, u1, v1,
+      x2, y2, z2, u2, v2,
+      x3, y3, z3, u3, v3,
+  };
+  appendDynamicEntityQuadLocked(activeDynamicEntity_, vertices, colorRgba, blendEnabled, boneIndex);
+}
+
+void RemixRenderer::captureDynamicEntityQuadBatch(
+    const float* vertices,
+    std::uint32_t quadCount,
+    std::uint32_t colorRgba,
+    bool blendEnabled,
+    std::uint32_t boneIndex) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::captureDynamicEntityQuadBatch");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_ || !dynamicEntityRenderingEnabled_ || !activeDynamicEntity_.active || activeDynamicEntity_.currentTextureIndex == 0xFFFFFFFFu) {
     return;
   }
 
-  DynamicEntityQuad& quad = activeDynamicEntity_.quads[activeDynamicEntity_.quadCount++];
-  quad.positions = {
-      x0, y0, z0,
-      x1, y1, z1,
-      x2, y2, z2,
-      x3, y3, z3,
-  };
-  quad.texcoords = {
-      u0, v0,
-      u1, v1,
-      u2, v2,
-      u3, v3,
-  };
-  quad.color = colorRgba;
-  quad.textureIndex = activeDynamicEntity_.currentTextureIndex;
-  quad.textureFingerprint = activeDynamicEntity_.currentTextureFingerprint;
-  quad.blendEnabled = blendEnabled;
-  quad.boneIndex = boneIndex;
-  activeDynamicEntity_.maxBoneCount = std::max(activeDynamicEntity_.maxBoneCount, boneIndex + 1);
-  hashDynamicEntityQuad(activeDynamicEntity_.quadFingerprint, quad);
+  if (vertices == nullptr || quadCount == 0) {
+    return;
+  }
+
+  if (boneIndex >= activeDynamicEntity_.boneTransforms.size() || boneIndex >= REMIXAPI_INSTANCE_INFO_MAX_BONES_COUNT) {
+    return;
+  }
+
+  for (std::uint32_t quadIndex = 0; quadIndex < quadCount; ++quadIndex) {
+    if (!appendDynamicEntityQuadLocked(activeDynamicEntity_, vertices + static_cast<std::size_t>(quadIndex) * 20u, colorRgba, blendEnabled, boneIndex)) {
+      break;
+    }
+  }
 }
 
 void RemixRenderer::endDynamicEntity() {

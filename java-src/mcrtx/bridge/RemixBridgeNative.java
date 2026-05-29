@@ -210,6 +210,13 @@ public final class RemixBridgeNative {
                 boolean blendEnabled,
                 int boneIndex);
 
+            public static native void nCaptureDynamicEntityQuadBatch(
+                float[] vertices,
+                int quadCount,
+                int colorRgba,
+                boolean blendEnabled,
+                int boneIndex);
+
             public static native void nEndDynamicEntity();
 
             public static native void nBeginDestroyOverlayFrame();
