@@ -12,6 +12,13 @@ import org.lwjgl.opengl.GL14;
 public final class UiOverlayCapture {
     private static final IntBuffer VIEWPORT_BUFFER = BufferUtils.createIntBuffer(16);
 
+    // GL15/GL21 pixel-buffer-object enums, resolved through OpenGlCompat's
+    // reflective bindings rather than linked directly so the LWJGL2 compile /
+    // LWJGL3 runtime split can't break the build.
+    private static final int GL_PIXEL_PACK_BUFFER = 0x88EB;
+    private static final int GL_STREAM_READ = 0x88E1;
+    private static final int PBO_COUNT = 2;
+
     private static int framebufferId;
     private static int colorTextureId;
     private static int depthRenderbufferId;
@@ -25,6 +32,15 @@ public final class UiOverlayCapture {
     private static boolean captureActive;
     private static ByteBuffer pixelBuffer;
     private static byte[] rowScratch;
+
+    // Double-buffered async readback. glReadPixels into pboIds[pboWriteIndex]
+    // is a non-blocking DMA; the PBO filled on a previous frame
+    // (pendingPboReadIndex) is transferred to the CPU without stalling on the
+    // GPU. pendingPboReadIndex == -1 means no result is ready yet.
+    private static final int[] pboIds = new int[PBO_COUNT];
+    private static boolean pboReadbackEnabled;
+    private static int pboWriteIndex;
+    private static int pendingPboReadIndex = -1;
 
     private UiOverlayCapture() {
     }
@@ -73,6 +89,12 @@ public final class UiOverlayCapture {
             return;
         }
 
+        if (pboReadbackEnabled && readbackThroughPbo()) {
+            return;
+        }
+
+        // Synchronous fallback: glReadPixels blocks the CPU until the GPU has
+        // finished the UI framebuffer, then copies straight into pixelBuffer.
         pixelBuffer.clear();
         GL11.glReadPixels(0, 0, captureWidth, captureHeight, GL12.GL_BGRA, GL11.GL_UNSIGNED_BYTE, pixelBuffer);
         flipRowsInPlace();
@@ -88,6 +110,60 @@ public final class UiOverlayCapture {
                 captureHeight,
                 RemixBridgeNative.SCREEN_OVERLAY_FORMAT_BGRA8,
                 1.0f);
+    }
+
+    /**
+     * Issues a non-blocking readback of the current frame into one PBO and
+     * transfers the PBO filled on a previous frame, so the CPU never stalls
+     * waiting for the GPU. The overlay trails the scene by one frame, which is
+     * imperceptible at interactive frame rates.
+     *
+     * @return true if this path handled the frame, including restoring the
+     *         framebuffer/viewport; false if it failed and the caller should
+     *         use the synchronous readback (the framebuffer is left bound).
+     */
+    private static boolean readbackThroughPbo() {
+        try {
+            final int writeIndex = pboWriteIndex;
+            final int readIndex = pendingPboReadIndex;
+
+            OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[writeIndex]);
+            OpenGlCompat.readPixelsToBoundBuffer(
+                    0, 0, captureWidth, captureHeight, GL12.GL_BGRA, GL11.GL_UNSIGNED_BYTE, 0L);
+
+            boolean haveFrame = false;
+            if (readIndex >= 0) {
+                OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[readIndex]);
+                pixelBuffer.clear();
+                OpenGlCompat.getBufferSubData(GL_PIXEL_PACK_BUFFER, 0L, pixelBuffer);
+                flipRowsInPlace();
+                pixelBuffer.rewind();
+                haveFrame = true;
+            }
+            OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+
+            EXTFramebufferObject.glBindFramebufferEXT(EXTFramebufferObject.GL_FRAMEBUFFER_EXT, previousFramebufferId);
+            GL11.glViewport(viewportX, viewportY, viewportWidth, viewportHeight);
+            captureActive = false;
+
+            pendingPboReadIndex = writeIndex;
+            pboWriteIndex = (writeIndex + 1) % PBO_COUNT;
+
+            if (haveFrame) {
+                MinecraftRenderHooks.drawScreenOverlay(
+                        pixelBuffer,
+                        captureWidth,
+                        captureHeight,
+                        RemixBridgeNative.SCREEN_OVERLAY_FORMAT_BGRA8,
+                        1.0f);
+            }
+            return true;
+        } catch (RuntimeException exception) {
+            // Unbind the pack buffer so the synchronous fallback reads into
+            // pixelBuffer rather than an offset, then disable the async path.
+            disablePixelBufferReadback();
+            return false;
+        }
     }
 
     public static void reset() {
@@ -161,6 +237,7 @@ public final class UiOverlayCapture {
         rowScratch = new byte[width * 4];
         captureWidth = width;
         captureHeight = height;
+        allocatePixelReadbackBuffers(width, height);
         return true;
     }
 
@@ -193,7 +270,52 @@ public final class UiOverlayCapture {
         pixelBuffer.rewind();
     }
 
+    private static void allocatePixelReadbackBuffers(int width, int height) {
+        releasePixelReadbackBuffers();
+        if (!OpenGlCompat.isPixelBufferReadbackSupported()) {
+            return;
+        }
+        try {
+            final long byteCount = (long) width * height * 4;
+            for (int i = 0; i < PBO_COUNT; i += 1) {
+                pboIds[i] = OpenGlCompat.genBuffer();
+                OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, pboIds[i]);
+                OpenGlCompat.bufferData(GL_PIXEL_PACK_BUFFER, byteCount, GL_STREAM_READ);
+            }
+            OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+            pboReadbackEnabled = true;
+        } catch (RuntimeException exception) {
+            disablePixelBufferReadback();
+        }
+    }
+
+    private static void disablePixelBufferReadback() {
+        try {
+            OpenGlCompat.bindBuffer(GL_PIXEL_PACK_BUFFER, 0);
+        } catch (RuntimeException ignored) {
+            // The pack buffer binding is best-effort during teardown.
+        }
+        releasePixelReadbackBuffers();
+    }
+
+    private static void releasePixelReadbackBuffers() {
+        for (int i = 0; i < PBO_COUNT; i += 1) {
+            if (pboIds[i] != 0) {
+                try {
+                    OpenGlCompat.deleteBuffer(pboIds[i]);
+                } catch (RuntimeException ignored) {
+                    // Deleting an already-lost buffer is harmless.
+                }
+                pboIds[i] = 0;
+            }
+        }
+        pboReadbackEnabled = false;
+        pboWriteIndex = 0;
+        pendingPboReadIndex = -1;
+    }
+
     private static void destroyResources() {
+        releasePixelReadbackBuffers();
         if (framebufferId != 0) {
             EXTFramebufferObject.glDeleteFramebuffersEXT(framebufferId);
             framebufferId = 0;

@@ -95,6 +95,7 @@ public final class RemixDynamicEntityCapture {
     private static final java.util.Map<ps, CachedModelPartMesh> signModelMeshCache = new java.util.IdentityHashMap<ps, CachedModelPartMesh>();
     private static java.nio.ByteBuffer textureReadBuffer = null;
     private static int cachedFontTextureId = -1;
+    private static float[] modelPartQuadScratch = new float[QUAD_STRIDE_FLOATS * 16];
 
     private static final class CachedModelPartMesh {
         private final float[] quadData;
@@ -1386,32 +1387,10 @@ public final class RemixDynamicEntityCapture {
             submitDynamicBoneTransform(boneIndex, modelToWorld);
             long setupEndNanos = System.nanoTime();
 
-            for (tz polygon : polygons) {
-                if (polygon == null || polygon.a == null || polygon.a.length != 4) {
-                    continue;
-                }
-
-                float[][] positions = new float[4][3];
-                float[][] texcoords = new float[4][2];
-                for (int vertexIndex = 0; vertexIndex < 4; vertexIndex++) {
-                    ib vertex = polygon.a[vertexIndex];
-                    if (vertex == null || vertex.a == null) {
-                        continue;
-                    }
-                    positions[vertexIndex][0] = (float) vertex.a.a * scale;
-                    positions[vertexIndex][1] = (float) vertex.a.b * scale;
-                    positions[vertexIndex][2] = (float) vertex.a.c * scale;
-                    texcoords[vertexIndex][0] = vertex.b;
-                    texcoords[vertexIndex][1] = vertex.c;
-                }
-
-                MinecraftRenderHooks.captureDynamicEntityQuad(
-                        positions[0][0], positions[0][1], positions[0][2], texcoords[0][0], texcoords[0][1],
-                        positions[1][0], positions[1][1], positions[1][2], texcoords[1][0], texcoords[1][1],
-                        positions[2][0], positions[2][1], positions[2][2], texcoords[2][0], texcoords[2][1],
-                        positions[3][0], positions[3][1], positions[3][2], texcoords[3][0], texcoords[3][1],
-                        colorRgba,
-                        boneIndex);
+            int quadCount = packModelPartQuads(polygons, scale);
+            if (quadCount > 0) {
+                MinecraftRenderHooks.captureDynamicEntityQuadBatch(
+                        modelPartQuadScratch, quadCount, colorRgba, boneIndex);
             }
             long quadEmitEndNanos = System.nanoTime();
 
@@ -1424,6 +1403,40 @@ public final class RemixDynamicEntityCapture {
         } catch (RuntimeException exception) {
             handleHookFailure(exception);
         }
+    }
+
+    /**
+     * Packs the renderable quads of an animated model part into the reusable
+     * {@link #modelPartQuadScratch} buffer as interleaved 20-float quads
+     * (4 vertices x [x, y, z, u, v]) for a single batched capture call.
+     *
+     * @return the number of quads written to the scratch buffer.
+     */
+    private static int packModelPartQuads(tz[] polygons, float scale) {
+        int requiredFloats = polygons.length * QUAD_STRIDE_FLOATS;
+        if (modelPartQuadScratch.length < requiredFloats) {
+            modelPartQuadScratch = new float[requiredFloats];
+        }
+
+        int quadCount = 0;
+        for (tz polygon : polygons) {
+            if (!isRenderableQuad(polygon)) {
+                continue;
+            }
+
+            int base = quadCount * QUAD_STRIDE_FLOATS;
+            for (int vertexIndex = 0; vertexIndex < QUAD_VERTEX_COUNT; vertexIndex++) {
+                ib vertex = polygon.a[vertexIndex];
+                int vertexBase = base + vertexIndex * 5;
+                modelPartQuadScratch[vertexBase] = (float) vertex.a.a * scale;
+                modelPartQuadScratch[vertexBase + 1] = (float) vertex.a.b * scale;
+                modelPartQuadScratch[vertexBase + 2] = (float) vertex.a.c * scale;
+                modelPartQuadScratch[vertexBase + 3] = vertex.b;
+                modelPartQuadScratch[vertexBase + 4] = vertex.c;
+            }
+            quadCount += 1;
+        }
+        return quadCount;
     }
 
     public static void onFirstPersonTessellatorDraw(

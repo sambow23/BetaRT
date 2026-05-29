@@ -23,6 +23,16 @@ public final class RemixChunkCapture {
     private static final int BACKLOG_RECOVERY_MIN_BUDGET = 4;
     private static final int BACKLOG_CRITICAL_MIN_BUDGET = 6;
     private static final int DIRTY_REGION_FULL_SCAN_BLOCK_THRESHOLD = 2048;
+    // Per-flush ceiling on blocks scanned. The section-count budget alone lets
+    // a flush of N full-section scans (4096 blocks each) stall present for tens
+    // of milliseconds; this caps the actual scan work so worst-case flush time
+    // stays bounded. The tiers mirror the section-count backlog tiers so a
+    // heavy backlog still drains aggressively. One section is always processed
+    // regardless, so the queue can never deadlock on an oversized section.
+    private static final int FULL_SECTION_BLOCK_COUNT = CHUNK_DIMENSION * CHUNK_DIMENSION * CHUNK_DIMENSION;
+    private static final int STEADY_RECAPTURE_BLOCKS_PER_PRESENT = FULL_SECTION_BLOCK_COUNT;
+    private static final int RECOVERY_RECAPTURE_BLOCKS_PER_PRESENT = FULL_SECTION_BLOCK_COUNT * 3;
+    private static final int CRITICAL_RECAPTURE_BLOCKS_PER_PRESENT = FULL_SECTION_BLOCK_COUNT * 6;
     private static final double NEIGHBOR_REFRESH_RECOVERY_DISTANCE_SQ = 96.0 * 96.0;
     private static final double NEIGHBOR_REFRESH_CRITICAL_DISTANCE_SQ = 64.0 * 64.0;
     private static final long TARGET_RECAPTURE_FLUSH_NANOS = 4_500_000L;
@@ -703,6 +713,16 @@ public final class RemixChunkCapture {
         return Math.min(queueDepthBefore, effectiveBudget);
     }
 
+    private static int effectiveScanBlockBudget(int queueDepthBefore) {
+        if (queueDepthBefore >= BACKLOG_CRITICAL_QUEUE_DEPTH) {
+            return CRITICAL_RECAPTURE_BLOCKS_PER_PRESENT;
+        }
+        if (queueDepthBefore >= BACKLOG_RECOVERY_QUEUE_DEPTH) {
+            return RECOVERY_RECAPTURE_BLOCKS_PER_PRESENT;
+        }
+        return STEADY_RECAPTURE_BLOCKS_PER_PRESENT;
+    }
+
     private static void tuneRecaptureBudget(long flushDurationNanos, int queueDepthBefore, int sectionsRecaptured) {
         if (sectionsRecaptured <= 0) {
             return;
@@ -837,9 +857,20 @@ public final class RemixChunkCapture {
         int sectionsFullScan = 0;
         int sectionsPartialScan = 0;
         int sectionScanBlocks = 0;
+        int scanBlockBudget = effectiveScanBlockBudget(queueDepthBefore);
 
         for (DirtyChunkSection selectedSection : sectionsToRecapture) {
             if (MinecraftRenderHooks.isChunkBuildCaptureActive()) {
+                break;
+            }
+
+            // Bound worst-case flush time by total blocks scanned, not just
+            // section count. Always process the first section so an oversized
+            // region can't stall the queue; defer the rest of this flush once
+            // the cumulative scan work would exceed the per-flush ceiling.
+            boolean fullSectionScan = shouldUseFullSectionScan(selectedSection);
+            int estimatedScanBlocks = effectiveSectionScanBlockCount(selectedSection, fullSectionScan);
+            if (sectionsRecaptured > 0 && sectionScanBlocks + estimatedScanBlocks > scanBlockBudget) {
                 break;
             }
 
@@ -853,7 +884,6 @@ public final class RemixChunkCapture {
 
             long sectionStartNanos = System.nanoTime();
             boolean allowNeighborRefresh = shouldScheduleNeighborRefresh(section, queueDepthBefore);
-            boolean fullSectionScan = shouldUseFullSectionScan(section);
             if (!recaptureChunkSection(attachedWorld, section, allowNeighborRefresh)) {
                 synchronized (PENDING_RECAPTURE_SECTIONS) {
                     PENDING_RECAPTURE_SECTIONS.put(section, section);
@@ -893,6 +923,7 @@ public final class RemixChunkCapture {
     tuneRecaptureBudget(lastFlushDurationNanos, queueDepthBefore, sectionsRecaptured);
         HookProfiler.recordCount("chunkRecapture.queueDepth", queueDepthBefore);
     HookProfiler.recordCount("chunkRecapture.sectionBudget", sectionsBudget);
+        HookProfiler.recordCount("chunkRecapture.scanBlockBudget", scanBlockBudget);
         HookProfiler.recordCount("chunkRecapture.sectionsSelected", sectionsToRecapture.size());
         HookProfiler.recordCount("chunkRecapture.sectionsFlushed", sectionsRecaptured);
         HookProfiler.recordCount("chunkRecapture.sectionsFullScan", sectionsFullScan);

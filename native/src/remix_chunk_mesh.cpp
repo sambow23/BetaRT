@@ -27,6 +27,16 @@ std::uint64_t toNanoseconds(std::chrono::steady_clock::duration duration) {
   return static_cast<std::uint64_t>(std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count());
 }
 
+// Per-present ceiling on deferred neighbor mesh rebuilds. The section-scan
+// budget on the Java side bounds primary recapture work, but each rebuilt
+// section schedules up to six neighbor refreshes; draining the entire pending
+// set in one present can still stall the present thread. Cap the rebuilds per
+// flush and carry leftovers to the next frame. The budget escalates once the
+// pending set grows past a backlog threshold so reveals still settle promptly.
+constexpr std::size_t kSteadyNeighborRefreshBudget = 8;
+constexpr std::size_t kBacklogNeighborRefreshBudget = 24;
+constexpr std::size_t kNeighborRefreshBacklogThreshold = 64;
+
 }  // namespace
 
 bool RemixRenderer::beginChunkBuild(
@@ -1229,27 +1239,49 @@ void RemixRenderer::flushChunkNeighborRefreshes() {
   }
   MCRTX_TRACY_VALUE(pendingNeighborRefresh_.size());
 
+  const std::size_t rebuildBudget = pendingNeighborRefresh_.size() >= kNeighborRefreshBacklogThreshold
+      ? kBacklogNeighborRefreshBudget
+      : kSteadyNeighborRefreshBudget;
+
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::flushChunkNeighborRefreshes.iterateNeighbors");
-    for (const ChunkKey& neighborKey : pendingNeighborRefresh_) {
+    std::size_t rebuilds = 0;
+    for (auto it = pendingNeighborRefresh_.begin(); it != pendingNeighborRefresh_.end();) {
+      const ChunkKey neighborKey = *it;
+
+      // Entries that need no rebuild cost nothing; drop them regardless of the
+      // rebuild budget so the pending set drains and recentlyRebuiltChunks_ can
+      // be cleared once real work is done.
       if (recentlyRebuiltChunks_.find(neighborKey) != recentlyRebuiltChunks_.end()) {
+        it = pendingNeighborRefresh_.erase(it);
         continue;
       }
       const auto neighborIt = chunkMeshes_.find(neighborKey);
-      if (neighborIt == chunkMeshes_.end()) {
+      if (neighborIt == chunkMeshes_.end()
+          || !neighborIt->second.hasOccupancy
+          || neighborIt->second.blockCount == 0) {
+        it = pendingNeighborRefresh_.erase(it);
         continue;
       }
-      if (!neighborIt->second.hasOccupancy || neighborIt->second.blockCount == 0) {
-        continue;
+
+      // A genuine rebuild. Stop once the per-present budget is spent and leave
+      // the remaining neighbors queued for the next frame.
+      if (rebuilds >= rebuildBudget) {
+        break;
       }
       if (!rebuildChunkMeshFromData(neighborKey, neighborIt->second, true)) {
         break;
       }
+      ++rebuilds;
+      it = pendingNeighborRefresh_.erase(it);
     }
   }
 
-  pendingNeighborRefresh_.clear();
-  recentlyRebuiltChunks_.clear();
+  // Preserve the dedup set across frames while neighbors remain queued so a
+  // carried-over refresh doesn't redundantly rebuild an already-fresh mesh.
+  if (pendingNeighborRefresh_.empty()) {
+    recentlyRebuiltChunks_.clear();
+  }
 }
 
 void RemixRenderer::refreshNeighborChunkMeshes(const ChunkKey& chunkKey) {
