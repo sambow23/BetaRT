@@ -19,11 +19,12 @@ public final class McrtxOptionsScreen extends da {
     private static final int DYNAMIC_ENTITY_RENDERING_BUTTON_ID = 13;
     private static final int PAINTING_VANILLA_SUPPRESSION_BUTTON_ID = 14;
     private static final int MOVING_PISTON_VANILLA_SUPPRESSION_BUTTON_ID = 15;
-    private static final int SIGN_VANILLA_SUPPRESSION_BUTTON_ID = 16;
+    private static final int WORLD_RASTER_VANILLA_SUPPRESSION_BUTTON_ID = 16;
     private static final int LIVING_ENTITY_RENDERING_BUTTON_ID = 17;
     private static final int ITEM_ENTITY_RENDERING_BUTTON_ID = 18;
     private static final int SIGN_CAPTURE_BUTTON_ID = 19;
     private static final int SIGN_TEXT_CAPTURE_BUTTON_ID = 20;
+    private static final int SIGN_VANILLA_SUPPRESSION_BUTTON_ID = 21;
     private static final int DONE_BUTTON_ID = 200;
 
     private final da parent;
@@ -99,23 +100,30 @@ public final class McrtxOptionsScreen extends da {
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getMovingPistonVanillaSuppressionButtonLabel()));
         this.e.add(new ke(
-            SIGN_CAPTURE_BUTTON_ID,
+            WORLD_RASTER_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
             getTenthButtonRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT,
+            MinecraftRemixHooks.getWorldRasterVanillaSuppressionButtonLabel()));
+        this.e.add(new ke(
+            SIGN_CAPTURE_BUTTON_ID,
+            getCenteredFullWidthControlX(),
+            getEleventhButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignCaptureButtonLabel()));
         this.e.add(new ke(
             SIGN_TEXT_CAPTURE_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getEleventhButtonRowY(),
+            getTwelfthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignTextCaptureButtonLabel()));
         this.e.add(new ke(
             SIGN_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getTwelfthButtonRowY(),
+            getThirteenthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignVanillaSuppressionButtonLabel()));
@@ -208,6 +216,12 @@ public final class McrtxOptionsScreen extends da {
 
         if (button.f == MOVING_PISTON_VANILLA_SUPPRESSION_BUTTON_ID) {
             MinecraftRemixHooks.setMovingPistonVanillaSuppressionEnabled(!MinecraftRemixHooks.isMovingPistonVanillaSuppressionEnabled());
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == WORLD_RASTER_VANILLA_SUPPRESSION_BUTTON_ID) {
+            MinecraftRemixHooks.setWorldRasterVanillaSuppressionEnabled(!MinecraftRemixHooks.isWorldRasterVanillaSuppressionEnabled());
             refreshButtons();
             return;
         }
@@ -313,6 +327,11 @@ public final class McrtxOptionsScreen extends da {
         ke movingPistonVanillaSuppressionButton = findButton(MOVING_PISTON_VANILLA_SUPPRESSION_BUTTON_ID);
         if (movingPistonVanillaSuppressionButton != null) {
             movingPistonVanillaSuppressionButton.e = MinecraftRemixHooks.getMovingPistonVanillaSuppressionButtonLabel();
+        }
+
+        ke worldRasterVanillaSuppressionButton = findButton(WORLD_RASTER_VANILLA_SUPPRESSION_BUTTON_ID);
+        if (worldRasterVanillaSuppressionButton != null) {
+            worldRasterVanillaSuppressionButton.e = MinecraftRemixHooks.getWorldRasterVanillaSuppressionButtonLabel();
         }
 
         ke signCaptureButton = findButton(SIGN_CAPTURE_BUTTON_ID);
@@ -427,7 +446,11 @@ public final class McrtxOptionsScreen extends da {
         return getEleventhButtonRowY() + 24;
     }
 
-    private int getBlockOutlineIntensitySliderRowY() {
+    private int getThirteenthButtonRowY() {
         return getTwelfthButtonRowY() + 24;
+    }
+
+    private int getBlockOutlineIntensitySliderRowY() {
+        return getThirteenthButtonRowY() + 24;
     }
 }

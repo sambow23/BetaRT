@@ -1146,6 +1146,18 @@ public final class RemixDynamicEntityCapture {
         nextDynamicBoneIndex = 0;
     }
 
+    public static boolean isFirstPersonActive() {
+        return firstPersonActive;
+    }
+
+    public static boolean shouldSuppressVanillaTessellatorDraw() {
+        return !activeCaptureTexture().isEmpty();
+    }
+
+    public static boolean shouldSuppressVanillaModelPartDraw() {
+        return !activeCaptureTexture().isEmpty();
+    }
+
     public static void setPlayerShadowsEnabled(boolean enabled) {
         playerShadowsEnabled = enabled;
         if (!enabled) {
@@ -1338,24 +1350,24 @@ public final class RemixDynamicEntityCapture {
         MinecraftRenderHooks.setDynamicEntityTexture(resolvedTexture);
     }
 
-    public static void onModelPartRender(tz[] polygons, float scale) {
+    public static boolean onModelPartRender(tz[] polygons, float scale) {
         String activeTexture = activeCaptureTexture();
         if (activeTexture.isEmpty() || polygons == null || polygons.length == 0) {
-            return;
+            return false;
         }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
-            return;
+            return false;
         }
         try {
             long renderStartNanos = System.nanoTime();
             float[] modelView = captureModelViewMatrix();
             if (modelView == null) {
-                return;
+                return false;
             }
 
             float[] color = captureCurrentColor();
             if (color == null) {
-                return;
+                return false;
             }
             long stateReadEndNanos = System.nanoTime();
 
@@ -1382,7 +1394,7 @@ public final class RemixDynamicEntityCapture {
             int colorRgba = ColorMath.packColor(capturedColor[0], capturedColor[1], capturedColor[2], capturedColor[3]);
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {
-                return;
+                return false;
             }
             submitDynamicBoneTransform(boneIndex, modelToWorld);
             long setupEndNanos = System.nanoTime();
@@ -1400,8 +1412,10 @@ public final class RemixDynamicEntityCapture {
                     setupEndNanos - stateReadEndNanos);
             HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onModelPartRender.emitQuads",
                     quadEmitEndNanos - setupEndNanos);
+                return quadCount > 0;
         } catch (RuntimeException exception) {
             handleHookFailure(exception);
+                return false;
         }
     }
 

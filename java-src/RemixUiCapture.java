@@ -352,23 +352,23 @@ public final class RemixUiCapture {
      * <p>Invoked from the model-part hook only while {@link #isActive()} (the
      * GUI phase); in-world entity rendering keeps its existing world-space path.
      */
-    public static void onModelPart(tz[] polygons, float scale) {
+    public static boolean onModelPart(tz[] polygons, float scale) {
         if (!active || polygons == null || polygons.length == 0) {
-            return;
+            return false;
         }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
-            return;
+            return false;
         }
         int glTextureId = GL11.glGetInteger(GL_TEXTURE_BINDING_2D);
         if (glTextureId <= 0 || !ensureTextureUploaded(glTextureId)) {
-            return;
+            return false;
         }
         long textureId = glTextureId & 0xFFFFFFFFL;
 
         float[] modelView = captureMatrix(GL_MODELVIEW_MATRIX);
         float[] projection = captureMatrix(GL_PROJECTION_MATRIX);
         if (modelView == null || projection == null) {
-            return;
+            return false;
         }
         float[] mvp = MatrixMath.multiplyColumnMajor(projection, modelView);
         int baseColor = captureCurrentColorPacked();
@@ -406,6 +406,7 @@ public final class RemixUiCapture {
         }
 
         appendCommand(textureId, quadCount, UI_DRAW_FLAG_DEPTH_TEST);
+        return quadCount > 0;
     }
 
     public static void end() {

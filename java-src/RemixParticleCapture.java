@@ -31,10 +31,10 @@ public final class RemixParticleCapture {
         MinecraftRenderHooks.beginParticleFrame();
     }
 
-    public static void onParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+    public static boolean captureParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
         int textureKind = validateParticleTextureKind(particle);
         if (textureKind == WEATHER_TEXTURE_KIND_NONE) {
-            return;
+            return false;
         }
 
         float minU = (float) (particle.b % 16) / PARTICLE_TEXTURE_GRID_SIZE;
@@ -58,12 +58,13 @@ public final class RemixParticleCapture {
                 minU,
                 maxV,
                 textureKind);
+        return true;
     }
 
-    public static void onAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+    public static boolean captureAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
         int textureKind = validateParticleTextureKind(particle);
         if (textureKind == WEATHER_TEXTURE_KIND_NONE) {
-            return;
+            return false;
         }
 
         float minU = ((float) (particle.b % 16) + particle.c / ANIMATED_PARTICLE_FRAME_DIVISOR) / PARTICLE_TEXTURE_GRID_SIZE;
@@ -87,6 +88,7 @@ public final class RemixParticleCapture {
                 maxU,
                 maxV,
                 textureKind);
+            return true;
     }
 
     private static int validateParticleTextureKind(xw particle) {
@@ -162,6 +164,14 @@ public final class RemixParticleCapture {
 
     public static void onWeatherRenderEnd() {
         activeWeatherTextureKind = WEATHER_TEXTURE_KIND_NONE;
+    }
+
+    public static boolean isWeatherTessellatorCaptureActive() {
+        return activeWeatherTextureKind != WEATHER_TEXTURE_KIND_NONE;
+    }
+
+    public static boolean shouldSuppressVanillaTessellatorDraw() {
+        return activeWeatherTextureKind != WEATHER_TEXTURE_KIND_NONE;
     }
 
     public static void onTessellatorDraw(

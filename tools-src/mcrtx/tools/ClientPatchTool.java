@@ -57,6 +57,7 @@ public final class ClientPatchTool {
     private static final String SIGN_RENDERER_CLASS = "po";
     private static final String MOVING_PISTON_RENDERER_CLASS = "hy";
     private static final String FONT_RENDERER_CLASS = "sj";
+    private static final String GUI_INGAME_CLASS = "uq";
     private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
 
     private ClientPatchTool() {
@@ -105,10 +106,10 @@ public final class ClientPatchTool {
                 } else if (entryName.equals(TESSELLATOR_CLASS + ".class")) {
                     content = patchNw(content);
                 } else if (entryName.equals(PARTICLE_CLASS + ".class")) {
-                    content = patchParticle(content, "onParticleRender");
+                    content = patchParticle(content, "captureParticleRender");
                 } else if (entryName.equals(BLOCK_PARTICLE_CLASS + ".class")
                         || entryName.equals(ITEM_PARTICLE_CLASS + ".class")) {
-                    content = patchParticle(content, "onAnimatedParticleRender");
+                    content = patchParticle(content, "captureAnimatedParticleRender");
                 } else if (entryName.equals(PICKUP_PARTICLE_CLASS + ".class")) {
                     content = patchEm(content);
                 } else if (entryName.equals(OPTIONS_SCREEN_CLASS + ".class")) {
@@ -125,6 +126,8 @@ public final class ClientPatchTool {
                     content = patchHy(content);
                 } else if (entryName.equals(FONT_RENDERER_CLASS + ".class")) {
                     content = patchSj(content);
+                } else if (entryName.equals(GUI_INGAME_CLASS + ".class")) {
+                    content = patchUq(content);
                 }
 
                 if (entryName.endsWith(".class")) {
@@ -179,21 +182,49 @@ public final class ClientPatchTool {
     private static byte[] patchDk(byte[] content) {
         ClassNode classNode = readClass(content);
         boolean patchedChunkBuild = false;
+        boolean patchedChunkDisplayListLookup = false;
         boolean patchedChunkUnload = false;
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("()V")) {
                 patchDkChunkBuild(method);
                 patchedChunkBuild = true;
+            } else if (method.name.equals("a") && method.desc.equals("(I)I")) {
+                patchDkChunkDisplayListLookup(method);
+                patchedChunkDisplayListLookup = true;
             } else if (method.name.equals("c") && method.desc.equals("()V")) {
                 patchDkChunkUnload(method);
                 patchedChunkUnload = true;
             }
+        }
+        if (!patchedChunkDisplayListLookup) {
+            throw new IllegalStateException(
+                "ClientPatchTool: could not find dk.a(I)I - display-list suppression hook not injected");
         }
         if (!patchedChunkUnload) {
             throw new IllegalStateException(
                 "ClientPatchTool: could not find dk.c()V — chunk unload hook not injected");
         }
         return writeClass(classNode);
+    }
+
+    private static void patchDkChunkDisplayListLookup(MethodNode method) {
+        if (hasHelperCall(method, "shouldSuppressWorldRasterDisplayLists", "()Z")) {
+            return;
+        }
+
+        LabelNode skip = new LabelNode();
+        InsnList hook = new InsnList();
+        hook.add(new MethodInsnNode(
+            Opcodes.INVOKESTATIC,
+            REMIX_HELPER_CLASS,
+            "shouldSuppressWorldRasterDisplayLists",
+            "()Z",
+            false));
+        hook.add(new JumpInsnNode(Opcodes.IFEQ, skip));
+        hook.add(new InsnNode(Opcodes.ICONST_M1));
+        hook.add(new InsnNode(Opcodes.IRETURN));
+        hook.add(skip);
+        method.instructions.insertBefore(method.instructions.getFirst(), hook);
     }
 
     private static void patchDkChunkUnload(MethodNode method) {
@@ -228,6 +259,8 @@ public final class ClientPatchTool {
                 if (!hasHelperCall(method, "clearWorldScene", "()V")) {
                     method.instructions.insertBefore(method.instructions.getFirst(), clearWorldSceneCall());
                 }
+            } else if (method.name.equals("a") && method.desc.equals("(Lls;ID)I")) {
+                patchWorldRasterRender(method);
             } else if (method.name.equals("a") && method.desc.equals("(Lbt;Lyn;F)V")) {
                 patchWorldEntityVisibility(method);
             } else if (method.name.equals("b") && method.desc.equals("(F)V")) {
@@ -347,12 +380,23 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchUq(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(FZII)V")) {
+                patchGuiIngameOverlay(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchParticle(byte[] content, String helperMethodName) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lnw;FFFFFF)V")) {
-                if (!hasHelperCall(method, helperMethodName, "(Lxw;FFFFFF)V")) {
-                    method.instructions.insertBefore(method.instructions.getFirst(), particleRenderCall(helperMethodName));
+                if (!hasHelperCall(method, helperMethodName, "(Lxw;FFFFFF)Z")) {
+                    LabelNode continueLabel = new LabelNode();
+                    method.instructions.insertBefore(method.instructions.getFirst(), particleRenderReplacementCall(helperMethodName, continueLabel));
                 }
             }
         }
@@ -505,7 +549,13 @@ public final class ClientPatchTool {
             return;
         }
 
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+        // nw.a() emits glDrawArrays from two branches (quad-to-triangle and the
+        // direct-mode path). InsnList.set() clears the replaced node's next pointer, so
+        // the successor must be cached before the replacement or the second branch would
+        // be left uncaptured.
+        AbstractInsnNode node = method.instructions.getFirst();
+        while (node != null) {
+            AbstractInsnNode next = node.getNext();
             if (isStaticCall(node, GL11_CLASS, "glDrawArrays", "(III)V")) {
                 method.instructions.insertBefore(node, firstPersonTessellatorDrawCall());
                 method.instructions.set(
@@ -517,6 +567,7 @@ public final class ClientPatchTool {
                                 "(III)V",
                                 false));
             }
+            node = next;
         }
     }
 
@@ -739,6 +790,22 @@ public final class ClientPatchTool {
         method.instructions.insertBefore(method.instructions.getFirst(), cloudRenderCall());
     }
 
+    private static void patchWorldRasterRender(MethodNode method) {
+        if (hasHelperCall(method, "onWorldRasterRenderStart", "()V")) {
+            return;
+        }
+
+        method.instructions.insertBefore(method.instructions.getFirst(), staticHelperCall("onWorldRasterRenderStart", "()V"));
+
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.IRETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onWorldRasterRenderEnd", "()V"));
+            }
+            node = next;
+        }
+    }
+
     private static void patchWorldEntityVisibility(MethodNode method) {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
@@ -790,9 +857,37 @@ public final class ClientPatchTool {
             return;
         }
 
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+        // ps.a(F) contains three glCallList sites (rotation, translation, and bare
+        // branches). InsnList.set() clears the replaced node's next pointer, so the
+        // successor must be cached before the replacement or the loop would stop after
+        // the first site and leave the no-transform branches uncaptured.
+        AbstractInsnNode node = method.instructions.getFirst();
+        while (node != null) {
+            AbstractInsnNode next = node.getNext();
             if (isStaticCall(node, GL11_CLASS, "glCallList", "(I)V")) {
                 method.instructions.insertBefore(node, modelPartRenderCall());
+                method.instructions.set(
+                        node,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                REMIX_HELPER_CLASS,
+                                "drawModelPartCallList",
+                                "(I)V",
+                                false));
+            }
+            node = next;
+        }
+    }
+
+    private static void patchGuiIngameOverlay(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKESTATIC
+                    && methodInsnNode.owner.equals(MINECRAFT_CLASS)
+                    && methodInsnNode.name.equals("u")
+                    && methodInsnNode.desc.equals("()Z")) {
+                method.instructions.set(node, new InsnNode(Opcodes.ICONST_0));
+                return;
             }
         }
     }
@@ -1073,11 +1168,12 @@ public final class ClientPatchTool {
     }
 
     private static void patchFontRender(MethodNode method) {
-        if (hasHelperCall(method, "onSignTextRender", "(Ljava/lang/String;IIIZ[II)V")) {
+        if (hasHelperCall(method, "captureFontStringAndMaybeSuppress", "(Ljava/lang/String;IIIZ[II)Z")) {
             return;
         }
 
-        method.instructions.insertBefore(method.instructions.getFirst(), signTextRenderCall());
+        LabelNode continueLabel = new LabelNode();
+        method.instructions.insertBefore(method.instructions.getFirst(), fontRenderReplacementCall(continueLabel));
     }
 
     private static void patchCoBuild(MethodNode method) {
@@ -1498,7 +1594,7 @@ public final class ClientPatchTool {
         return instructions;
     }
 
-    private static InsnList particleRenderCall(String helperMethodName) {
+    private static InsnList particleRenderReplacementCall(String helperMethodName, LabelNode continueLabel) {
         InsnList instructions = new InsnList();
         instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
         instructions.add(new VarInsnNode(Opcodes.FLOAD, 2));
@@ -1511,8 +1607,34 @@ public final class ClientPatchTool {
                 Opcodes.INVOKESTATIC,
                 REMIX_HELPER_CLASS,
             helperMethodName,
-                "(Lxw;FFFFFF)V",
+                "(Lxw;FFFFFF)Z",
                 false));
+        instructions.add(new JumpInsnNode(Opcodes.IFEQ, continueLabel));
+        instructions.add(new InsnNode(Opcodes.RETURN));
+        instructions.add(continueLabel);
+        return instructions;
+    }
+
+    private static InsnList fontRenderReplacementCall(LabelNode continueLabel) {
+        InsnList instructions = new InsnList();
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 1));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 3));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        instructions.add(new VarInsnNode(Opcodes.ILOAD, 5));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FONT_RENDERER_CLASS, "b", "[I"));
+        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, FONT_RENDERER_CLASS, "a", "I"));
+        instructions.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                REMIX_HELPER_CLASS,
+                "captureFontStringAndMaybeSuppress",
+                "(Ljava/lang/String;IIIZ[II)Z",
+                false));
+        instructions.add(new JumpInsnNode(Opcodes.IFEQ, continueLabel));
+        instructions.add(new InsnNode(Opcodes.RETURN));
+        instructions.add(continueLabel);
         return instructions;
     }
 

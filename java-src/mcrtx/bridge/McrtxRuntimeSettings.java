@@ -17,6 +17,7 @@ public final class McrtxRuntimeSettings {
     public static final String ITEM_ENTITY_RENDERING_ENABLED_KEY = "MCRTX_ITEM_ENTITY_RENDERING_ENABLED";
     public static final String PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_PAINTING_VANILLA_SUPPRESSION_ENABLED";
     public static final String MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED";
+    public static final String WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED";
     public static final String SIGN_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_CAPTURE_ENABLED";
     public static final String SIGN_TEXT_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_TEXT_CAPTURE_ENABLED";
     public static final String SIGN_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_SIGN_VANILLA_SUPPRESSION_ENABLED";
@@ -95,6 +96,7 @@ public final class McrtxRuntimeSettings {
     private static boolean itemEntityRenderingEnabled = true;
     private static boolean paintingVanillaSuppressionEnabled;
     private static boolean movingPistonVanillaSuppressionEnabled;
+    private static boolean worldRasterVanillaSuppressionEnabled;
     private static boolean signCaptureEnabled = true;
     private static boolean signTextCaptureEnabled = true;
     private static boolean signVanillaSuppressionEnabled;
@@ -160,6 +162,13 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return movingPistonVanillaSuppressionEnabled;
+        }
+    }
+
+    public static boolean isWorldRasterVanillaSuppressionEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return worldRasterVanillaSuppressionEnabled;
         }
     }
 
@@ -278,6 +287,17 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             movingPistonVanillaSuppressionEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setWorldRasterVanillaSuppressionEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (worldRasterVanillaSuppressionEnabled == enabled) {
+                return;
+            }
+            worldRasterVanillaSuppressionEnabled = enabled;
             saveLocked();
         }
     }
@@ -540,6 +560,7 @@ public final class McrtxRuntimeSettings {
         itemEntityRenderingEnabled = readBooleanSetting(fileValues, ITEM_ENTITY_RENDERING_ENABLED_KEY, true);
         paintingVanillaSuppressionEnabled = readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         movingPistonVanillaSuppressionEnabled = readBooleanSetting(fileValues, MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        worldRasterVanillaSuppressionEnabled = readBooleanSetting(fileValues, WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, false);
         signCaptureEnabled = readBooleanSetting(fileValues, SIGN_CAPTURE_ENABLED_KEY, true);
         signTextCaptureEnabled = readBooleanSetting(fileValues, SIGN_TEXT_CAPTURE_ENABLED_KEY, true);
         signVanillaSuppressionEnabled = readBooleanSetting(fileValues, SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, false);
@@ -875,6 +896,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(ITEM_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(itemEntityRenderingEnabled));
         fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(paintingVanillaSuppressionEnabled));
         fileValues.put(MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(movingPistonVanillaSuppressionEnabled));
+        fileValues.put(WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(worldRasterVanillaSuppressionEnabled));
         fileValues.put(SIGN_CAPTURE_ENABLED_KEY, formatBoolean(signCaptureEnabled));
         fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, formatBoolean(signTextCaptureEnabled));
         fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(signVanillaSuppressionEnabled));

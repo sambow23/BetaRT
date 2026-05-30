@@ -33,6 +33,8 @@ public final class MinecraftRemixHooks {
     private static boolean loggedDisplayReset;
     private static boolean loggedPresent;
     private static boolean loggedPlatformBackend;
+    private static boolean suppressNextModelPartCallList;
+    private static boolean worldRasterRenderActive;
     private static boolean remixUiOpen;
     private static boolean remixUiHotkeyHeld;
     private static boolean remixUiHotkeyLocked;
@@ -372,18 +374,36 @@ public final class MinecraftRemixHooks {
     public static void onParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
         long __perf = HookProfiler.begin();
         try {
-            RemixParticleCapture.onParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+            RemixParticleCapture.captureParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
         } finally {
             HookProfiler.endHook("hook.onParticleRender", __perf);
+        }
+    }
+
+    public static boolean captureParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+        long __perf = HookProfiler.begin();
+        try {
+            return RemixParticleCapture.captureParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+        } finally {
+            HookProfiler.endHook("hook.captureParticleRender", __perf);
         }
     }
 
     public static void onAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
         long __perf = HookProfiler.begin();
         try {
-            RemixParticleCapture.onAnimatedParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+            RemixParticleCapture.captureAnimatedParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
         } finally {
             HookProfiler.endHook("hook.onAnimatedParticleRender", __perf);
+        }
+    }
+
+    public static boolean captureAnimatedParticleRender(xw particle, float partialTicks, float f3, float f4, float f5, float f6, float f7) {
+        long __perf = HookProfiler.begin();
+        try {
+            return RemixParticleCapture.captureAnimatedParticleRender(particle, partialTicks, f3, f4, f5, f6, f7);
+        } finally {
+            HookProfiler.endHook("hook.captureAnimatedParticleRender", __perf);
         }
     }
 
@@ -519,7 +539,56 @@ public final class MinecraftRemixHooks {
                 && RemixDynamicEntityCapture.shouldSuppressMovingPistonVanillaDraw()) {
             return;
         }
+        if (shouldSuppressWorldRasterVanillaDraw()) {
+            return;
+        }
+        if (shouldSuppressCapturedVanillaTessellatorDraw()) {
+            return;
+        }
         GL11.glDrawArrays(mode, first, count);
+    }
+
+    public static void drawModelPartCallList(int list) {
+        boolean suppress = suppressNextModelPartCallList;
+        suppressNextModelPartCallList = false;
+        if (suppress) {
+            return;
+        }
+        GL11.glCallList(list);
+    }
+
+    public static void onWorldRasterRenderStart() {
+        worldRasterRenderActive = true;
+    }
+
+    public static void onWorldRasterRenderEnd() {
+        worldRasterRenderActive = false;
+    }
+
+    public static boolean shouldSuppressWorldRasterDisplayLists() {
+        return shouldSuppressWorldRasterVanillaDraw();
+    }
+
+    public static boolean captureFontStringAndMaybeSuppress(
+            String text,
+            int x,
+            int y,
+            int colorRgba,
+            boolean shadow,
+            int[] characterWidths,
+            int fontTextureGlId) {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixDynamicEntityCapture.onSignTextRender(text, x, y, colorRgba, shadow, characterWidths);
+            RemixUiCapture.onFontString(text, x, y, colorRgba, shadow, characterWidths, fontTextureGlId);
+            return RemixUiCapture.isActive()
+                    && text != null
+                    && !text.isEmpty()
+                    && characterWidths != null
+                    && fontTextureGlId > 0;
+        } finally {
+            HookProfiler.endHook("hook.captureFontStringAndMaybeSuppress", __perf);
+        }
     }
 
     public static boolean tryReplaceSignModelRender(rf signModel) {
@@ -617,13 +686,15 @@ public final class MinecraftRemixHooks {
     public static void onModelPartRender(tz[] polygons, float scale) {
         long __perf = HookProfiler.begin();
         try {
+            boolean captured;
             if (RemixUiCapture.isActive()) {
                 // GUI phase: 3D model parts (inventory player preview) render
                 // into the screen-space UI pass, not the world.
-                RemixUiCapture.onModelPart(polygons, scale);
+                captured = RemixUiCapture.onModelPart(polygons, scale);
             } else {
-                RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
+                captured = RemixDynamicEntityCapture.onModelPartRender(polygons, scale);
             }
+            suppressNextModelPartCallList = captured;
         } finally {
             HookProfiler.endHook("hook.onModelPartRender", __perf);
         }
@@ -820,6 +891,10 @@ public final class MinecraftRemixHooks {
         return "Replace Moving Pistons: " + formatToggleState(isMovingPistonVanillaSuppressionEnabled());
     }
 
+    public static String getWorldRasterVanillaSuppressionButtonLabel() {
+        return "Suppress World Raster: " + formatToggleState(isWorldRasterVanillaSuppressionEnabled());
+    }
+
     public static String getSignCaptureButtonLabel() {
         return "Capture Signs: " + formatToggleState(isSignCaptureEnabled());
     }
@@ -903,6 +978,10 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isMovingPistonVanillaSuppressionEnabled();
     }
 
+    public static boolean isWorldRasterVanillaSuppressionEnabled() {
+        return McrtxRuntimeSettings.isWorldRasterVanillaSuppressionEnabled();
+    }
+
     public static boolean isSignCaptureEnabled() {
         return McrtxRuntimeSettings.isSignCaptureEnabled();
     }
@@ -921,6 +1000,10 @@ public final class MinecraftRemixHooks {
 
     public static void setMovingPistonVanillaSuppressionEnabled(boolean enabled) {
         McrtxRuntimeSettings.setMovingPistonVanillaSuppressionEnabled(enabled);
+    }
+
+    public static void setWorldRasterVanillaSuppressionEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setWorldRasterVanillaSuppressionEnabled(enabled);
     }
 
     public static void setSignCaptureEnabled(boolean enabled) {
@@ -1092,6 +1175,20 @@ public final class MinecraftRemixHooks {
         perfTotalSectionsRecaptured = 0L;
         perfMaxSectionsRecaptured = 0;
         activeRenderMethodStartNanos = 0L;
+    }
+
+    private static boolean shouldSuppressWorldRasterVanillaDraw() {
+        return McrtxRuntimeSettings.isWorldRasterVanillaSuppressionEnabled()
+                && worldRasterRenderActive
+                && !RemixUiCapture.isActive()
+                && !RemixDynamicEntityCapture.isFirstPersonActive()
+                && !RemixParticleCapture.isWeatherTessellatorCaptureActive();
+    }
+
+    private static boolean shouldSuppressCapturedVanillaTessellatorDraw() {
+        return RemixUiCapture.isActive()
+                || RemixDynamicEntityCapture.shouldSuppressVanillaTessellatorDraw()
+                || RemixParticleCapture.shouldSuppressVanillaTessellatorDraw();
     }
 
     public static void onFrameRenderStart() {
