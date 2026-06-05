@@ -46,8 +46,19 @@ void logVerboseInput(const std::string& message) {
 }
 
 void syncNativeCursorVisibility(HWND mouseWindow, bool hidden) {
+  if (!hidden) {
+    while (ShowCursor(TRUE) < 0) { }
+  }
+
+  const int cursorCounterAfter = ShowCursor(FALSE);
+  ShowCursor(TRUE);  // restore counter to original value
+
   g_nativeMouseCursorHidden.store(hidden, std::memory_order_relaxed);
   SetCursor(hidden ? nullptr : LoadCursorW(nullptr, MAKEINTRESOURCEW(32512)));
+
+  logVerboseInput(std::string("syncNativeCursorVisibility hidden=") + (hidden ? "true" : "false")
+      + " ShowCursorCounter=" + std::to_string(cursorCounterAfter)
+      + " mouseWindow=0x" + std::to_string(reinterpret_cast<std::uintptr_t>(mouseWindow)));
 
   if (mouseWindow != nullptr && IsWindow(mouseWindow)) {
     SendMessageW(
@@ -396,6 +407,7 @@ void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
     SetForegroundWindow(outputHwnd_);
     SetActiveWindow(outputHwnd_);
     SetFocus(outputHwnd_);
+    syncNativeCursorVisibility(outputHwnd_, false);
     log("Remix overlay window input enabled");
     return;
   }
@@ -616,6 +628,10 @@ void RemixRenderer::releaseNativeMouseGrabLocked(HWND mouseWindow) {
     ClipCursor(nullptr);
   }
 
+  const int cursorCounter = ShowCursor(FALSE);
+  ShowCursor(TRUE);  // restore
+  logVerboseInput(std::string("releaseNativeMouseGrabLocked ShowCursorCounter=") + std::to_string(cursorCounter));
+
   syncNativeCursorVisibility(mouseWindow, false);
   nativeMouseGrabActive_ = false;
 }
@@ -627,6 +643,10 @@ bool RemixRenderer::applyNativeMouseGrabLocked(
   if (mouseWindow == nullptr || !IsWindow(mouseWindow)) {
     return false;
   }
+
+  const int cursorCounter = ShowCursor(FALSE);
+  ShowCursor(TRUE);  // restore
+  logVerboseInput(std::string("applyNativeMouseGrabLocked ShowCursorCounter=") + std::to_string(cursorCounter));
 
   const int clientWidth = std::max(1, static_cast<int>(clientRect.right - clientRect.left));
   const int clientHeight = std::max(1, static_cast<int>(clientRect.bottom - clientRect.top));
@@ -659,10 +679,13 @@ bool RemixRenderer::setNativeMouseGrabbed(bool grabbed) {
     return false;
   }
 
+  const int cursorCounter = ShowCursor(FALSE);
+  ShowCursor(TRUE);  // restore
   nativeMouseGrabbed_ = grabbed;
   g_nativeMouseWheelDelta.exchange(0, std::memory_order_relaxed);
   logVerboseInput(
       std::string("setGrabbed grabbed=") + (grabbed ? "true" : "false")
+      + " ShowCursorCounter=" + std::to_string(cursorCounter)
       + " mouseWindow=0x" + std::to_string(reinterpret_cast<std::uintptr_t>(mouseWindow)));
 
   if (!grabbed) {

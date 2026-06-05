@@ -172,11 +172,12 @@ public final class Mouse {
 
     public static void setGrabbed(boolean shouldGrab) {
         if (syncSuppressedState() && shouldGrab) {
+            debugLog("setGrabbed suppressed grabbed=" + shouldGrab);
             return;
         }
         boolean wasGrabbed = grabbed;
         grabbed = shouldGrab;
-        debugLog("setGrabbed grabbed=" + shouldGrab + " singleNative=" + Display.isSingleNativeWindowMode());
+        debugLog("setGrabbed grabbed=" + shouldGrab + " wasGrabbed=" + wasGrabbed + " singleNative=" + Display.isSingleNativeWindowMode());
         if (Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
             if (!shouldGrab && wasGrabbed && !hasNativeInputFocus()) {
                 restoreGrabOnFocus = true;
@@ -201,6 +202,7 @@ public final class Mouse {
             if (shouldGrab) {
                 Display.requestInputFocus();
             }
+            debugLog("setGrabbed GLFW cursor mode=" + (shouldGrab ? "DISABLED" : "NORMAL"));
             Display.bindings().setInputMode(
                     Display.windowHandle(),
                     GLFW_CURSOR,
@@ -352,11 +354,15 @@ public final class Mouse {
     private static boolean syncSuppressedState() {
         boolean suppress = MinecraftRenderHooks.isRemixUiInputActive();
         if (!suppress) {
+            if (remixUiInputSuppressed) {
+                debugLog("syncSuppressedState: suppression ended, grabbed=" + grabbed);
+            }
             remixUiInputSuppressed = false;
             return false;
         }
 
         if (!remixUiInputSuppressed) {
+            debugLog("syncSuppressedState: suppression starting, grabbed=" + grabbed + " singleNative=" + Display.isSingleNativeWindowMode());
             if (grabbed && Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
                 RemixBridgeNative.nSetNativeMouseGrabbed(false);
             } else if (grabbed) {
