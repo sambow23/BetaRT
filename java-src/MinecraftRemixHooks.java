@@ -599,6 +599,12 @@ public final class MinecraftRemixHooks {
     public static boolean tryReplaceSignModelRender(rf signModel) {
         long __perf = HookProfiler.begin();
         try {
+            if (RemixUiCapture.isActive()) {
+                // GUI phase (edit-sign screen): let the sign model parts render
+                // normally so they flow through the model-part hook into the
+                // screen-space UI pass instead of the off-screen world capture.
+                return false;
+            }
             boolean captured = RemixDynamicEntityCapture.captureSignModelRender(signModel);
             return captured && McrtxRuntimeSettings.isSignVanillaSuppressionEnabled();
         } finally {
