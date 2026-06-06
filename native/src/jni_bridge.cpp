@@ -958,6 +958,13 @@ JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetOutputWindowHeigh
   return static_cast<jint>(::mcrtx::detail::g_outputWindowClientHeight.load(std::memory_order_relaxed));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetOutputWindowFullscreen(
+    JNIEnv*, jclass, jboolean fullscreen) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetOutputWindowFullscreen");
+  return static_cast<jboolean>(fromJniBoolean(
+      RemixRenderer::instance().setOutputWindowFullscreen(fullscreen == JNI_TRUE)));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsVirtualKeyDown(
     JNIEnv*, jclass, jint virtualKey) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsVirtualKeyDown");

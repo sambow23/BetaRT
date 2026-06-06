@@ -304,6 +304,65 @@ void RemixRenderer::pumpOutputWindowMessages() {
   }
 }
 
+bool RemixRenderer::setOutputWindowFullscreen(bool fullscreen) {
+  if (outputHwnd_ == nullptr) {
+    return false;
+  }
+
+  if (fullscreen == outputWindowFullscreen_) {
+    return true;
+  }
+
+  if (fullscreen) {
+    outputWindowedStyle_ = GetWindowLongW(outputHwnd_, GWL_STYLE);
+    outputWindowedExStyle_ = GetWindowLongW(outputHwnd_, GWL_EXSTYLE);
+    GetWindowRect(outputHwnd_, &outputWindowedRect_);
+
+    MONITORINFO monitorInfo {sizeof(MONITORINFO)};
+    HMONITOR monitor = MonitorFromWindow(outputHwnd_, MONITOR_DEFAULTTONEAREST);
+    if (monitor == nullptr || !GetMonitorInfoW(monitor, &monitorInfo)) {
+      return false;
+    }
+
+    SetWindowLongW(
+        outputHwnd_,
+        GWL_STYLE,
+        outputWindowedStyle_ & ~(WS_CAPTION | WS_THICKFRAME | WS_MINIMIZEBOX | WS_MAXIMIZEBOX | WS_SYSMENU));
+    SetWindowLongW(
+        outputHwnd_,
+        GWL_EXSTYLE,
+        outputWindowedExStyle_ & ~(WS_EX_DLGMODALFRAME | WS_EX_WINDOWEDGE | WS_EX_CLIENTEDGE | WS_EX_STATICEDGE));
+
+    const RECT& monitorRect = monitorInfo.rcMonitor;
+    SetWindowPos(
+        outputHwnd_,
+        HWND_TOP,
+        monitorRect.left,
+        monitorRect.top,
+        monitorRect.right - monitorRect.left,
+        monitorRect.bottom - monitorRect.top,
+        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+    outputWindowFullscreen_ = true;
+  } else {
+    SetWindowLongW(outputHwnd_, GWL_STYLE, outputWindowedStyle_);
+    SetWindowLongW(outputHwnd_, GWL_EXSTYLE, outputWindowedExStyle_);
+
+    SetWindowPos(
+        outputHwnd_,
+        HWND_NOTOPMOST,
+        outputWindowedRect_.left,
+        outputWindowedRect_.top,
+        outputWindowedRect_.right - outputWindowedRect_.left,
+        outputWindowedRect_.bottom - outputWindowedRect_.top,
+        SWP_NOOWNERZORDER | SWP_FRAMECHANGED | SWP_SHOWWINDOW);
+
+    outputWindowFullscreen_ = false;
+  }
+
+  return true;
+}
+
 void RemixRenderer::updateOutputWindowSize() {
   if (outputHwnd_ == nullptr || sourceHwnd_ == nullptr) {
     return;

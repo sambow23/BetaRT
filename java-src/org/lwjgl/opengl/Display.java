@@ -179,6 +179,12 @@ public final class Display {
             if (!created) {
                 return;
             }
+            if (SINGLE_NATIVE_WINDOW_MODE) {
+                if (RemixBridgeNative.isAvailable()) {
+                    RemixBridgeNative.nSetOutputWindowFullscreen(shouldBeFullscreen);
+                }
+                return;
+            }
             try {
                 if (shouldBeFullscreen) {
                     DisplayMode mode = getDesktopDisplayMode();

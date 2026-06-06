@@ -342,6 +342,8 @@ public final class RemixBridgeNative {
 
     public static native int nGetOutputWindowHeight();
 
+    public static native boolean nSetOutputWindowFullscreen(boolean fullscreen);
+
     public static native boolean nIsVirtualKeyDown(int virtualKey);
 
     public static native boolean nPollNativeMouseState(int[] stateOut);

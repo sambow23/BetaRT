@@ -25,6 +25,7 @@ public final class MinecraftRemixHooks {
     private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
     private static final long REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS = 150_000_000L;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
+    private static final boolean SINGLE_NATIVE_WINDOW_MODE = detectSingleNativeWindowMode();
     private static final boolean VERBOSE_LOGGING = detectVerboseLoggingEnabled();
     private static final boolean VERBOSE_INPUT_LOGGING = detectVerboseInputLoggingEnabled();
     private static final boolean NATIVE_INPUT_BACKEND = detectNativeInputBackend();
@@ -125,7 +126,11 @@ public final class MinecraftRemixHooks {
             resetPerfTracking();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
-            MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
+            if (SINGLE_NATIVE_WINDOW_MODE) {
+                MinecraftRenderHooks.resize(width, height);
+            } else {
+                MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
+            }
             applySavedMcrtxSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayReset", __perf);
@@ -602,7 +607,8 @@ public final class MinecraftRemixHooks {
     }
 
     public static void renderSignText(sj fontRenderer, String text, int x, int y, int colorRgba) {
-        if (McrtxRuntimeSettings.isSignVanillaSuppressionEnabled()
+        if (!RemixUiCapture.isActive()
+                && McrtxRuntimeSettings.isSignVanillaSuppressionEnabled()
                 && McrtxRuntimeSettings.isSignTextCaptureEnabled()
                 && RemixDynamicEntityCapture.captureSignTextRender(fontRenderer, text, x, y, colorRgba)) {
             return;
@@ -1306,6 +1312,12 @@ public final class MinecraftRemixHooks {
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
         return configuredMode != null
                 && configuredMode.equalsIgnoreCase("standalone");
+    }
+
+    private static boolean detectSingleNativeWindowMode() {
+        String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
+        return configuredMode != null
+                && configuredMode.equalsIgnoreCase("single-native");
     }
 
     private static boolean detectVerboseLoggingEnabled() {

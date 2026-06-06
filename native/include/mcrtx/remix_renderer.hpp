@@ -541,6 +541,7 @@ public:
         std::int32_t& windowHeight);
       bool setNativeMouseGrabbed(bool grabbed);
       bool setNativeCursorPosition(std::int32_t x, std::int32_t y);
+      bool setOutputWindowFullscreen(bool fullscreen);
   bool present();
 
   bool isInitialized() const;
@@ -675,6 +676,10 @@ private:
   bool overlayOutputWindow_ {true};
   bool singleNativeOutputWindow_ {false};
   bool standaloneOutputWindow_ {false};
+  bool outputWindowFullscreen_ {false};
+  RECT outputWindowedRect_ {};
+  LONG outputWindowedStyle_ {0};
+  LONG outputWindowedExStyle_ {0};
   bool standaloneWorkerActive_ {false};
   bool standaloneWorkerInitReady_ {false};
   bool standaloneWorkerStopRequested_ {false};
