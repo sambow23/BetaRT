@@ -262,6 +262,9 @@ extern std::atomic_long g_nativeMouseWheelDelta;
 extern std::atomic_long g_rawMouseDeltaX;
 extern std::atomic_long g_rawMouseDeltaY;
 extern std::atomic_long g_rawMouseInputEvents;
+extern std::atomic_bool g_outputWindowCloseRequested;
+extern std::atomic_int g_outputWindowClientWidth;
+extern std::atomic_int g_outputWindowClientHeight;
 extern const wchar_t kRemixWindowClassName[];
 extern const wchar_t kRemixWindowTitle[];
 

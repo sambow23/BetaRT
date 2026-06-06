@@ -82,6 +82,9 @@ std::atomic_long g_nativeMouseWheelDelta {0};
 std::atomic_long g_rawMouseDeltaX {0};
 std::atomic_long g_rawMouseDeltaY {0};
 std::atomic_long g_rawMouseInputEvents {0};
+std::atomic_bool g_outputWindowCloseRequested {false};
+std::atomic_int g_outputWindowClientWidth {0};
+std::atomic_int g_outputWindowClientHeight {0};
 const wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
 const wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
 
@@ -264,7 +267,14 @@ LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, L
         return HTTRANSPARENT;
       }
       return DefWindowProcW(hwnd, message, wParam, lParam);
+    case WM_SIZE:
+      if (wParam != SIZE_MINIMIZED) {
+        g_outputWindowClientWidth.store(LOWORD(lParam), std::memory_order_relaxed);
+        g_outputWindowClientHeight.store(HIWORD(lParam), std::memory_order_relaxed);
+      }
+      return DefWindowProcW(hwnd, message, wParam, lParam);
     case WM_CLOSE:
+      g_outputWindowCloseRequested.store(true, std::memory_order_relaxed);
       ShowWindow(hwnd, SW_HIDE);
       return 0;
     default:

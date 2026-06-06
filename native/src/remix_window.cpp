@@ -193,7 +193,13 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
     exStyle |= WS_EX_TOOLWINDOW;
   } else if (singleNativeOutputWindow_) {
     exStyle |= WS_EX_APPWINDOW;
+    style = WS_OVERLAPPEDWINDOW;
     parentHwnd = nullptr;
+
+    RECT windowRect {0, 0, static_cast<LONG>(width_), static_cast<LONG>(height_)};
+    AdjustWindowRectEx(&windowRect, style, FALSE, exStyle);
+    outerWidth = windowRect.right - windowRect.left;
+    outerHeight = windowRect.bottom - windowRect.top;
   } else {
     exStyle |= WS_EX_APPWINDOW;
     style = WS_OVERLAPPEDWINDOW;
@@ -308,22 +314,10 @@ void RemixRenderer::updateOutputWindowSize() {
   }
 
   if (singleNativeOutputWindow_) {
-    RECT sourceClientRect {};
-    if (!getSourceClientRectInScreenSpace(sourceHwnd_, sourceClientRect)) {
-      return;
-    }
-
-    const int outerWidth = sourceClientRect.right - sourceClientRect.left;
-    const int outerHeight = sourceClientRect.bottom - sourceClientRect.top;
-
-    SetWindowPos(
-        outputHwnd_,
-        HWND_NOTOPMOST,
-        sourceClientRect.left,
-        sourceClientRect.top,
-        outerWidth,
-        outerHeight,
-        SWP_SHOWWINDOW);
+    // The user owns the single-native window's size and position via the normal
+    // title bar and resize borders. The render resolution follows the window
+    // through WM_SIZE -> game resize -> resize(), so this must not fight the
+    // user by repositioning the window every frame.
     return;
   }
 

@@ -177,6 +177,15 @@ public final class Mouse {
         }
         boolean wasGrabbed = grabbed;
         grabbed = shouldGrab;
+        if (shouldGrab != wasGrabbed) {
+            // Discard look deltas accumulated across the grab transition. While
+            // ungrabbed (e.g. a GUI screen is open) pollNativeState keeps summing
+            // cursor motion into deltaX/deltaY that the look handler never reads;
+            // consuming it on the first grabbed frame would snap the camera toward
+            // wherever the cursor sat. Matches vanilla LWJGL setGrabbed behaviour.
+            deltaX = 0;
+            deltaY = 0;
+        }
         debugLog("setGrabbed grabbed=" + shouldGrab + " wasGrabbed=" + wasGrabbed + " singleNative=" + Display.isSingleNativeWindowMode());
         if (Display.isSingleNativeWindowMode() && RemixBridgeNative.isAvailable()) {
             if (!shouldGrab && wasGrabbed && !hasNativeInputFocus()) {

@@ -97,6 +97,12 @@ public final class MinecraftRenderHooks {
         return currentMinecraft;
     }
 
+    public static synchronized void requestShutdown() {
+        if (currentMinecraft != null) {
+            currentMinecraft.f();
+        }
+    }
+
     public static synchronized boolean restoreIngameFocusIfNeeded() {
         if (currentMinecraft == null) {
             return false;

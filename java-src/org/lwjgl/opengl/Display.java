@@ -5,7 +5,9 @@ import java.awt.Component;
 import java.awt.KeyboardFocusManager;
 import java.awt.Toolkit;
 import java.awt.Window;
+import java.awt.event.HierarchyEvent;
 import mcrtx.bridge.McrtxRuntimeConfig;
+import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.RemixBridgeNative;
 import org.lwjgl.LWJGLException;
 import org.lwjgl.input.Keyboard;
@@ -201,6 +203,14 @@ public final class Display {
         synchronized (LOCK) {
             parent = parentCanvas;
         }
+        if (SINGLE_NATIVE_WINDOW_MODE && parentCanvas != null) {
+            hideSingleNativeAwtHost();
+            parentCanvas.addHierarchyListener(event -> {
+                if ((event.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0) {
+                    hideSingleNativeAwtHost();
+                }
+            });
+        }
     }
 
     private static DisplayMode initialDisplayMode() {
@@ -257,6 +267,10 @@ public final class Display {
                 if (SINGLE_NATIVE_WINDOW_MODE) {
                     Keyboard.pollNativeState();
                     Mouse.pollNativeState();
+                    syncSingleNativeWindowSize();
+                    if (RemixBridgeNative.isAvailable() && RemixBridgeNative.nIsOutputCloseRequested()) {
+                        MinecraftRenderHooks.requestShutdown();
+                    }
                 }
                 closeRequested = BINDINGS.windowShouldClose(windowHandle);
                 active = currentActiveState();
@@ -486,6 +500,31 @@ public final class Display {
 
         if (shouldHideCompatibilityHost()) {
             BINDINGS.hideWindow(windowHandle);
+        }
+
+        if (SINGLE_NATIVE_WINDOW_MODE) {
+            hideSingleNativeAwtHost();
+        }
+    }
+
+    private static void hideSingleNativeAwtHost() {
+        Window owningWindow = findOwningWindow(parent);
+        if (owningWindow != null && owningWindow.isVisible()) {
+            owningWindow.setVisible(false);
+        }
+    }
+
+    private static void syncSingleNativeWindowSize() {
+        if (!RemixBridgeNative.isAvailable() || parent == null) {
+            return;
+        }
+        int width = RemixBridgeNative.nGetOutputWindowWidth();
+        int height = RemixBridgeNative.nGetOutputWindowHeight();
+        if (width <= 0 || height <= 0) {
+            return;
+        }
+        if (parent.getWidth() != width || parent.getHeight() != height) {
+            parent.setSize(width, height);
         }
     }
 

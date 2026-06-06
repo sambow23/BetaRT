@@ -942,6 +942,22 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nHasWindowFocus(J
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().hasWindowFocus()));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsOutputCloseRequested(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsOutputCloseRequested");
+  return static_cast<jboolean>(fromJniBoolean(
+      ::mcrtx::detail::g_outputWindowCloseRequested.load(std::memory_order_relaxed)));
+}
+
+JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetOutputWindowWidth(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetOutputWindowWidth");
+  return static_cast<jint>(::mcrtx::detail::g_outputWindowClientWidth.load(std::memory_order_relaxed));
+}
+
+JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetOutputWindowHeight(JNIEnv*, jclass) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetOutputWindowHeight");
+  return static_cast<jint>(::mcrtx::detail::g_outputWindowClientHeight.load(std::memory_order_relaxed));
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nIsVirtualKeyDown(
     JNIEnv*, jclass, jint virtualKey) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsVirtualKeyDown");

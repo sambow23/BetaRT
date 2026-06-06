@@ -1807,10 +1807,12 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   destroyDestroyOverlayMesh();
   destroyOverlayMeshHandle_ = newMeshHandle;
   destroyOverlayCount_ = overlayCount;
-  log(
-      std::string("Rebuilt destroy overlay mesh overlays=") + std::to_string(overlayCount)
-      + " vertices=" + std::to_string(vertices.size())
-      + " indices=" + std::to_string(indices.size()));
+  if (isVerboseLoggingEnabled()) {
+    log(
+        std::string("Rebuilt destroy overlay mesh overlays=") + std::to_string(overlayCount)
+        + " vertices=" + std::to_string(vertices.size())
+        + " indices=" + std::to_string(indices.size()));
+  }
   return true;
 }
 

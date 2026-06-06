@@ -336,6 +336,12 @@ public final class RemixBridgeNative {
 
     public static native boolean nHasWindowFocus();
 
+    public static native boolean nIsOutputCloseRequested();
+
+    public static native int nGetOutputWindowWidth();
+
+    public static native int nGetOutputWindowHeight();
+
     public static native boolean nIsVirtualKeyDown(int virtualKey);
 
     public static native boolean nPollNativeMouseState(int[] stateOut);
