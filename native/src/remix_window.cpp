@@ -35,7 +35,7 @@ void logVerboseInput(const std::string& message) {
     return;
   }
 
-  static int remainingLogs = 200;
+  static int remainingLogs = 4000;
   if (remainingLogs <= 0) {
     return;
   }
@@ -281,6 +281,7 @@ void RemixRenderer::destroyOutputWindow() {
   nativeMouseLastCursorValid_ = false;
   outputWindowInteractive_ = false;
   g_outputWindowInteractive.store(false, std::memory_order_relaxed);
+
   DestroyWindow(outputHwnd_);
   outputHwnd_ = nullptr;
 }
@@ -502,6 +503,20 @@ bool RemixRenderer::pollNativeMouseState(
     std::int32_t& windowHeight) {
   std::scoped_lock lock(mutex_);
 
+  // Raw input is created and drained HERE, on the game thread (this JNI poll runs
+  // on the LWJGL/AWT input thread). The Remix present worker thread is not a real
+  // desktop input thread, so WM_INPUT bound to a window it owns never delivered.
+  // Creating the raw window on this thread binds it to a true UI input queue.
+  if (shouldUseRawMouseInput()) {
+    if (ensureRawMouseInputWindow() != nullptr) {
+      MSG rawInputMessage {};
+      while (PeekMessageW(&rawInputMessage, nullptr, WM_INPUT, WM_INPUT, PM_REMOVE)) {
+        TranslateMessage(&rawInputMessage);
+        DispatchMessageW(&rawInputMessage);
+      }
+    }
+  }
+
   HWND mouseWindow = resolveNativeMouseWindowLocked();
   RECT clientRect {};
   RECT clientRectScreenSpace {};
@@ -524,6 +539,10 @@ bool RemixRenderer::pollNativeMouseState(
     dWheel = 0;
     x = 0;
     y = clientHeight - 1;
+    // INPUTSINK keeps WM_INPUT flowing while unfocused; drop that motion so it
+    // can't surface as a camera jump on refocus.
+    g_rawMouseDeltaX.store(0, std::memory_order_relaxed);
+    g_rawMouseDeltaY.store(0, std::memory_order_relaxed);
     logVerboseInput("poll unfocused mouseWindow=0x" + std::to_string(reinterpret_cast<std::uintptr_t>(mouseWindow))
         + " clientWidth=" + std::to_string(clientWidth)
         + " clientHeight=" + std::to_string(clientHeight));
@@ -562,27 +581,55 @@ bool RemixRenderer::pollNativeMouseState(
   cursorClient.y = static_cast<LONG>(std::clamp<int>(static_cast<int>(cursorClient.y), 0, clientHeight - 1));
 
   if (nativeMouseGrabbed_) {
+    const bool useRawMouse = shouldUseRawMouseInput();
     const bool reactivatedGrab = !nativeMouseGrabActive_ && applyNativeMouseGrabLocked(mouseWindow, clientRect, clientRectScreenSpace);
     POINT centerClient {clientWidth / 2, clientHeight / 2};
-    if (reactivatedGrab) {
-      cursorClient = centerClient;
-      deltaX = 0;
-      deltaY = 0;
-    } else {
-      deltaX = cursorClient.x - centerClient.x;
-      deltaY = centerClient.y - cursorClient.y;
+
+    if (useRawMouse) {
+      // GLFW steals the process-wide raw mouse registration when it disables the
+      // cursor; reclaim it each grabbed poll so WM_INPUT keeps flowing to us.
+      ensureRawMouseRegistrationOwned();
     }
+
+    if (useRawMouse) {
+      // Raw input accumulates relative motion in g_rawMouseDelta* via WM_INPUT.
+      // Deltas come purely from raw motion (no pointer acceleration); the cursor
+      // is still recentered each poll only to keep it parked inside the window so
+      // it cannot escape or click other windows.
+      const long rawDeltaX = g_rawMouseDeltaX.exchange(0, std::memory_order_relaxed);
+      const long rawDeltaY = g_rawMouseDeltaY.exchange(0, std::memory_order_relaxed);
+      if (reactivatedGrab) {
+        deltaX = 0;
+        deltaY = 0;
+      } else {
+        deltaX = static_cast<std::int32_t>(rawDeltaX);
+        deltaY = static_cast<std::int32_t>(-rawDeltaY);
+      }
+      POINT centerScreen {centerClient.x, centerClient.y};
+      if (ClientToScreen(mouseWindow, &centerScreen)) {
+        SetCursorPos(centerScreen.x, centerScreen.y);
+      }
+    } else {
+      if (reactivatedGrab) {
+        cursorClient = centerClient;
+        deltaX = 0;
+        deltaY = 0;
+      } else {
+        deltaX = cursorClient.x - centerClient.x;
+        deltaY = centerClient.y - cursorClient.y;
+      }
+      POINT centerScreen {centerClient.x, centerClient.y};
+      if (ClientToScreen(mouseWindow, &centerScreen)) {
+        SetCursorPos(centerScreen.x, centerScreen.y);
+      }
+    }
+
     x = centerClient.x;
     y = clientHeight - 1 - centerClient.y;
 
-    POINT centerScreen {centerClient.x, centerClient.y};
-    if (ClientToScreen(mouseWindow, &centerScreen)) {
-      SetCursorPos(centerScreen.x, centerScreen.y);
-    }
-
     nativeMouseLastCursorPos_ = centerClient;
     nativeMouseLastCursorValid_ = true;
-    if (deltaX != 0 || deltaY != 0 || dWheel != 0 || buttonsMask != 0) {
+    if (useRawMouse || deltaX != 0 || deltaY != 0 || dWheel != 0 || buttonsMask != 0) {
       logVerboseInput(
           "poll grabbed x=" + std::to_string(x)
           + " y=" + std::to_string(y)
@@ -590,6 +637,7 @@ bool RemixRenderer::pollNativeMouseState(
           + " dy=" + std::to_string(deltaY)
           + " dWheel=" + std::to_string(dWheel)
           + " buttonsMask=" + std::to_string(buttonsMask)
+          + " rawEvents=" + std::to_string(g_rawMouseInputEvents.load(std::memory_order_relaxed))
           + " cursorClientX=" + std::to_string(cursorClient.x)
           + " cursorClientY=" + std::to_string(cursorClient.y));
     }
@@ -666,6 +714,8 @@ bool RemixRenderer::applyNativeMouseGrabLocked(
   nativeMouseLastCursorPos_ = centerClient;
   nativeMouseLastCursorValid_ = true;
   nativeMouseGrabActive_ = true;
+  g_rawMouseDeltaX.store(0, std::memory_order_relaxed);
+  g_rawMouseDeltaY.store(0, std::memory_order_relaxed);
   return true;
 }
 

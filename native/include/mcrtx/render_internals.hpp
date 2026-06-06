@@ -246,15 +246,22 @@ bool equalsIgnoreCase(std::string_view left, std::string_view right);
 bool shouldUseSingleNativeOutputWindow();
 bool shouldUseStandaloneOutputWindow();
 bool shouldUseOverlayOutputWindow(bool* usedLegacyEnvVar = nullptr);
+bool shouldUseRawMouseInput();
 bool getSourceClientRectInScreenSpace(HWND sourceHwnd, RECT& rect);
 LRESULT CALLBACK remixOutputWindowProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 bool ensureOutputWindowClassRegistered();
+void accumulateRawMouseInput(LPARAM lParam);
+HWND ensureRawMouseInputWindow();
+bool ensureRawMouseRegistrationOwned();
 std::string errorCodeToString(remixapi_ErrorCode code);
 std::filesystem::path getCurrentModuleDirectory();
 
 extern std::atomic_bool g_outputWindowInteractive;
 extern std::atomic_bool g_nativeMouseCursorHidden;
 extern std::atomic_long g_nativeMouseWheelDelta;
+extern std::atomic_long g_rawMouseDeltaX;
+extern std::atomic_long g_rawMouseDeltaY;
+extern std::atomic_long g_rawMouseInputEvents;
 extern const wchar_t kRemixWindowClassName[];
 extern const wchar_t kRemixWindowTitle[];
 
