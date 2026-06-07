@@ -1,0 +1,8 @@
+#pragma once
+
+namespace mcrtx::build {
+
+inline constexpr char kProductName[] = "BetaRT";
+inline constexpr char kBuildId[] = "@MCRTX_BUILD_ID@";
+
+}  // namespace mcrtx::build

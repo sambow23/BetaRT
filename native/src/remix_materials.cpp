@@ -26,6 +26,8 @@ namespace {
 constexpr std::uint64_t kDynamicEntityTranslucentMaterialHashMask = 0x54524E5300000000ull;
 constexpr std::uint64_t kDynamicEntityHurtMaterialHashMask = 0x4852540000000000ull;
 constexpr std::uint64_t kDynamicEntityCreeperFuseMaterialHashMask = 0x4655534500000000ull;
+constexpr float kDefaultHeightMapDisplaceIn = 0.05f;
+constexpr float kDefaultHeightMapDisplaceOut = 0.0f;
 constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 0.1f;
 constexpr float kDynamicEntityCreeperFuseMaxEmissiveIntensity = 0.06f;
 inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
@@ -89,6 +91,7 @@ struct OptionalPbrTextures {
   std::filesystem::path normal {};
   std::filesystem::path roughness {};
   std::filesystem::path metallic {};
+  std::filesystem::path height {};
 };
 
 bool prefersDdsTerrainAtlas() {
@@ -148,11 +151,20 @@ std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& tex
   return {};
 }
 
+std::filesystem::path resolveOptionalHeightTexture(const std::filesystem::path& texturePath) {
+  if (const std::filesystem::path heightPath = resolveOptionalPbrSibling(texturePath, L"_height"); !heightPath.empty()) {
+    return heightPath;
+  }
+
+  return resolveOptionalPbrSibling(texturePath, L"_displacement");
+}
+
 OptionalPbrTextures resolveOptionalPbrTextures(const std::filesystem::path& texturePath) {
   return {
       resolveOptionalPbrSibling(texturePath, L"_normal"),
       resolveOptionalPbrSibling(texturePath, L"_roughness"),
-      resolveOptionalPbrSibling(texturePath, L"_metallic")};
+      resolveOptionalPbrSibling(texturePath, L"_metallic"),
+      resolveOptionalHeightTexture(texturePath)};
 }
 
 constexpr std::array<remixapi_Float3D, 6> kBlockOutlineRgbPalette {{
@@ -171,6 +183,9 @@ void applyOptionalPbrTextures(
   materialInfo.normalTexture = optionalTexturePath(pbrTextures.normal);
   opaqueInfo.roughnessTexture = optionalTexturePath(pbrTextures.roughness);
   opaqueInfo.metallicTexture = optionalTexturePath(pbrTextures.metallic);
+  opaqueInfo.heightTexture = optionalTexturePath(pbrTextures.height);
+  opaqueInfo.displaceIn = pbrTextures.height.empty() ? 0.0f : kDefaultHeightMapDisplaceIn;
+  opaqueInfo.displaceOut = pbrTextures.height.empty() ? 0.0f : kDefaultHeightMapDisplaceOut;
 }
 
 }  // namespace
@@ -914,6 +929,9 @@ bool RemixRenderer::initializeTerrainMaterials() {
   }
   if (!terrainPbrTextures.metallic.empty()) {
     log("Terrain metallic map loaded from " + terrainPbrTextures.metallic.string());
+  }
+  if (!terrainPbrTextures.height.empty()) {
+    log("Terrain height map loaded from " + terrainPbrTextures.height.string());
   }
   if (!terrainEmissiveTexturePath_.empty()) {
     log("Terrain emissive map loaded from " + terrainEmissiveTexturePath_.string());

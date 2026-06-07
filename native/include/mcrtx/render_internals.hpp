@@ -266,7 +266,7 @@ extern std::atomic_bool g_outputWindowCloseRequested;
 extern std::atomic_int g_outputWindowClientWidth;
 extern std::atomic_int g_outputWindowClientHeight;
 extern const wchar_t kRemixWindowClassName[];
-extern const wchar_t kRemixWindowTitle[];
+const wchar_t* getRemixWindowTitle();
 
 // ---- Chunk / block classification ----------------------------------------
 

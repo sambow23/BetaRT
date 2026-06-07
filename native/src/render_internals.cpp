@@ -2,6 +2,7 @@
 // Auto-extracted from remix_renderer.cpp during the monolith split.
 
 #include "mcrtx/remix_renderer.hpp"
+#include "mcrtx/build_version.hpp"
 #include "mcrtx/render_internals.hpp"
 
 #include <algorithm>
@@ -24,6 +25,31 @@ namespace detail {
 namespace {
 
 constexpr wchar_t kRuntimeConfigFileName[] = L"mcrtx-runtime.env";
+
+std::wstring widenAscii(std::string_view value) {
+  std::wstring widened;
+  widened.reserve(value.size());
+  for (const char character : value) {
+    widened.push_back(static_cast<wchar_t>(static_cast<unsigned char>(character)));
+  }
+  return widened;
+}
+
+std::wstring makeRemixWindowTitle() {
+  std::wstring title = widenAscii(mcrtx::build::kProductName);
+  constexpr std::string_view buildId = mcrtx::build::kBuildId;
+  if (!buildId.empty() && buildId != "unknown") {
+    title += L" (";
+    title += widenAscii(buildId);
+    title += L")";
+  }
+  return title;
+}
+
+const std::wstring& remixWindowTitleStorage() {
+  static const std::wstring title = makeRemixWindowTitle();
+  return title;
+}
 
 std::string trimAsciiWhitespace(std::string value) {
   const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -86,7 +112,10 @@ std::atomic_bool g_outputWindowCloseRequested {false};
 std::atomic_int g_outputWindowClientWidth {0};
 std::atomic_int g_outputWindowClientHeight {0};
 const wchar_t kRemixWindowClassName[] = L"MCRTXRemixOutputWindow";
-const wchar_t kRemixWindowTitle[] = L"mc-rtx Remix Output";
+
+const wchar_t* getRemixWindowTitle() {
+  return remixWindowTitleStorage().c_str();
+}
 
 // Shared constants, arrays, and the SurfaceBuildBuffers struct live in
 // include/mcrtx/render_internals.hpp so they are visible to every TU that

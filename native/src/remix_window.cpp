@@ -222,7 +222,7 @@ bool RemixRenderer::createOutputWindow(HWND sourceHwnd) {
   outputHwnd_ = CreateWindowExW(
       exStyle,
       kRemixWindowClassName,
-      kRemixWindowTitle,
+      getRemixWindowTitle(),
       style,
       windowX,
       windowY,

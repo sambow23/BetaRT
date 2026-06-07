@@ -3,6 +3,39 @@ set(MCRTX_DXVK_REMIX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../dxvk-remix-gmod" CA
 option(MCRTX_ENABLE_TRACY "Enable Tracy profiling in the native JNI bridge" ON)
 set(MCRTX_TRACY_PORT "8087" CACHE STRING "Default Tracy port for mc-rtx native profiling")
 
+find_package(Git QUIET)
+
+set(MCRTX_BUILD_ID "unknown")
+if(GIT_FOUND)
+  execute_process(
+    COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}" describe --tags --exact-match
+    RESULT_VARIABLE MCRTX_GIT_TAG_RESULT
+    OUTPUT_VARIABLE MCRTX_BUILD_ID
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    ERROR_QUIET
+  )
+
+  if(NOT MCRTX_GIT_TAG_RESULT EQUAL 0 OR MCRTX_BUILD_ID STREQUAL "")
+    execute_process(
+      COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}" rev-parse --short=12 HEAD
+      RESULT_VARIABLE MCRTX_GIT_COMMIT_RESULT
+      OUTPUT_VARIABLE MCRTX_BUILD_ID
+      OUTPUT_STRIP_TRAILING_WHITESPACE
+      ERROR_QUIET
+    )
+
+    if(NOT MCRTX_GIT_COMMIT_RESULT EQUAL 0 OR MCRTX_BUILD_ID STREQUAL "")
+      set(MCRTX_BUILD_ID "unknown")
+    endif()
+  endif()
+endif()
+
+configure_file(
+  "${CMAKE_CURRENT_SOURCE_DIR}/include/mcrtx/build_version.hpp.in"
+  "${CMAKE_CURRENT_BINARY_DIR}/generated/mcrtx/build_version.hpp"
+  @ONLY
+)
+
 if(MCRTX_ENABLE_TRACY AND NOT MCRTX_TRACY_PORT MATCHES "^[0-9]+$")
   message(FATAL_ERROR "MCRTX_TRACY_PORT must be a numeric TCP port")
 endif()
@@ -24,6 +57,7 @@ target_include_directories(mcrtx_jni
   PRIVATE
     ${JNI_INCLUDE_DIRS}
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${MCRTX_DXVK_REMIX_ROOT}/public/include
 )
 
