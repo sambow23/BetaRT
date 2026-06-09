@@ -4,6 +4,10 @@ public final class McrtxOptionsScreen extends da {
     private static final int COLUMN_BUTTON_GAP = 4;
     private static final int FULL_WIDTH_CONTROL_WIDTH = COLUMN_BUTTON_WIDTH * 2 + COLUMN_BUTTON_GAP;
     private static final int HALF_WIDTH_CONTROL_WIDTH = COLUMN_BUTTON_WIDTH;
+    private static final int TAB_GENERAL = 0;
+    private static final int TAB_DEBUG = 1;
+    private static final int GENERAL_TAB_BUTTON_ID = 30;
+    private static final int DEBUG_TAB_BUTTON_ID = 31;
     private static final int PLAYER_SHADOWS_BUTTON_ID = 1;
     private static final int HELD_TORCH_LIGHTS_BUTTON_ID = 2;
     private static final int UPSCALER_BUTTON_ID = 3;
@@ -13,6 +17,7 @@ public final class McrtxOptionsScreen extends da {
     private static final int GAMEPLAY_FOV_SLIDER_ID = 7;
     private static final int VIEW_MODEL_FOV_SLIDER_ID = 8;
     private static final int NO_CULL_DISTANCE_SLIDER_ID = 9;
+    private static final int DISPLACEMENT_FACTOR_SLIDER_ID = 22;
     private static final int BLOCK_OUTLINE_BUTTON_ID = 10;
     private static final int BLOCK_OUTLINE_STYLE_BUTTON_ID = 11;
     private static final int BLOCK_OUTLINE_INTENSITY_SLIDER_ID = 12;
@@ -28,6 +33,7 @@ public final class McrtxOptionsScreen extends da {
     private static final int DONE_BUTTON_ID = 200;
 
     private final da parent;
+    private int activeTab = TAB_GENERAL;
 
     public McrtxOptionsScreen(da parent) {
         this.parent = parent;
@@ -35,6 +41,26 @@ public final class McrtxOptionsScreen extends da {
 
     public void b() {
         this.e.clear();
+        addTabButtons();
+
+        if (activeTab == TAB_DEBUG) {
+            addDebugControls();
+        } else {
+            addGeneralControls();
+        }
+
+        this.e.add(new ke(DONE_BUTTON_ID, this.c / 2 - 100, getDoneButtonY(), "Done"));
+        refreshButtons();
+    }
+
+    private void addTabButtons() {
+        int leftColumnX = getLeftColumnX();
+        int rightColumnX = getRightColumnX();
+        this.e.add(new ke(GENERAL_TAB_BUTTON_ID, leftColumnX, getTabRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "General"));
+        this.e.add(new ke(DEBUG_TAB_BUTTON_ID, rightColumnX, getTabRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "Debug"));
+    }
+
+    private void addGeneralControls() {
         int leftColumnX = getLeftColumnX();
         int rightColumnX = getRightColumnX();
         this.e.add(new McrtxFovSlider(
@@ -56,6 +82,12 @@ public final class McrtxOptionsScreen extends da {
                 getNoCullDistanceSliderRowY(),
                 HALF_WIDTH_CONTROL_WIDTH,
                 COLUMN_BUTTON_HEIGHT));
+        this.e.add(McrtxFovSlider.createDisplacementFactorSlider(
+            DISPLACEMENT_FACTOR_SLIDER_ID,
+            getCenteredHalfWidthControlX(),
+            getDisplacementFactorSliderRowY(),
+            HALF_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
         this.e.add(new ke(PLAYER_SHADOWS_BUTTON_ID, leftColumnX, getFirstButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getPlayerShadowsButtonLabel()));
         this.e.add(new ke(UPSCALER_BUTTON_ID, rightColumnX, getFirstButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getUpscalerButtonLabel()));
         this.e.add(new ke(HELD_TORCH_LIGHTS_BUTTON_ID, leftColumnX, getSecondButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getHeldTorchLightsButtonLabel()));
@@ -64,77 +96,78 @@ public final class McrtxOptionsScreen extends da {
         this.e.add(new ke(RAY_RECONSTRUCTION_BUTTON_ID, rightColumnX, getThirdButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getRayReconstructionButtonLabel()));
         this.e.add(new ke(BLOCK_OUTLINE_BUTTON_ID, leftColumnX, getFourthButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getBlockOutlineButtonLabel()));
         this.e.add(new ke(BLOCK_OUTLINE_STYLE_BUTTON_ID, rightColumnX, getFourthButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getBlockOutlineStyleButtonLabel()));
+        this.e.add(McrtxFovSlider.createBlockOutlineIntensitySlider(
+            BLOCK_OUTLINE_INTENSITY_SLIDER_ID,
+            getCenteredFullWidthControlX(),
+            getGeneralBlockOutlineIntensitySliderRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+    }
+
+    private void addDebugControls() {
         this.e.add(new ke(
             DYNAMIC_ENTITY_RENDERING_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getFifthButtonRowY(),
+            getDebugFirstButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getDynamicEntityRenderingButtonLabel()));
         this.e.add(new ke(
             LIVING_ENTITY_RENDERING_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getSixthButtonRowY(),
+            getDebugSecondButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getLivingEntityRenderingButtonLabel()));
         this.e.add(new ke(
             ITEM_ENTITY_RENDERING_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getSeventhButtonRowY(),
+            getDebugThirdButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getItemEntityRenderingButtonLabel()));
         this.e.add(new ke(
             PAINTING_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getEighthButtonRowY(),
+            getDebugFourthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getPaintingVanillaSuppressionButtonLabel()));
         this.e.add(new ke(
             MOVING_PISTON_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getNinthButtonRowY(),
+            getDebugFifthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getMovingPistonVanillaSuppressionButtonLabel()));
         this.e.add(new ke(
             WORLD_RASTER_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getTenthButtonRowY(),
+            getDebugSixthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getWorldRasterVanillaSuppressionButtonLabel()));
         this.e.add(new ke(
             SIGN_CAPTURE_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getEleventhButtonRowY(),
+            getDebugSeventhButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignCaptureButtonLabel()));
         this.e.add(new ke(
             SIGN_TEXT_CAPTURE_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getTwelfthButtonRowY(),
+            getDebugEighthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignTextCaptureButtonLabel()));
         this.e.add(new ke(
             SIGN_VANILLA_SUPPRESSION_BUTTON_ID,
             getCenteredFullWidthControlX(),
-            getThirteenthButtonRowY(),
+            getDebugNinthButtonRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT,
             MinecraftRemixHooks.getSignVanillaSuppressionButtonLabel()));
-        this.e.add(McrtxFovSlider.createBlockOutlineIntensitySlider(
-            BLOCK_OUTLINE_INTENSITY_SLIDER_ID,
-            getCenteredFullWidthControlX(),
-            getBlockOutlineIntensitySliderRowY(),
-            FULL_WIDTH_CONTROL_WIDTH,
-            COLUMN_BUTTON_HEIGHT));
-        this.e.add(new ke(DONE_BUTTON_ID, this.c / 2 - 100, getDoneButtonY(), "Done"));
-        refreshButtons();
     }
 
     protected void a(ke button) {
@@ -151,6 +184,18 @@ public final class McrtxOptionsScreen extends da {
         if (button.f == HELD_TORCH_LIGHTS_BUTTON_ID) {
             MinecraftRemixHooks.setHeldTorchLightsEnabled(!MinecraftRemixHooks.isHeldTorchLightsEnabled());
             button.e = MinecraftRemixHooks.getHeldTorchLightsButtonLabel();
+            return;
+        }
+
+        if (button.f == GENERAL_TAB_BUTTON_ID) {
+            activeTab = TAB_GENERAL;
+            b();
+            return;
+        }
+
+        if (button.f == DEBUG_TAB_BUTTON_ID) {
+            activeTab = TAB_DEBUG;
+            b();
             return;
         }
 
@@ -259,7 +304,7 @@ public final class McrtxOptionsScreen extends da {
 
     public void a(int mouseX, int mouseY, float partialTicks) {
         this.i();
-        this.a(this.g, "BetaRT Settings", this.c / 2, 20, 0xFFFFFF);
+        this.a(this.g, activeTab == TAB_DEBUG ? "BetaRT Settings - Debug" : "BetaRT Settings", this.c / 2, 20, 0xFFFFFF);
         super.a(mouseX, mouseY, partialTicks);
     }
 
@@ -276,6 +321,18 @@ public final class McrtxOptionsScreen extends da {
     }
 
     private void refreshButtons() {
+        ke generalTabButton = findButton(GENERAL_TAB_BUTTON_ID);
+        if (generalTabButton != null) {
+            generalTabButton.g = activeTab != TAB_GENERAL;
+            generalTabButton.h = true;
+        }
+
+        ke debugTabButton = findButton(DEBUG_TAB_BUTTON_ID);
+        if (debugTabButton != null) {
+            debugTabButton.g = activeTab != TAB_DEBUG;
+            debugTabButton.h = true;
+        }
+
         ke rtQualityButton = findButton(RT_QUALITY_BUTTON_ID);
         if (rtQualityButton != null) {
             rtQualityButton.e = MinecraftRemixHooks.getRtQualityButtonLabel();
@@ -386,16 +443,24 @@ public final class McrtxOptionsScreen extends da {
         return this.c / 2 - FULL_WIDTH_CONTROL_WIDTH / 2;
     }
 
+    private int getTabRowY() {
+        return this.d / 6 + 28;
+    }
+
     private int getGameplaySliderRowY() {
-        return this.d / 6 + 64;
+        return getTabRowY() + 36;
     }
 
     private int getNoCullDistanceSliderRowY() {
         return getGameplaySliderRowY() + 24;
     }
 
+    private int getDisplacementFactorSliderRowY() {
+        return getNoCullDistanceSliderRowY() + 24;
+    }
+
     private int getFirstButtonRowY() {
-        return getNoCullDistanceSliderRowY() + 28;
+        return getDisplacementFactorSliderRowY() + 28;
     }
 
     private int getSecondButtonRowY() {
@@ -407,50 +472,52 @@ public final class McrtxOptionsScreen extends da {
     }
 
     private int getDoneButtonY() {
-        return getBlockOutlineIntensitySliderRowY() + 48;
+        return activeTab == TAB_DEBUG
+            ? getDebugNinthButtonRowY() + 48
+            : getGeneralBlockOutlineIntensitySliderRowY() + 48;
     }
 
     private int getFourthButtonRowY() {
         return getThirdButtonRowY() + 24;
     }
 
-    private int getFifthButtonRowY() {
+    private int getDebugFirstButtonRowY() {
+        return getGameplaySliderRowY();
+    }
+
+    private int getDebugSecondButtonRowY() {
+        return getDebugFirstButtonRowY() + 24;
+    }
+
+    private int getDebugThirdButtonRowY() {
+        return getDebugSecondButtonRowY() + 24;
+    }
+
+    private int getDebugFourthButtonRowY() {
+        return getDebugThirdButtonRowY() + 24;
+    }
+
+    private int getDebugFifthButtonRowY() {
+        return getDebugFourthButtonRowY() + 24;
+    }
+
+    private int getDebugSixthButtonRowY() {
+        return getDebugFifthButtonRowY() + 24;
+    }
+
+    private int getDebugSeventhButtonRowY() {
+        return getDebugSixthButtonRowY() + 24;
+    }
+
+    private int getDebugEighthButtonRowY() {
+        return getDebugSeventhButtonRowY() + 24;
+    }
+
+    private int getDebugNinthButtonRowY() {
+        return getDebugEighthButtonRowY() + 24;
+    }
+
+    private int getGeneralBlockOutlineIntensitySliderRowY() {
         return getFourthButtonRowY() + 24;
-    }
-
-    private int getSixthButtonRowY() {
-        return getFifthButtonRowY() + 24;
-    }
-
-    private int getSeventhButtonRowY() {
-        return getSixthButtonRowY() + 24;
-    }
-
-    private int getEighthButtonRowY() {
-        return getSeventhButtonRowY() + 24;
-    }
-
-    private int getNinthButtonRowY() {
-        return getEighthButtonRowY() + 24;
-    }
-
-    private int getTenthButtonRowY() {
-        return getNinthButtonRowY() + 24;
-    }
-
-    private int getEleventhButtonRowY() {
-        return getTenthButtonRowY() + 24;
-    }
-
-    private int getTwelfthButtonRowY() {
-        return getEleventhButtonRowY() + 24;
-    }
-
-    private int getThirteenthButtonRowY() {
-        return getTwelfthButtonRowY() + 24;
-    }
-
-    private int getBlockOutlineIntensitySliderRowY() {
-        return getThirteenthButtonRowY() + 24;
     }
 }

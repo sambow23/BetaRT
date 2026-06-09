@@ -189,6 +189,8 @@ public final class RemixBridgeNative {
 
             public static native void nSetBlockOutlineEmissiveIntensity(float intensity);
 
+            public static native void nSetDisplacementFactor(float factor);
+
             public static native void nSetViewModelFovDegrees(float fovYDegrees);
 
             public static native void nSetRtQuality(int rtQuality);

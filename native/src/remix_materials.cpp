@@ -156,6 +156,10 @@ std::filesystem::path resolveOptionalHeightTexture(const std::filesystem::path& 
     return heightPath;
   }
 
+  if (const std::filesystem::path depthPath = resolveOptionalPbrSibling(texturePath, L"_depth"); !depthPath.empty()) {
+    return depthPath;
+  }
+
   return resolveOptionalPbrSibling(texturePath, L"_displacement");
 }
 
@@ -179,12 +183,13 @@ constexpr std::array<remixapi_Float3D, 6> kBlockOutlineRgbPalette {{
 void applyOptionalPbrTextures(
     remixapi_MaterialInfo& materialInfo,
     remixapi_MaterialInfoOpaqueEXT& opaqueInfo,
-    const OptionalPbrTextures& pbrTextures) {
+    const OptionalPbrTextures& pbrTextures,
+    float displacementFactor) {
   materialInfo.normalTexture = optionalTexturePath(pbrTextures.normal);
   opaqueInfo.roughnessTexture = optionalTexturePath(pbrTextures.roughness);
   opaqueInfo.metallicTexture = optionalTexturePath(pbrTextures.metallic);
   opaqueInfo.heightTexture = optionalTexturePath(pbrTextures.height);
-  opaqueInfo.displaceIn = pbrTextures.height.empty() ? 0.0f : kDefaultHeightMapDisplaceIn;
+  opaqueInfo.displaceIn = pbrTextures.height.empty() ? 0.0f : (kDefaultHeightMapDisplaceIn * displacementFactor);
   opaqueInfo.displaceOut = pbrTextures.height.empty() ? 0.0f : kDefaultHeightMapDisplaceOut;
 }
 
@@ -219,7 +224,7 @@ void RemixRenderer::createBlockOutlineMaterials() {
   blockOutlineGlowMaterialInfo.filterMode = 0;
   blockOutlineGlowMaterialInfo.wrapModeU = 1;
   blockOutlineGlowMaterialInfo.wrapModeV = 1;
-  applyOptionalPbrTextures(blockOutlineGlowMaterialInfo, blockOutlineGlowOpaqueInfo, terrainPbrTextures);
+  applyOptionalPbrTextures(blockOutlineGlowMaterialInfo, blockOutlineGlowOpaqueInfo, terrainPbrTextures, displacementFactor_);
 
   const remixapi_ErrorCode blockOutlineGlowMaterialResult = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.blockOutlineGlow");
@@ -254,7 +259,7 @@ void RemixRenderer::createBlockOutlineMaterials() {
     blockOutlineRgbMaterialInfo.filterMode = 0;
     blockOutlineRgbMaterialInfo.wrapModeU = 1;
     blockOutlineRgbMaterialInfo.wrapModeV = 1;
-    applyOptionalPbrTextures(blockOutlineRgbMaterialInfo, blockOutlineRgbOpaqueInfo, terrainPbrTextures);
+    applyOptionalPbrTextures(blockOutlineRgbMaterialInfo, blockOutlineRgbOpaqueInfo, terrainPbrTextures, displacementFactor_);
 
     remixapi_MaterialHandle& rgbMaterialHandle = blockOutlineRgbMaterialHandles_[rgbIndex];
     const remixapi_ErrorCode blockOutlineRgbMaterialResult = [&]() {
@@ -728,7 +733,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
     if (!isTranslucent) {
-      applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+      applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures, displacementFactor_);
     }
 
     remixapi_MaterialHandle materialHandle = nullptr;
@@ -817,7 +822,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   destroyOverlayMaterialInfo.filterMode = 0;
   destroyOverlayMaterialInfo.wrapModeU = 1;
   destroyOverlayMaterialInfo.wrapModeV = 1;
-  applyOptionalPbrTextures(destroyOverlayMaterialInfo, destroyOverlayOpaqueInfo, terrainPbrTextures);
+  applyOptionalPbrTextures(destroyOverlayMaterialInfo, destroyOverlayOpaqueInfo, terrainPbrTextures, displacementFactor_);
 
   const remixapi_ErrorCode destroyOverlayMaterialResult = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.destroyOverlay");
@@ -1001,7 +1006,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     fireMaterialInfo.filterMode = 0;
     fireMaterialInfo.wrapModeU = 1;
     fireMaterialInfo.wrapModeV = 1;
-    applyOptionalPbrTextures(fireMaterialInfo, fireOpaqueInfo, firePbrTextures);
+    applyOptionalPbrTextures(fireMaterialInfo, fireOpaqueInfo, firePbrTextures, displacementFactor_);
 
     const remixapi_ErrorCode fireResult = [&]() {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.fire");
@@ -1040,7 +1045,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   cloudMaterialInfo.filterMode = 0;
   cloudMaterialInfo.wrapModeU = 1;
   cloudMaterialInfo.wrapModeV = 1;
-  applyOptionalPbrTextures(cloudMaterialInfo, cloudOpaqueInfo, cloudPbrTextures);
+  applyOptionalPbrTextures(cloudMaterialInfo, cloudOpaqueInfo, cloudPbrTextures, displacementFactor_);
 
   const remixapi_ErrorCode cloudResult = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMaterial.cloud");
@@ -1234,7 +1239,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     opaqueInfo.alphaTestType = 4;
     opaqueInfo.alphaReferenceValue = isSignText ? 64 : 1;
     materialInfo.pNext = &opaqueInfo;
-    applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+    applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures, displacementFactor_);
   }
 
   remixapi_MaterialHandle materialHandle = nullptr;
@@ -1288,7 +1293,7 @@ remixapi_MaterialHandle RemixRenderer::acquireParticleMaterial(std::uint32_t tex
   materialInfo.filterMode = 0;
   materialInfo.wrapModeU = 1;
   materialInfo.wrapModeV = 1;
-  applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures);
+  applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures, displacementFactor_);
 
   remixapi_MaterialHandle materialHandle = nullptr;
   const remixapi_ErrorCode result = [&]() {

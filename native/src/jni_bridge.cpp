@@ -485,6 +485,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEmiss
   RemixRenderer::instance().setBlockOutlineEmissiveIntensity(intensity);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDisplacementFactor(
+    JNIEnv*, jclass, jfloat factor) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDisplacementFactor");
+  RemixRenderer::instance().setDisplacementFactor(factor);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetViewModelFovDegrees(
     JNIEnv*, jclass, jfloat fovYDegrees) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetViewModelFovDegrees");

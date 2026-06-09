@@ -871,6 +871,10 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.getBlockOutlineEmissiveIntensityTenths();
     }
 
+    public static int getDisplacementFactorHundredths() {
+        return McrtxRuntimeSettings.getDisplacementFactorHundredths();
+    }
+
     public static boolean shouldShowBlockOutlineIntensitySlider() {
         return isBlockOutlineEnabled() && isBlockOutlineEmissiveStyle(getBlockOutlineStyle());
     }
@@ -1054,6 +1058,11 @@ public final class MinecraftRemixHooks {
     public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
         McrtxRuntimeSettings.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
         MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
+    }
+
+    public static void setDisplacementFactorHundredths(int factorHundredths) {
+        McrtxRuntimeSettings.setDisplacementFactorHundredths(factorHundredths);
+        MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
     }
 
     public static void cycleBlockOutlineStyle() {
@@ -1364,6 +1373,7 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.setBlockOutlineEnabled(McrtxRuntimeSettings.isBlockOutlineEnabled());
         MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
         MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
+        MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
         RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
         MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
         applyRtQualitySettings();

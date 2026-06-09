@@ -33,6 +33,7 @@ public final class McrtxRuntimeSettings {
     public static final String BLOCK_OUTLINE_ENABLED_KEY = "MCRTX_BLOCK_OUTLINE_ENABLED";
     public static final String BLOCK_OUTLINE_STYLE_KEY = "MCRTX_BLOCK_OUTLINE_STYLE";
     public static final String BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY = "MCRTX_BLOCK_OUTLINE_EMISSIVE_INTENSITY";
+    public static final String DISPLACEMENT_FACTOR_KEY = "MCRTX_DISPLACEMENT_FACTOR";
 
     public static final int MIN_GAMEPLAY_FOV_DEGREES = 30;
     public static final int MAX_GAMEPLAY_FOV_DEGREES = 120;
@@ -46,6 +47,9 @@ public final class McrtxRuntimeSettings {
     public static final int MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 0;
     public static final int MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 100;
     public static final int DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 45;
+    public static final int MIN_DISPLACEMENT_FACTOR_HUNDREDTHS = 0;
+    public static final int MAX_DISPLACEMENT_FACTOR_HUNDREDTHS = 400;
+    public static final int DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS = 100;
 
     public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
     public static final int BLOCK_OUTLINE_STYLE_BOLD = 1;
@@ -112,6 +116,7 @@ public final class McrtxRuntimeSettings {
     private static boolean blockOutlineEnabled = true;
     private static int blockOutlineStyle = BLOCK_OUTLINE_STYLE_BOLD;
     private static int blockOutlineEmissiveIntensityTenths = DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+    private static int displacementFactorHundredths = DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS;
 
     private McrtxRuntimeSettings() {
     }
@@ -489,6 +494,20 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static int getDisplacementFactorHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return displacementFactorHundredths;
+        }
+    }
+
+    public static float getDisplacementFactor() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) displacementFactorHundredths / 100.0f;
+        }
+    }
+
     public static void setRayReconstructionEnabled(boolean enabled) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -547,6 +566,18 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setDisplacementFactorHundredths(int factorHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedFactorHundredths = normalizeDisplacementFactorHundredths(factorHundredths);
+            if (displacementFactorHundredths == normalizedFactorHundredths) {
+                return;
+            }
+            displacementFactorHundredths = normalizedFactorHundredths;
+            saveLocked();
+        }
+    }
+
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -579,6 +610,10 @@ public final class McrtxRuntimeSettings {
             fileValues,
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
             DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS);
+        displacementFactorHundredths = readDisplacementFactorHundredthsSetting(
+            fileValues,
+            DISPLACEMENT_FACTOR_KEY,
+            DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS);
         loaded = true;
     }
 
@@ -887,6 +922,32 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    private static int readDisplacementFactorHundredthsSetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeDisplacementFactorHundredths(defaultValue);
+        }
+
+        try {
+            double parsedValue = Double.parseDouble(configuredValue.trim());
+            if (parsedValue > (double) MAX_DISPLACEMENT_FACTOR_HUNDREDTHS / 100.0
+                    && parsedValue <= 40.0
+                    && Math.rint(parsedValue) == parsedValue) {
+                return normalizeDisplacementFactorHundredths((int) Math.round(parsedValue * 10.0));
+            }
+            return normalizeDisplacementFactorHundredths((int) Math.round(parsedValue * 100.0));
+        } catch (NumberFormatException exception) {
+            return normalizeDisplacementFactorHundredths(defaultValue);
+        }
+    }
+
     private static void saveLocked() {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
@@ -914,6 +975,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
             formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
+        fileValues.put(DISPLACEMENT_FACTOR_KEY, formatDisplacementFactorHundredths(displacementFactorHundredths));
         writeFileValues(fileValues);
     }
 
@@ -1054,6 +1116,16 @@ public final class McrtxRuntimeSettings {
         return intensityTenths;
     }
 
+    private static int normalizeDisplacementFactorHundredths(int factorHundredths) {
+        if (factorHundredths < MIN_DISPLACEMENT_FACTOR_HUNDREDTHS) {
+            return MIN_DISPLACEMENT_FACTOR_HUNDREDTHS;
+        }
+        if (factorHundredths > MAX_DISPLACEMENT_FACTOR_HUNDREDTHS) {
+            return MAX_DISPLACEMENT_FACTOR_HUNDREDTHS;
+        }
+        return factorHundredths;
+    }
+
     private static String formatUpscalerType(int type) {
         switch (normalizeUpscalerType(type)) {
             case UPSCALER_TYPE_NONE:
@@ -1159,5 +1231,15 @@ public final class McrtxRuntimeSettings {
     private static String formatBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
         int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
         return Integer.toString(normalizedIntensityTenths / 10) + "." + Integer.toString(normalizedIntensityTenths % 10);
+    }
+
+    private static String formatDisplacementFactorHundredths(int factorHundredths) {
+        int normalizedFactorHundredths = normalizeDisplacementFactorHundredths(factorHundredths);
+        int wholeValue = normalizedFactorHundredths / 100;
+        int fractionalValue = normalizedFactorHundredths % 100;
+        return Integer.toString(wholeValue)
+            + "."
+            + (fractionalValue < 10 ? "0" : "")
+            + Integer.toString(fractionalValue);
     }
 }

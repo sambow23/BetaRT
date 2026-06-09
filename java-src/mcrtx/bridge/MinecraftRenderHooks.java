@@ -340,6 +340,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetBlockOutlineEmissiveIntensity(intensity);
     }
 
+    public static synchronized void setDisplacementFactor(float factor) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetDisplacementFactor(factor);
+    }
+
     public static synchronized void setViewModelFovDegrees(int fovDegrees) {
         if (!initialized) {
             return;

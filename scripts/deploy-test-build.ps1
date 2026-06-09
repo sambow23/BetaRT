@@ -41,12 +41,10 @@ function Sync-DirectoryFiles {
     New-Item -ItemType Directory -Force -Path $destinationRoot | Out-Null
 
     $sourceFiles = Get-ChildItem -Path $SourcePath -Recurse -File
-    $relativePaths = [System.Collections.Generic.HashSet[string]]::new([System.StringComparer]::OrdinalIgnoreCase)
     $trimChars = [char[]]@('\', '/')
 
     foreach ($sourceFile in $sourceFiles) {
         $relativePath = $sourceFile.FullName.Substring($SourcePath.Length).TrimStart($trimChars)
-        $relativePaths.Add($relativePath) | Out-Null
 
         $targetFilePath = Join-Path $destinationRoot $relativePath
         $destinationDir = Split-Path $targetFilePath -Parent
@@ -55,14 +53,6 @@ function Sync-DirectoryFiles {
         }
 
         Copy-Item $sourceFile.FullName $targetFilePath -Force
-    }
-
-    $destinationFiles = Get-ChildItem -Path $destinationRoot -Recurse -File
-    foreach ($destinationFile in $destinationFiles) {
-        $relativePath = $destinationFile.FullName.Substring($destinationRoot.Length).TrimStart($trimChars)
-        if (-not $relativePaths.Contains($relativePath)) {
-            Remove-Item $destinationFile.FullName -Force
-        }
     }
 }
 

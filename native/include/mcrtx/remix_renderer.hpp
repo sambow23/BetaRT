@@ -369,6 +369,7 @@ public:
   void setBlockOutlineEnabled(bool enabled);
   void setBlockOutlineStyle(int style);
   void setBlockOutlineEmissiveIntensity(float intensity);
+  void setDisplacementFactor(float factor);
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
@@ -796,6 +797,7 @@ private:
   static constexpr int kBlockOutlineStyleThin = 5;
   int blockOutlineStyle_ {kBlockOutlineStyleBold};
   float blockOutlineEmissiveIntensity_ {4.5f};
+  float displacementFactor_ {1.0f};
   static constexpr int kRtQualityLow = 0;
   static constexpr int kRtQualityMedium = 1;
   static constexpr int kRtQualityHigh = 2;

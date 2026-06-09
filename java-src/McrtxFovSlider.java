@@ -7,6 +7,7 @@ public final class McrtxFovSlider extends ke {
     private static final int SLIDER_MODE_VIEW_MODEL_FOV = 1;
     private static final int SLIDER_MODE_NO_CULL_DISTANCE = 2;
     private static final int SLIDER_MODE_BLOCK_OUTLINE_INTENSITY = 3;
+    private static final int SLIDER_MODE_DISPLACEMENT_FACTOR = 4;
 
     private final int minimumValue;
     private final int maximumValue;
@@ -30,6 +31,10 @@ public final class McrtxFovSlider extends ke {
         return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_BLOCK_OUTLINE_INTENSITY);
     }
 
+    public static McrtxFovSlider createDisplacementFactorSlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_DISPLACEMENT_FACTOR);
+    }
+
     private McrtxFovSlider(int buttonId, int x, int y, int width, int height, int sliderMode) {
         super(buttonId, x, y, width, height, "");
         this.sliderMode = sliderMode;
@@ -42,6 +47,9 @@ public final class McrtxFovSlider extends ke {
         } else if (sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
             this.minimumValue = McrtxRuntimeSettings.MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
             this.maximumValue = McrtxRuntimeSettings.MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+        } else if (sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_DISPLACEMENT_FACTOR_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_DISPLACEMENT_FACTOR_HUNDREDTHS;
         } else {
             this.minimumValue = McrtxRuntimeSettings.MIN_GAMEPLAY_FOV_DEGREES;
             this.maximumValue = McrtxRuntimeSettings.MAX_GAMEPLAY_FOV_DEGREES;
@@ -93,6 +101,8 @@ public final class McrtxFovSlider extends ke {
             sliderValue = MinecraftRemixHooks.getNoCullDistanceBlocks();
         } else if (this.sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
             sliderValue = MinecraftRemixHooks.getBlockOutlineEmissiveIntensityTenths();
+        } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
+            sliderValue = MinecraftRemixHooks.getDisplacementFactorHundredths();
         } else {
             sliderValue = MinecraftRemixHooks.getGameplayFovDegrees();
         }
@@ -117,6 +127,8 @@ public final class McrtxFovSlider extends ke {
             MinecraftRemixHooks.setNoCullDistanceBlocks(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
             MinecraftRemixHooks.setBlockOutlineEmissiveIntensityTenths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
+            MinecraftRemixHooks.setDisplacementFactorHundredths(sliderValue);
         } else {
             MinecraftRemixHooks.setGameplayFovDegrees(sliderValue);
         }
@@ -144,10 +156,21 @@ public final class McrtxFovSlider extends ke {
             this.e = "Outline Intensity: " + formatTenthsValue(sliderValue);
             return;
         }
+        if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
+            this.e = "Displacement Factor: " + formatHundredthsValue(sliderValue) + "x";
+            return;
+        }
         this.e = "FOV: " + sliderValue;
     }
 
     private static String formatTenthsValue(int tenthsValue) {
         return Integer.toString(tenthsValue / 10) + "." + Integer.toString(tenthsValue % 10);
+    }
+
+    private static String formatHundredthsValue(int hundredthsValue) {
+        return Integer.toString(hundredthsValue / 100)
+            + "."
+            + (hundredthsValue % 100 < 10 ? "0" : "")
+            + Integer.toString(hundredthsValue % 100);
     }
 }

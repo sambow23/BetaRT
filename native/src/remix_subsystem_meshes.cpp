@@ -533,6 +533,54 @@ void RemixRenderer::setBlockOutlineEmissiveIntensity(float intensity) {
   }
 }
 
+void RemixRenderer::setDisplacementFactor(float factor) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDisplacementFactor");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(factor)) {
+    factor = 1.0f;
+  }
+
+  if (factor < 0.0f) {
+    factor = 0.0f;
+  } else if (factor > 4.0f) {
+    factor = 4.0f;
+  }
+
+  if (std::abs(displacementFactor_ - factor) < 0.001f) {
+    return;
+  }
+
+  displacementFactor_ = factor;
+  if (!initialized_) {
+    return;
+  }
+
+  destroyBlockOutlineMesh();
+  destroyTerrainMaterials();
+  initializeTerrainMaterials();
+
+  for (auto& [chunkKey, meshData] : chunkMeshes_) {
+    if (meshData.hasOccupancy) {
+      rebuildChunkMeshFromData(chunkKey, meshData, true);
+    }
+  }
+
+  if (!destroyOverlayInstances_.empty()) {
+    rebuildDestroyOverlayMesh();
+  }
+
+  if (!blockOutlineInstances_.empty()) {
+    rebuildBlockOutlineMesh();
+  }
+
+  if (!particleQuads_.empty()) {
+    rebuildParticleMesh();
+  }
+
+  rebuildFireMesh();
+}
+
 void RemixRenderer::setViewModelFovDegrees(float fovYDegrees) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setViewModelFovDegrees");
   std::scoped_lock lock(mutex_);
