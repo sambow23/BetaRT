@@ -6,8 +6,11 @@ public final class McrtxOptionsScreen extends da {
     private static final int HALF_WIDTH_CONTROL_WIDTH = COLUMN_BUTTON_WIDTH;
     private static final int TAB_GENERAL = 0;
     private static final int TAB_DEBUG = 1;
+    private static final int TAB_MATERIALS = 2;
+    private static final int TAB_BUTTON_WIDTH = (FULL_WIDTH_CONTROL_WIDTH - COLUMN_BUTTON_GAP * 2) / 3;
     private static final int GENERAL_TAB_BUTTON_ID = 30;
     private static final int DEBUG_TAB_BUTTON_ID = 31;
+    private static final int MATERIALS_TAB_BUTTON_ID = 32;
     private static final int PLAYER_SHADOWS_BUTTON_ID = 1;
     private static final int HELD_TORCH_LIGHTS_BUTTON_ID = 2;
     private static final int UPSCALER_BUTTON_ID = 3;
@@ -45,6 +48,8 @@ public final class McrtxOptionsScreen extends da {
 
         if (activeTab == TAB_DEBUG) {
             addDebugControls();
+        } else if (activeTab == TAB_MATERIALS) {
+            addMaterialControls();
         } else {
             addGeneralControls();
         }
@@ -54,10 +59,12 @@ public final class McrtxOptionsScreen extends da {
     }
 
     private void addTabButtons() {
-        int leftColumnX = getLeftColumnX();
-        int rightColumnX = getRightColumnX();
-        this.e.add(new ke(GENERAL_TAB_BUTTON_ID, leftColumnX, getTabRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "General"));
-        this.e.add(new ke(DEBUG_TAB_BUTTON_ID, rightColumnX, getTabRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "Debug"));
+        int tabLeftX = getTabLeftX();
+        int middleTabX = tabLeftX + TAB_BUTTON_WIDTH + COLUMN_BUTTON_GAP;
+        int rightTabX = middleTabX + TAB_BUTTON_WIDTH + COLUMN_BUTTON_GAP;
+        this.e.add(new ke(GENERAL_TAB_BUTTON_ID, tabLeftX, getTabRowY(), TAB_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "General"));
+        this.e.add(new ke(DEBUG_TAB_BUTTON_ID, middleTabX, getTabRowY(), TAB_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "Debug"));
+        this.e.add(new ke(MATERIALS_TAB_BUTTON_ID, rightTabX, getTabRowY(), TAB_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, "Materials"));
     }
 
     private void addGeneralControls() {
@@ -82,12 +89,6 @@ public final class McrtxOptionsScreen extends da {
                 getNoCullDistanceSliderRowY(),
                 HALF_WIDTH_CONTROL_WIDTH,
                 COLUMN_BUTTON_HEIGHT));
-        this.e.add(McrtxFovSlider.createDisplacementFactorSlider(
-            DISPLACEMENT_FACTOR_SLIDER_ID,
-            getCenteredHalfWidthControlX(),
-            getDisplacementFactorSliderRowY(),
-            HALF_WIDTH_CONTROL_WIDTH,
-            COLUMN_BUTTON_HEIGHT));
         this.e.add(new ke(PLAYER_SHADOWS_BUTTON_ID, leftColumnX, getFirstButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getPlayerShadowsButtonLabel()));
         this.e.add(new ke(UPSCALER_BUTTON_ID, rightColumnX, getFirstButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getUpscalerButtonLabel()));
         this.e.add(new ke(HELD_TORCH_LIGHTS_BUTTON_ID, leftColumnX, getSecondButtonRowY(), COLUMN_BUTTON_WIDTH, COLUMN_BUTTON_HEIGHT, MinecraftRemixHooks.getHeldTorchLightsButtonLabel()));
@@ -101,6 +102,15 @@ public final class McrtxOptionsScreen extends da {
             getCenteredFullWidthControlX(),
             getGeneralBlockOutlineIntensitySliderRowY(),
             FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+    }
+
+    private void addMaterialControls() {
+        this.e.add(McrtxFovSlider.createDisplacementFactorSlider(
+            DISPLACEMENT_FACTOR_SLIDER_ID,
+            getCenteredHalfWidthControlX(),
+            getDisplacementFactorSliderRowY(),
+            HALF_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT));
     }
 
@@ -195,6 +205,12 @@ public final class McrtxOptionsScreen extends da {
 
         if (button.f == DEBUG_TAB_BUTTON_ID) {
             activeTab = TAB_DEBUG;
+            b();
+            return;
+        }
+
+        if (button.f == MATERIALS_TAB_BUTTON_ID) {
+            activeTab = TAB_MATERIALS;
             b();
             return;
         }
@@ -304,8 +320,18 @@ public final class McrtxOptionsScreen extends da {
 
     public void a(int mouseX, int mouseY, float partialTicks) {
         this.i();
-        this.a(this.g, activeTab == TAB_DEBUG ? "BetaRT Settings - Debug" : "BetaRT Settings", this.c / 2, 20, 0xFFFFFF);
+        this.a(this.g, getScreenTitle(), this.c / 2, 20, 0xFFFFFF);
         super.a(mouseX, mouseY, partialTicks);
+    }
+
+    private String getScreenTitle() {
+        if (activeTab == TAB_DEBUG) {
+            return "BetaRT Settings - Debug";
+        }
+        if (activeTab == TAB_MATERIALS) {
+            return "BetaRT Settings - Materials";
+        }
+        return "BetaRT Settings";
     }
 
     private ke findButton(int buttonId) {
@@ -331,6 +357,12 @@ public final class McrtxOptionsScreen extends da {
         if (debugTabButton != null) {
             debugTabButton.g = activeTab != TAB_DEBUG;
             debugTabButton.h = true;
+        }
+
+        ke materialsTabButton = findButton(MATERIALS_TAB_BUTTON_ID);
+        if (materialsTabButton != null) {
+            materialsTabButton.g = activeTab != TAB_MATERIALS;
+            materialsTabButton.h = true;
         }
 
         ke rtQualityButton = findButton(RT_QUALITY_BUTTON_ID);
@@ -443,6 +475,10 @@ public final class McrtxOptionsScreen extends da {
         return this.c / 2 - FULL_WIDTH_CONTROL_WIDTH / 2;
     }
 
+    private int getTabLeftX() {
+        return this.c / 2 - FULL_WIDTH_CONTROL_WIDTH / 2;
+    }
+
     private int getTabRowY() {
         return this.d / 6 + 28;
     }
@@ -455,12 +491,8 @@ public final class McrtxOptionsScreen extends da {
         return getGameplaySliderRowY() + 24;
     }
 
-    private int getDisplacementFactorSliderRowY() {
-        return getNoCullDistanceSliderRowY() + 24;
-    }
-
     private int getFirstButtonRowY() {
-        return getDisplacementFactorSliderRowY() + 28;
+        return getNoCullDistanceSliderRowY() + 28;
     }
 
     private int getSecondButtonRowY() {
@@ -472,9 +504,13 @@ public final class McrtxOptionsScreen extends da {
     }
 
     private int getDoneButtonY() {
-        return activeTab == TAB_DEBUG
-            ? getDebugNinthButtonRowY() + 48
-            : getGeneralBlockOutlineIntensitySliderRowY() + 48;
+        if (activeTab == TAB_DEBUG) {
+            return getDebugNinthButtonRowY() + 48;
+        }
+        if (activeTab == TAB_MATERIALS) {
+            return getDisplacementFactorSliderRowY() + 48;
+        }
+        return getGeneralBlockOutlineIntensitySliderRowY() + 48;
     }
 
     private int getFourthButtonRowY() {
@@ -519,5 +555,9 @@ public final class McrtxOptionsScreen extends da {
 
     private int getGeneralBlockOutlineIntensitySliderRowY() {
         return getFourthButtonRowY() + 24;
+    }
+
+    private int getDisplacementFactorSliderRowY() {
+        return getGameplaySliderRowY();
     }
 }
