@@ -946,8 +946,8 @@ function Replace-TerrainLiquidTiles {
             $lavaFlowRowOffset = [int][Math]::Floor($frameIndex / 2)
             $waterStillOutput = $waterFrame.Still
             $waterFlowOutput = Shift-BitmapRows -Bitmap $waterFrame.Flow -RowOffset $waterFlowRowOffset
-            $waterStillNormalOutput = New-NormalMapBitmap -SourceBitmap $waterStillOutput -InvertY $true
-            $waterFlowNormalOutput = New-NormalMapBitmap -SourceBitmap $waterFlowOutput -InvertY $true
+            $waterStillNormalOutput = New-NormalMapBitmap -SourceBitmap $waterStillOutput -Strength 0.73 -InvertY $true
+            $waterFlowNormalOutput = New-NormalMapBitmap -SourceBitmap $waterFlowOutput -Strength 0.73 -InvertY $true
             $lavaStillOutput = $lavaFrame.Still
             $lavaFlowOutput = Shift-BitmapRows -Bitmap $lavaFrame.Flow -RowOffset $lavaFlowRowOffset
             $lavaStillEmissiveOutput = $lavaFrame.StillEmissive
