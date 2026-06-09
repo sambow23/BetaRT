@@ -129,6 +129,21 @@ public final class RemixUiCapture {
         active = true;
     }
 
+    public static void clear(int width, int height) {
+        if (!MinecraftRenderHooks.isInitialized() || width <= 0 || height <= 0) {
+            return;
+        }
+        displayWidth = width;
+        displayHeight = height;
+        active = false;
+        vertexCount = 0;
+        cmdCount = 0;
+        MinecraftRenderHooks.submitUiDrawList(
+                xyzuv, colors, 0,
+                cmdTextureIds, cmdQuadCounts, cmdFlags, 0,
+                displayWidth, displayHeight);
+    }
+
     public static void onTessellatorDraw(
             int[] rawVertexData,
             int rawVertexCount,

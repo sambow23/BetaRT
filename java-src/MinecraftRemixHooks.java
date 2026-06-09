@@ -239,6 +239,11 @@ public final class MinecraftRemixHooks {
             if (STANDALONE_WINDOW_MODE) {
                 return;
             }
+            Minecraft minecraft = MinecraftRenderHooks.getRememberedMinecraft();
+            if (minecraft != null && minecraft.z != null && minecraft.z.z && minecraft.r == null) {
+                RemixUiCapture.clear(width, height);
+                return;
+            }
             RemixUiCapture.begin(width, height);
         } finally {
             HookProfiler.endHook("hook.onUiRenderBegin", __perf);
@@ -250,6 +255,13 @@ public final class MinecraftRemixHooks {
         try {
             if (STANDALONE_WINDOW_MODE) {
                 return;
+            }
+            if (!RemixUiCapture.isActive()) {
+                Minecraft minecraft = MinecraftRenderHooks.getRememberedMinecraft();
+                if (minecraft != null && minecraft.z != null && minecraft.z.z && minecraft.r == null) {
+                    RemixUiCapture.clear(minecraft.d, minecraft.e);
+                    return;
+                }
             }
             RemixUiCapture.end();
         } finally {

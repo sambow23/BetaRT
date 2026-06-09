@@ -58,6 +58,7 @@ public final class ClientPatchTool {
     private static final String MOVING_PISTON_RENDERER_CLASS = "hy";
     private static final String FONT_RENDERER_CLASS = "sj";
     private static final String GUI_INGAME_CLASS = "uq";
+    private static final String GUI_SCREEN_CLASS = "da";
     private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
 
     private ClientPatchTool() {
@@ -658,6 +659,7 @@ public final class ClientPatchTool {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
+                    && methodInsnNode.owner.equals(GUI_INGAME_CLASS)
                     && methodInsnNode.name.equals("a")
                     && methodInsnNode.desc.equals("(FZII)V")) {
                 method.instructions.insertBefore(node, uiRenderBeginCall());
@@ -668,16 +670,9 @@ public final class ClientPatchTool {
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
-                    && methodInsnNode.owner.equals("px")
-                    && methodInsnNode.name.equals("b")
-                    && methodInsnNode.desc.equals("()V")) {
-                method.instructions.insertBefore(node, uiRenderBeginCall());
-                break;
-            }
-        }
-
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isStaticCall(node, GL11_CLASS, "glClear", "(I)V")) {
+                    && methodInsnNode.owner.equals(GUI_SCREEN_CLASS)
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(IIF)V")) {
                 method.instructions.insertBefore(node, uiRenderBeginCall());
             }
         }
