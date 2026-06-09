@@ -660,6 +660,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
   cloudTexturePath_ = resolveCloudTexturePath();
   fireTexturePath_ = resolveFireTexturePath();
   waterTexturePath_ = resolveWaterTexturePath();
+  const OptionalPbrTextures waterPbrTextures = resolveOptionalPbrTextures(waterTexturePath_);
   lavaTexturePath_ = resolveLavaTexturePath();
   const OptionalPbrTextures lavaPbrTextures = resolveOptionalPbrTextures(lavaTexturePath_);
   portalTexturePath_ = resolvePortalTexturePath();
@@ -732,6 +733,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     materialInfo.filterMode = 0;
     materialInfo.wrapModeU = 1;
     materialInfo.wrapModeV = 1;
+    materialInfo.normalTexture = optionalTexturePath(pbrTextures.normal);
     if (!isTranslucent) {
       applyOptionalPbrTextures(materialInfo, opaqueInfo, pbrTextures, displacementFactor_);
     }
@@ -870,8 +872,8 @@ bool RemixRenderer::initializeTerrainMaterials() {
       {0.0f, 0.0f, 0.0f},
       kLiquidAnimationFrameCount,
       1,
-        kLiquidAnimationFramesPerSecond,
-        {});
+      kLiquidAnimationFramesPerSecond,
+      waterPbrTextures);
   const bool lavaCreated = !lavaTexturePath_.empty() && createTerrainMaterial(
       kLavaTerrainMaterialClass,
       false,

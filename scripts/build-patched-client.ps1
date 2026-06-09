@@ -306,6 +306,7 @@ function Replace-TerrainLiquidTiles {
     param(
         [string]$TerrainPngPath,
         [string]$WaterPngPath,
+        [string]$WaterNormalPngPath,
         [string]$LavaPngPath,
         [string]$LavaEmissivePngPath
     )
@@ -313,6 +314,7 @@ function Replace-TerrainLiquidTiles {
     $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
     $terrainBitmap = $null
     $waterAtlasBitmap = $null
+    $waterNormalAtlasBitmap = $null
     $lavaAtlasBitmap = $null
     $lavaEmissiveAtlasBitmap = $null
     $waterFrames = @()
@@ -321,6 +323,7 @@ function Replace-TerrainLiquidTiles {
     $periodicLavaFrames = @()
     $graphics = $null
     $waterGraphics = $null
+    $waterNormalGraphics = $null
     $lavaGraphics = $null
     $lavaEmissiveGraphics = $null
 
@@ -331,10 +334,12 @@ function Replace-TerrainLiquidTiles {
         $tileSize = 16
         $atlasWidth = $frameCount * $frameWidth
         $waterAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $waterNormalAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $lavaAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $lavaEmissiveAtlasBitmap = New-Object System.Drawing.Bitmap -ArgumentList $atlasWidth, $tileSize, ([System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
         $graphics = [System.Drawing.Graphics]::FromImage($terrainBitmap)
         $waterGraphics = [System.Drawing.Graphics]::FromImage($waterAtlasBitmap)
+        $waterNormalGraphics = [System.Drawing.Graphics]::FromImage($waterNormalAtlasBitmap)
         $lavaGraphics = [System.Drawing.Graphics]::FromImage($lavaAtlasBitmap)
         $lavaEmissiveGraphics = [System.Drawing.Graphics]::FromImage($lavaEmissiveAtlasBitmap)
 
@@ -448,6 +453,64 @@ function Replace-TerrainLiquidTiles {
                 $pixelX = $pixelIndex % 16
                 $pixelY = [int][Math]::Floor($pixelIndex / 16)
                 $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb($alpha, $red, $green, $blue))
+            }
+
+            return $bitmap
+        }
+
+        function Get-NormalMapHeight {
+            param([System.Drawing.Color]$Color)
+
+            return (($Color.R * 0.299) + ($Color.G * 0.587) + ($Color.B * 0.114)) / 255.0
+        }
+
+        function New-NormalMapBitmap {
+            param(
+                [System.Drawing.Bitmap]$SourceBitmap,
+                [double]$Strength = 2.0,
+                [bool]$InvertY = $false
+            )
+
+            $width = $SourceBitmap.Width
+            $height = $SourceBitmap.Height
+            $bitmap = New-Object System.Drawing.Bitmap($width, $height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+            for ($pixelY = 0; $pixelY -lt $height; $pixelY++) {
+                $upY = (($pixelY - 1) + $height) % $height
+                $downY = ($pixelY + 1) % $height
+
+                for ($pixelX = 0; $pixelX -lt $width; $pixelX++) {
+                    $leftX = (($pixelX - 1) + $width) % $width
+                    $rightX = ($pixelX + 1) % $width
+
+                    $centerColor = $SourceBitmap.GetPixel($pixelX, $pixelY)
+                    $leftHeight = Get-NormalMapHeight -Color ($SourceBitmap.GetPixel($leftX, $pixelY))
+                    $rightHeight = Get-NormalMapHeight -Color ($SourceBitmap.GetPixel($rightX, $pixelY))
+                    $upHeight = Get-NormalMapHeight -Color ($SourceBitmap.GetPixel($pixelX, $upY))
+                    $downHeight = Get-NormalMapHeight -Color ($SourceBitmap.GetPixel($pixelX, $downY))
+
+                    $normalX = ($leftHeight - $rightHeight) * $Strength
+                    $normalY = ($upHeight - $downHeight) * $Strength
+                    $normalZ = 1.0
+                    $normalLength = [Math]::Sqrt(($normalX * $normalX) + ($normalY * $normalY) + ($normalZ * $normalZ))
+                    if ($normalLength -le 0.0) {
+                        $normalLength = 1.0
+                    }
+
+                    $normalX /= $normalLength
+                    $normalY /= $normalLength
+                    $normalZ /= $normalLength
+
+                    if ($InvertY) {
+                        $normalY = -$normalY
+                    }
+
+                    $red = [Math]::Max(0, [Math]::Min(255, [int][Math]::Round((($normalX * 0.5) + 0.5) * 255.0)))
+                    $green = [Math]::Max(0, [Math]::Min(255, [int][Math]::Round((($normalY * 0.5) + 0.5) * 255.0)))
+                    $blue = [Math]::Max(0, [Math]::Min(255, [int][Math]::Round((($normalZ * 0.5) + 0.5) * 255.0)))
+
+                    $bitmap.SetPixel($pixelX, $pixelY, [System.Drawing.Color]::FromArgb($centerColor.A, $red, $green, $blue))
+                }
             }
 
             return $bitmap
@@ -773,6 +836,7 @@ function Replace-TerrainLiquidTiles {
 
         Set-NearestNeighborGraphics -TargetGraphics $graphics
         Set-NearestNeighborGraphics -TargetGraphics $waterGraphics
+        Set-NearestNeighborGraphics -TargetGraphics $waterNormalGraphics
         Set-NearestNeighborGraphics -TargetGraphics $lavaGraphics
         Set-NearestNeighborGraphics -TargetGraphics $lavaEmissiveGraphics
 
@@ -882,6 +946,8 @@ function Replace-TerrainLiquidTiles {
             $lavaFlowRowOffset = [int][Math]::Floor($frameIndex / 2)
             $waterStillOutput = $waterFrame.Still
             $waterFlowOutput = Shift-BitmapRows -Bitmap $waterFrame.Flow -RowOffset $waterFlowRowOffset
+            $waterStillNormalOutput = New-NormalMapBitmap -SourceBitmap $waterStillOutput -InvertY $true
+            $waterFlowNormalOutput = New-NormalMapBitmap -SourceBitmap $waterFlowOutput -InvertY $true
             $lavaStillOutput = $lavaFrame.Still
             $lavaFlowOutput = Shift-BitmapRows -Bitmap $lavaFrame.Flow -RowOffset $lavaFlowRowOffset
             $lavaStillEmissiveOutput = $lavaFrame.StillEmissive
@@ -890,6 +956,8 @@ function Replace-TerrainLiquidTiles {
             try {
                 $waterGraphics.DrawImage($waterStillOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
                 $waterGraphics.DrawImage($waterFlowOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
+                $waterNormalGraphics.DrawImage($waterStillNormalOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
+                $waterNormalGraphics.DrawImage($waterFlowNormalOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
                 $lavaGraphics.DrawImage($lavaStillOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
                 $lavaGraphics.DrawImage($lavaFlowOutput, (New-Object System.Drawing.Rectangle -ArgumentList ($frameDestinationX + $tileSize), 0, $tileSize, $tileSize))
                 $lavaEmissiveGraphics.DrawImage($lavaStillEmissiveOutput, (New-Object System.Drawing.Rectangle -ArgumentList $frameDestinationX, 0, $tileSize, $tileSize))
@@ -906,6 +974,8 @@ function Replace-TerrainLiquidTiles {
                     }
                 }
             } finally {
+                $waterStillNormalOutput.Dispose()
+                $waterFlowNormalOutput.Dispose()
                 $waterFlowOutput.Dispose()
                 $lavaFlowOutput.Dispose()
                 $lavaFlowEmissiveOutput.Dispose()
@@ -914,6 +984,8 @@ function Replace-TerrainLiquidTiles {
 
         $waterGraphics.Dispose()
         $waterGraphics = $null
+        $waterNormalGraphics.Dispose()
+        $waterNormalGraphics = $null
         $lavaGraphics.Dispose()
         $lavaGraphics = $null
         $lavaEmissiveGraphics.Dispose()
@@ -923,15 +995,19 @@ function Replace-TerrainLiquidTiles {
 
         $temporaryTerrainPath = "$TerrainPngPath.tmp"
         $temporaryWaterPath = "$WaterPngPath.tmp"
+        $temporaryWaterNormalPath = "$WaterNormalPngPath.tmp"
         $temporaryLavaPath = "$LavaPngPath.tmp"
         $temporaryLavaEmissivePath = "$LavaEmissivePngPath.tmp"
         $terrainBitmap.Save($temporaryTerrainPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $waterAtlasBitmap.Save($temporaryWaterPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $waterNormalAtlasBitmap.Save($temporaryWaterNormalPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $lavaAtlasBitmap.Save($temporaryLavaPath, [System.Drawing.Imaging.ImageFormat]::Png)
         $lavaEmissiveAtlasBitmap.Save($temporaryLavaEmissivePath, [System.Drawing.Imaging.ImageFormat]::Png)
 
         $waterAtlasBitmap.Dispose()
         $waterAtlasBitmap = $null
+        $waterNormalAtlasBitmap.Dispose()
+        $waterNormalAtlasBitmap = $null
         $lavaAtlasBitmap.Dispose()
         $lavaAtlasBitmap = $null
         $lavaEmissiveAtlasBitmap.Dispose()
@@ -969,6 +1045,8 @@ function Replace-TerrainLiquidTiles {
         Remove-Item -Force $temporaryTerrainPath
         Copy-Item -Force $temporaryWaterPath $WaterPngPath
         Remove-Item -Force $temporaryWaterPath
+        Copy-Item -Force $temporaryWaterNormalPath $WaterNormalPngPath
+        Remove-Item -Force $temporaryWaterNormalPath
         Copy-Item -Force $temporaryLavaPath $LavaPngPath
         Remove-Item -Force $temporaryLavaPath
         Copy-Item -Force $temporaryLavaEmissivePath $LavaEmissivePngPath
@@ -983,6 +1061,9 @@ function Replace-TerrainLiquidTiles {
         if ($null -ne $waterGraphics) {
             $waterGraphics.Dispose()
         }
+        if ($null -ne $waterNormalGraphics) {
+            $waterNormalGraphics.Dispose()
+        }
         if ($null -ne $graphics) {
             $graphics.Dispose()
         }
@@ -994,6 +1075,9 @@ function Replace-TerrainLiquidTiles {
         }
         if ($null -ne $waterAtlasBitmap) {
             $waterAtlasBitmap.Dispose()
+        }
+        if ($null -ne $waterNormalAtlasBitmap) {
+            $waterNormalAtlasBitmap.Dispose()
         }
         foreach ($waterFrame in $waterFrames) {
             $waterFrame.Still.Dispose()
@@ -1399,7 +1483,7 @@ if ($LASTEXITCODE -ne 0) {
 Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "particles.png" -DestinationPath (Join-Path $assetsDir "particles.png")
 Export-ZipEntryFile -ArchivePath $PatchSourceJar -EntryName "terrain.png" -DestinationPath (Join-Path $assetsDir "terrain.png")
 Replace-TerrainFireTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -FirePngPath (Join-Path $assetsDir "fire.png")
-Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
+Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") -WaterPngPath (Join-Path $assetsDir "water.png") -WaterNormalPngPath (Join-Path $assetsDir "water_normal.png") -LavaPngPath (Join-Path $assetsDir "lava.png") -LavaEmissivePngPath (Join-Path $assetsDir "lava_emissive.png")
 New-PortalAtlas -PortalPngPath (Join-Path $assetsDir "portal.png")
 New-RedstoneEmissiveAtlas -TerrainPngPath (Join-Path $assetsDir "terrain.png") -RedstoneEmissivePngPath (Join-Path $assetsDir "redstone_emissive.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
@@ -1407,6 +1491,7 @@ Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "redstone_emissive.png") -
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "portal.png") -DestinationDdsPath (Join-Path $assetsDir "portal.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water.png") -DestinationDdsPath (Join-Path $assetsDir "water.dds")
+Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "water_normal.png") -DestinationDdsPath (Join-Path $assetsDir "water_normal.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava.png") -DestinationDdsPath (Join-Path $assetsDir "lava.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "lava_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "lava_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "particles.png") -DestinationDdsPath (Join-Path $assetsDir "particles.dds")
