@@ -12,9 +12,6 @@ public final class RemixCloudCapture {
 
         long renderStartNanos = System.nanoTime();
 
-        if (world != null && world.t != null) {
-            MinecraftRenderHooks.updateAtmosphereState(world.b(partialTicks), world.t instanceof wd);
-        }
         long atmosphereEndNanos = System.nanoTime();
 
         if (minecraft == null || world == null || world.t == null || world.t.c || minecraft.i == null) {

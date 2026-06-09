@@ -558,6 +558,8 @@ private:
   static std::filesystem::path resolveRemixDllPath();
   bool setConfigVariableLocked(std::string_view key, const std::string& value, bool logChange, bool force = false);
   bool setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force = false);
+  bool setGameValueLocked(std::string_view key, const std::string& value, bool logChange);
+  bool setGameValueFloatLocked(std::string_view key, float value, int precision, bool logChange);
   void applyRtQualityConfigLocked();
   void applyUpscalerConfigLocked();
   void applyRemixConfigPreStartupLocked();
@@ -812,7 +814,9 @@ private:
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};
+  std::unordered_map<std::string, std::string> appliedGameStateValues_ {};
   bool warnedMissingSetConfigVariable_ {false};
+  bool warnedMissingSetGameValue_ {false};
   bool warnedMissingSetFogState_ {false};
   bool warnedMissingSetScreenTint_ {false};
   std::string lastError_;

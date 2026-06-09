@@ -563,7 +563,9 @@ void RemixRenderer::shutdownLocked() {
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
   lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
   appliedRemixConfigValues_.clear();
+  appliedGameStateValues_.clear();
   warnedMissingSetConfigVariable_ = false;
+  warnedMissingSetGameValue_ = false;
   warnedMissingSetFogState_ = false;
   lastError_.clear();
 }
@@ -599,6 +601,37 @@ bool RemixRenderer::setConfigVariableLocked(std::string_view key, const std::str
 
 bool RemixRenderer::setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force) {
   return setConfigVariableLocked(key, formatConfigFloat(value, precision), logChange, force);
+}
+
+bool RemixRenderer::setGameValueLocked(std::string_view key, const std::string& value, bool logChange) {
+  if (remix_.SetGameValue == nullptr) {
+    if (!warnedMissingSetGameValue_) {
+      warnedMissingSetGameValue_ = true;
+      log("SetGameValue not available; runtime Remix game-state updates are disabled");
+    }
+    return false;
+  }
+
+  std::string keyString(key);
+  const auto existing = appliedGameStateValues_.find(keyString);
+  if (existing != appliedGameStateValues_.end() && existing->second == value) {
+    return true;
+  }
+
+  const remixapi_ErrorCode result = remix_.SetGameValue(keyString.c_str(), value.c_str());
+  if (logChange || result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    log(std::string("SetGameValue ") + keyString + "=" + value + " -> " + errorCodeToString(result));
+  }
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    return false;
+  }
+
+  appliedGameStateValues_[std::move(keyString)] = value;
+  return true;
+}
+
+bool RemixRenderer::setGameValueFloatLocked(std::string_view key, float value, int precision, bool logChange) {
+  return setGameValueLocked(key, formatConfigFloat(value, precision), logChange);
 }
 
 void RemixRenderer::applyRemixConfigPreStartupLocked() {
@@ -740,6 +773,7 @@ void RemixRenderer::applyRemixConfigPostStartupLocked() {
 void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {
   if (forceDarkAtmosphere) {
     setConfigFloatLocked("rtx.atmosphere.sunElevation", -30.0f, 2, false);
+    setGameValueLocked("__atmosphere.moon0.enabled", "0", false);
     return;
   }
 
@@ -750,6 +784,14 @@ void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forc
   const float sunRotationDegrees = std::sin(rotationRadians) < 0.0 ? 180.0f : 0.0f;
   setConfigFloatLocked("rtx.atmosphere.sunElevation", elevationDegrees, 2, false);
   setConfigFloatLocked("rtx.atmosphere.sunRotation", sunRotationDegrees, 2, false);
+
+  // Minecraft's moon sits directly opposite the sun on the celestial wheel:
+  // mirrored elevation and a 180-degree-flipped rotation. Beta 1.7.3 has a
+  // single full-moon texture, so the phase stays fixed at full (0.5).
+  setGameValueLocked("__atmosphere.moon0.enabled", "1", false);
+  setGameValueFloatLocked("__atmosphere.moon0.elevation", -elevationDegrees, 2, false);
+  setGameValueFloatLocked("__atmosphere.moon0.rotation", sunRotationDegrees < 90.0f ? 180.0f : 0.0f, 2, false);
+  setGameValueFloatLocked("__atmosphere.moon0.phase", 0.5f, 2, false);
 }
 
 void RemixRenderer::updateFogState(

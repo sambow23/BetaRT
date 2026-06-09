@@ -1228,6 +1228,12 @@ public final class MinecraftRemixHooks {
         long __perf = HookProfiler.begin();
         try {
             RemixParticleCapture.onFrameRenderStart();
+            Minecraft minecraft = MinecraftRenderHooks.getRememberedMinecraft();
+            if (minecraft != null && minecraft.f != null && minecraft.f.t != null) {
+                MinecraftRenderHooks.updateAtmosphereState(
+                        minecraft.f.b(lastCameraPartialTicks),
+                        minecraft.f.t instanceof wd);
+            }
             activeRenderMethodStartNanos = System.nanoTime();
         } finally {
             HookProfiler.endHook("hook.onFrameRenderStart", __perf);
