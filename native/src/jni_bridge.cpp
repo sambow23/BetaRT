@@ -491,6 +491,36 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDisplacementFacto
   RemixRenderer::instance().setDisplacementFactor(factor);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceMeasurementDistance(
+    JNIEnv*, jclass, jfloat distance) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceMeasurementDistance");
+  RemixRenderer::instance().setSubsurfaceMeasurementDistance(distance);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceRadiusScale(
+    JNIEnv*, jclass, jfloat scale) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceRadiusScale");
+  RemixRenderer::instance().setSubsurfaceRadiusScale(scale);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceMaxSampleRadius(
+    JNIEnv*, jclass, jfloat radius) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceMaxSampleRadius");
+  RemixRenderer::instance().setSubsurfaceMaxSampleRadius(radius);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceVolumetricAnisotropy(
+    JNIEnv*, jclass, jfloat anisotropy) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceVolumetricAnisotropy");
+  RemixRenderer::instance().setSubsurfaceVolumetricAnisotropy(anisotropy);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceDiffusionProfileEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceDiffusionProfileEnabled");
+  RemixRenderer::instance().setSubsurfaceDiffusionProfileEnabled(enabled == JNI_TRUE);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetViewModelFovDegrees(
     JNIEnv*, jclass, jfloat fovYDegrees) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetViewModelFovDegrees");

@@ -34,6 +34,11 @@ public final class McrtxOptionsScreen extends da {
     private static final int SIGN_TEXT_CAPTURE_BUTTON_ID = 20;
     private static final int SIGN_VANILLA_SUPPRESSION_BUTTON_ID = 21;
     private static final int DONE_BUTTON_ID = 200;
+    private static final int SUBSURFACE_MEASUREMENT_DISTANCE_SLIDER_ID = 23;
+    private static final int SUBSURFACE_RADIUS_SCALE_SLIDER_ID = 24;
+    private static final int SUBSURFACE_MAX_SAMPLE_RADIUS_SLIDER_ID = 25;
+    private static final int SUBSURFACE_VOLUMETRIC_ANISOTROPY_SLIDER_ID = 26;
+    private static final int SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID = 27;
 
     private final da parent;
     private int activeTab = TAB_GENERAL;
@@ -108,10 +113,41 @@ public final class McrtxOptionsScreen extends da {
     private void addMaterialControls() {
         this.e.add(McrtxFovSlider.createDisplacementFactorSlider(
             DISPLACEMENT_FACTOR_SLIDER_ID,
-            getCenteredHalfWidthControlX(),
+            getCenteredFullWidthControlX(),
             getDisplacementFactorSliderRowY(),
-            HALF_WIDTH_CONTROL_WIDTH,
+            FULL_WIDTH_CONTROL_WIDTH,
             COLUMN_BUTTON_HEIGHT));
+        this.e.add(McrtxFovSlider.createSubsurfaceMeasurementDistanceSlider(
+            SUBSURFACE_MEASUREMENT_DISTANCE_SLIDER_ID,
+            getCenteredFullWidthControlX(),
+            getSubsurfaceMeasurementDistanceSliderRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+        this.e.add(McrtxFovSlider.createSubsurfaceRadiusScaleSlider(
+            SUBSURFACE_RADIUS_SCALE_SLIDER_ID,
+            getCenteredFullWidthControlX(),
+            getSubsurfaceRadiusScaleSliderRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+        this.e.add(McrtxFovSlider.createSubsurfaceMaxSampleRadiusSlider(
+            SUBSURFACE_MAX_SAMPLE_RADIUS_SLIDER_ID,
+            getCenteredFullWidthControlX(),
+            getSubsurfaceMaxSampleRadiusSliderRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+        this.e.add(McrtxFovSlider.createSubsurfaceVolumetricAnisotropySlider(
+            SUBSURFACE_VOLUMETRIC_ANISOTROPY_SLIDER_ID,
+            getCenteredFullWidthControlX(),
+            getSubsurfaceVolumetricAnisotropySliderRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT));
+        this.e.add(new ke(
+            SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID,
+            getCenteredFullWidthControlX(),
+            getSubsurfaceDiffusionProfileButtonRowY(),
+            FULL_WIDTH_CONTROL_WIDTH,
+            COLUMN_BUTTON_HEIGHT,
+            MinecraftRemixHooks.getSubsurfaceDiffusionProfileButtonLabel()));
     }
 
     private void addDebugControls() {
@@ -305,6 +341,12 @@ public final class McrtxOptionsScreen extends da {
             return;
         }
 
+        if (button.f == SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID) {
+            MinecraftRemixHooks.setSubsurfaceDiffusionProfileEnabled(!MinecraftRemixHooks.isSubsurfaceDiffusionProfileEnabled());
+            refreshButtons();
+            return;
+        }
+
         if (button.f == DONE_BUTTON_ID) {
             this.b.a(this.parent);
         }
@@ -453,6 +495,11 @@ public final class McrtxOptionsScreen extends da {
             blockOutlineIntensitySlider.h = showBlockOutlineIntensity;
         }
 
+        ke subsurfaceDiffusionProfileButton = findButton(SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID);
+        if (subsurfaceDiffusionProfileButton != null) {
+            subsurfaceDiffusionProfileButton.e = MinecraftRemixHooks.getSubsurfaceDiffusionProfileButtonLabel();
+        }
+
         ke doneButton = findButton(DONE_BUTTON_ID);
         if (doneButton != null) {
             doneButton.d = getDoneButtonY();
@@ -508,7 +555,7 @@ public final class McrtxOptionsScreen extends da {
             return getDebugNinthButtonRowY() + 48;
         }
         if (activeTab == TAB_MATERIALS) {
-            return getDisplacementFactorSliderRowY() + 48;
+            return getSubsurfaceDiffusionProfileButtonRowY() + 48;
         }
         return getGeneralBlockOutlineIntensitySliderRowY() + 48;
     }
@@ -559,5 +606,25 @@ public final class McrtxOptionsScreen extends da {
 
     private int getDisplacementFactorSliderRowY() {
         return getGameplaySliderRowY();
+    }
+
+    private int getSubsurfaceMeasurementDistanceSliderRowY() {
+        return getDisplacementFactorSliderRowY() + 24;
+    }
+
+    private int getSubsurfaceRadiusScaleSliderRowY() {
+        return getSubsurfaceMeasurementDistanceSliderRowY() + 24;
+    }
+
+    private int getSubsurfaceMaxSampleRadiusSliderRowY() {
+        return getSubsurfaceRadiusScaleSliderRowY() + 24;
+    }
+
+    private int getSubsurfaceVolumetricAnisotropySliderRowY() {
+        return getSubsurfaceMaxSampleRadiusSliderRowY() + 24;
+    }
+
+    private int getSubsurfaceDiffusionProfileButtonRowY() {
+        return getSubsurfaceVolumetricAnisotropySliderRowY() + 24;
     }
 }

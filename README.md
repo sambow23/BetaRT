@@ -71,6 +71,33 @@ powershell -ExecutionPolicy Bypass -File .\scripts\build-patched-client.ps1
 
 The output bundle is written to `out/patched-client`.
 
+## SSS map helper
+
+To generate first-pass RTX Remix SSS maps for foliage or other thin materials,
+use the helper script:
+
+```powershell
+python .\scripts\generate-sss-maps.py .\path\to\grass.png
+```
+
+That writes sibling files using the names mc-rtx already resolves
+automatically:
+
+- `<stem>_transmittance.png`
+- `<stem>_single_scattering_albedo.png`
+- `<stem>_thickness.png`
+
+Useful options for quick iteration:
+
+```powershell
+python .\scripts\generate-sss-maps.py .\path\to\grass.png `
+  --albedo-tint 120,190,90 `
+  --thickness-min 0.06 `
+  --thickness-max 0.16
+```
+
+If Pillow is not installed locally, install it once with `pip install pillow`.
+
 ## Runtime window mode
 
 The native bridge defaults to the current single-window presentation mode,

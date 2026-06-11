@@ -556,7 +556,132 @@ void RemixRenderer::setDisplacementFactor(float factor) {
     return;
   }
 
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setSubsurfaceMeasurementDistance(float distance) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setSubsurfaceMeasurementDistance");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(distance)) {
+    distance = 1.0f;
+  }
+
+  if (distance < 0.0f) {
+    distance = 0.0f;
+  } else if (distance > 10.0f) {
+    distance = 10.0f;
+  }
+
+  if (std::abs(subsurfaceMeasurementDistance_ - distance) < 0.001f) {
+    return;
+  }
+
+  subsurfaceMeasurementDistance_ = distance;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setSubsurfaceRadiusScale(float scale) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setSubsurfaceRadiusScale");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(scale)) {
+    scale = 1.0f;
+  }
+
+  if (scale < 0.0f) {
+    scale = 0.0f;
+  } else if (scale > 10.0f) {
+    scale = 10.0f;
+  }
+
+  if (std::abs(subsurfaceRadiusScale_ - scale) < 0.001f) {
+    return;
+  }
+
+  subsurfaceRadiusScale_ = scale;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setSubsurfaceMaxSampleRadius(float radius) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setSubsurfaceMaxSampleRadius");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(radius)) {
+    radius = 16.0f;
+  }
+
+  if (radius < 0.0f) {
+    radius = 0.0f;
+  } else if (radius > 64.0f) {
+    radius = 64.0f;
+  }
+
+  if (std::abs(subsurfaceMaxSampleRadius_ - radius) < 0.001f) {
+    return;
+  }
+
+  subsurfaceMaxSampleRadius_ = radius;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setSubsurfaceVolumetricAnisotropy(float anisotropy) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setSubsurfaceVolumetricAnisotropy");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(anisotropy)) {
+    anisotropy = 0.0f;
+  }
+
+  if (anisotropy < -1.0f) {
+    anisotropy = -1.0f;
+  } else if (anisotropy > 1.0f) {
+    anisotropy = 1.0f;
+  }
+
+  if (std::abs(subsurfaceVolumetricAnisotropy_ - anisotropy) < 0.001f) {
+    return;
+  }
+
+  subsurfaceVolumetricAnisotropy_ = anisotropy;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setSubsurfaceDiffusionProfileEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setSubsurfaceDiffusionProfileEnabled");
+  std::scoped_lock lock(mutex_);
+
+  if (subsurfaceDiffusionProfileEnabled_ == enabled) {
+    return;
+  }
+
+  subsurfaceDiffusionProfileEnabled_ = enabled;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
   destroyBlockOutlineMesh();
+
   destroyTerrainMaterials();
   initializeTerrainMaterials();
 

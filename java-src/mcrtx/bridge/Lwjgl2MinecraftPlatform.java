@@ -32,6 +32,8 @@ final class Lwjgl2MinecraftPlatform implements MinecraftPlatform {
                 return Keyboard.isKeyDown(Keyboard.KEY_RMENU);
             case X:
                 return Keyboard.isKeyDown(Keyboard.KEY_X);
+            case B:
+                return Keyboard.isKeyDown(Keyboard.KEY_B);
             default:
                 return false;
         }

@@ -347,6 +347,41 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetDisplacementFactor(factor);
     }
 
+    public static synchronized void setSubsurfaceMeasurementDistance(float distance) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetSubsurfaceMeasurementDistance(distance);
+    }
+
+    public static synchronized void setSubsurfaceRadiusScale(float scale) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetSubsurfaceRadiusScale(scale);
+    }
+
+    public static synchronized void setSubsurfaceMaxSampleRadius(float radius) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetSubsurfaceMaxSampleRadius(radius);
+    }
+
+    public static synchronized void setSubsurfaceVolumetricAnisotropy(float anisotropy) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetSubsurfaceVolumetricAnisotropy(anisotropy);
+    }
+
+    public static synchronized void setSubsurfaceDiffusionProfileEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetSubsurfaceDiffusionProfileEnabled(enabled);
+    }
+
     public static synchronized void setViewModelFovDegrees(int fovDegrees) {
         if (!initialized) {
             return;

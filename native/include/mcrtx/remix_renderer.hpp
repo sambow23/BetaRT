@@ -370,6 +370,11 @@ public:
   void setBlockOutlineStyle(int style);
   void setBlockOutlineEmissiveIntensity(float intensity);
   void setDisplacementFactor(float factor);
+  void setSubsurfaceMeasurementDistance(float distance);
+  void setSubsurfaceRadiusScale(float scale);
+  void setSubsurfaceMaxSampleRadius(float radius);
+  void setSubsurfaceVolumetricAnisotropy(float anisotropy);
+  void setSubsurfaceDiffusionProfileEnabled(bool enabled);
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
@@ -579,6 +584,7 @@ private:
   void createBlockOutlineMaterials();
   void destroyTerrainMaterials();
   void destroyBlockOutlineMaterials();
+  void rebuildMaterialDependentMeshesLocked();
   void resetLoadedRemix();
   bool startup(HWND hwnd);
   bool createPrimingMesh();
@@ -800,6 +806,11 @@ private:
   int blockOutlineStyle_ {kBlockOutlineStyleBold};
   float blockOutlineEmissiveIntensity_ {4.5f};
   float displacementFactor_ {1.0f};
+  float subsurfaceMeasurementDistance_ {1.0f};
+  float subsurfaceRadiusScale_ {1.0f};
+  float subsurfaceMaxSampleRadius_ {16.0f};
+  float subsurfaceVolumetricAnisotropy_ {0.0f};
+  bool subsurfaceDiffusionProfileEnabled_ {true};
   static constexpr int kRtQualityLow = 0;
   static constexpr int kRtQualityMedium = 1;
   static constexpr int kRtQualityHigh = 2;

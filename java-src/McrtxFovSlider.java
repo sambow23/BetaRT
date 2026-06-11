@@ -8,6 +8,10 @@ public final class McrtxFovSlider extends ke {
     private static final int SLIDER_MODE_NO_CULL_DISTANCE = 2;
     private static final int SLIDER_MODE_BLOCK_OUTLINE_INTENSITY = 3;
     private static final int SLIDER_MODE_DISPLACEMENT_FACTOR = 4;
+    private static final int SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE = 5;
+    private static final int SLIDER_MODE_SUBSURFACE_RADIUS_SCALE = 6;
+    private static final int SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS = 7;
+    private static final int SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY = 8;
 
     private final int minimumValue;
     private final int maximumValue;
@@ -35,6 +39,22 @@ public final class McrtxFovSlider extends ke {
         return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_DISPLACEMENT_FACTOR);
     }
 
+    public static McrtxFovSlider createSubsurfaceMeasurementDistanceSlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE);
+    }
+
+    public static McrtxFovSlider createSubsurfaceRadiusScaleSlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_SUBSURFACE_RADIUS_SCALE);
+    }
+
+    public static McrtxFovSlider createSubsurfaceMaxSampleRadiusSlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS);
+    }
+
+    public static McrtxFovSlider createSubsurfaceVolumetricAnisotropySlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY);
+    }
+
     private McrtxFovSlider(int buttonId, int x, int y, int width, int height, int sliderMode) {
         super(buttonId, x, y, width, height, "");
         this.sliderMode = sliderMode;
@@ -50,6 +70,18 @@ public final class McrtxFovSlider extends ke {
         } else if (sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             this.minimumValue = McrtxRuntimeSettings.MIN_DISPLACEMENT_FACTOR_HUNDREDTHS;
             this.maximumValue = McrtxRuntimeSettings.MAX_DISPLACEMENT_FACTOR_HUNDREDTHS;
+        } else if (sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS;
+        } else if (sliderMode == SLIDER_MODE_SUBSURFACE_RADIUS_SCALE) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS;
+        } else if (sliderMode == SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
+        } else if (sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
         } else {
             this.minimumValue = McrtxRuntimeSettings.MIN_GAMEPLAY_FOV_DEGREES;
             this.maximumValue = McrtxRuntimeSettings.MAX_GAMEPLAY_FOV_DEGREES;
@@ -103,6 +135,14 @@ public final class McrtxFovSlider extends ke {
             sliderValue = MinecraftRemixHooks.getBlockOutlineEmissiveIntensityTenths();
         } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             sliderValue = MinecraftRemixHooks.getDisplacementFactorHundredths();
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
+            sliderValue = MinecraftRemixHooks.getSubsurfaceMeasurementDistanceHundredths();
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_RADIUS_SCALE) {
+            sliderValue = MinecraftRemixHooks.getSubsurfaceRadiusScaleHundredths();
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS) {
+            sliderValue = MinecraftRemixHooks.getSubsurfaceMaxSampleRadiusHundredths();
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
+            sliderValue = MinecraftRemixHooks.getSubsurfaceVolumetricAnisotropyHundredths();
         } else {
             sliderValue = MinecraftRemixHooks.getGameplayFovDegrees();
         }
@@ -129,6 +169,14 @@ public final class McrtxFovSlider extends ke {
             MinecraftRemixHooks.setBlockOutlineEmissiveIntensityTenths(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             MinecraftRemixHooks.setDisplacementFactorHundredths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
+            MinecraftRemixHooks.setSubsurfaceMeasurementDistanceHundredths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_RADIUS_SCALE) {
+            MinecraftRemixHooks.setSubsurfaceRadiusScaleHundredths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS) {
+            MinecraftRemixHooks.setSubsurfaceMaxSampleRadiusHundredths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
+            MinecraftRemixHooks.setSubsurfaceVolumetricAnisotropyHundredths(sliderValue);
         } else {
             MinecraftRemixHooks.setGameplayFovDegrees(sliderValue);
         }
@@ -160,6 +208,22 @@ public final class McrtxFovSlider extends ke {
             this.e = "Displacement Factor: " + formatHundredthsValue(sliderValue) + "x";
             return;
         }
+        if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
+            this.e = "SSS Distance: " + formatHundredthsValue(sliderValue);
+            return;
+        }
+        if (this.sliderMode == SLIDER_MODE_SUBSURFACE_RADIUS_SCALE) {
+            this.e = "SSS Radius Scale: " + formatHundredthsValue(sliderValue) + "x";
+            return;
+        }
+        if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS) {
+            this.e = "SSS Max Radius: " + formatHundredthsValue(sliderValue);
+            return;
+        }
+        if (this.sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
+            this.e = "SSS Anisotropy: " + formatHundredthsValue(sliderValue);
+            return;
+        }
         this.e = "FOV: " + sliderValue;
     }
 
@@ -168,9 +232,14 @@ public final class McrtxFovSlider extends ke {
     }
 
     private static String formatHundredthsValue(int hundredthsValue) {
-        return Integer.toString(hundredthsValue / 100)
+        int absoluteHundredthsValue = Math.abs(hundredthsValue);
+        String formattedValue = Integer.toString(absoluteHundredthsValue / 100)
             + "."
-            + (hundredthsValue % 100 < 10 ? "0" : "")
-            + Integer.toString(hundredthsValue % 100);
+            + (absoluteHundredthsValue % 100 < 10 ? "0" : "")
+            + Integer.toString(absoluteHundredthsValue % 100);
+        if (hundredthsValue < 0) {
+            return "-" + formattedValue;
+        }
+        return formattedValue;
     }
 }

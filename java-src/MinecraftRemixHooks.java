@@ -22,6 +22,7 @@ public final class MinecraftRemixHooks {
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final int WINDOWS_VK_MENU = 0x12;
     private static final int WINDOWS_VK_X = 0x58;
+    private static final int WINDOWS_VK_B = 0x42;
     private static final int MCRTX_OPTIONS_BUTTON_ID = 102;
     private static final long REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS = 150_000_000L;
     private static final boolean STANDALONE_WINDOW_MODE = detectStandaloneWindowMode();
@@ -42,6 +43,11 @@ public final class MinecraftRemixHooks {
     private static boolean remixUiLastAltHotkeyDown;
     private static boolean remixUiLastXHotkeyDown;
     private static long remixUiHotkeyReleaseStartedNanos;
+    private static boolean sssQuickPanelHotkeyHeld;
+    private static boolean sssQuickPanelHotkeyLocked;
+    private static boolean sssQuickPanelLastAltHotkeyDown;
+    private static boolean sssQuickPanelLastBHotkeyDown;
+    private static long sssQuickPanelHotkeyReleaseStartedNanos;
     private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
     private static long perfFrameCount;
     private static long perfTotalFrameNanos;
@@ -276,6 +282,7 @@ public final class MinecraftRemixHooks {
                 return;
             }
             syncRemixUiInput(minecraft, true);
+            syncSssQuickPanelInput(minecraft);
         } finally {
             HookProfiler.endHook("hook.onRemixUiTick", __perf);
         }
@@ -887,6 +894,26 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.getDisplacementFactorHundredths();
     }
 
+    public static int getSubsurfaceMeasurementDistanceHundredths() {
+        return McrtxRuntimeSettings.getSubsurfaceMeasurementDistanceHundredths();
+    }
+
+    public static int getSubsurfaceRadiusScaleHundredths() {
+        return McrtxRuntimeSettings.getSubsurfaceRadiusScaleHundredths();
+    }
+
+    public static int getSubsurfaceMaxSampleRadiusHundredths() {
+        return McrtxRuntimeSettings.getSubsurfaceMaxSampleRadiusHundredths();
+    }
+
+    public static int getSubsurfaceVolumetricAnisotropyHundredths() {
+        return McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropyHundredths();
+    }
+
+    public static boolean isSubsurfaceDiffusionProfileEnabled() {
+        return McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled();
+    }
+
     public static boolean shouldShowBlockOutlineIntensitySlider() {
         return isBlockOutlineEnabled() && isBlockOutlineEmissiveStyle(getBlockOutlineStyle());
     }
@@ -968,6 +995,10 @@ public final class MinecraftRemixHooks {
 
     public static String getBlockOutlineStyleButtonLabel() {
         return "Outline Style: " + describeBlockOutlineStyle(getBlockOutlineStyle());
+    }
+
+    public static String getSubsurfaceDiffusionProfileButtonLabel() {
+        return "SSS Diffusion: " + formatToggleState(isSubsurfaceDiffusionProfileEnabled());
     }
 
     public static void setPlayerShadowsEnabled(boolean enabled) {
@@ -1077,6 +1108,31 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
     }
 
+    public static void setSubsurfaceMeasurementDistanceHundredths(int distanceHundredths) {
+        McrtxRuntimeSettings.setSubsurfaceMeasurementDistanceHundredths(distanceHundredths);
+        MinecraftRenderHooks.setSubsurfaceMeasurementDistance(McrtxRuntimeSettings.getSubsurfaceMeasurementDistance());
+    }
+
+    public static void setSubsurfaceRadiusScaleHundredths(int scaleHundredths) {
+        McrtxRuntimeSettings.setSubsurfaceRadiusScaleHundredths(scaleHundredths);
+        MinecraftRenderHooks.setSubsurfaceRadiusScale(McrtxRuntimeSettings.getSubsurfaceRadiusScale());
+    }
+
+    public static void setSubsurfaceMaxSampleRadiusHundredths(int radiusHundredths) {
+        McrtxRuntimeSettings.setSubsurfaceMaxSampleRadiusHundredths(radiusHundredths);
+        MinecraftRenderHooks.setSubsurfaceMaxSampleRadius(McrtxRuntimeSettings.getSubsurfaceMaxSampleRadius());
+    }
+
+    public static void setSubsurfaceVolumetricAnisotropyHundredths(int anisotropyHundredths) {
+        McrtxRuntimeSettings.setSubsurfaceVolumetricAnisotropyHundredths(anisotropyHundredths);
+        MinecraftRenderHooks.setSubsurfaceVolumetricAnisotropy(McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropy());
+    }
+
+    public static void setSubsurfaceDiffusionProfileEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setSubsurfaceDiffusionProfileEnabled(enabled);
+        MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(enabled);
+    }
+
     public static void cycleBlockOutlineStyle() {
         int style = McrtxRuntimeSettings.getBlockOutlineStyle();
         switch (style) {
@@ -1183,6 +1239,11 @@ public final class MinecraftRemixHooks {
         remixUiLastAltHotkeyDown = false;
         remixUiLastXHotkeyDown = false;
         remixUiHotkeyReleaseStartedNanos = 0L;
+        sssQuickPanelHotkeyHeld = false;
+        sssQuickPanelHotkeyLocked = false;
+        sssQuickPanelLastAltHotkeyDown = false;
+        sssQuickPanelLastBHotkeyDown = false;
+        sssQuickPanelHotkeyReleaseStartedNanos = 0L;
         preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
         MinecraftRenderHooks.setRemixUiInputActive(false);
     }
@@ -1392,6 +1453,11 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
         MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
         MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
+        MinecraftRenderHooks.setSubsurfaceMeasurementDistance(McrtxRuntimeSettings.getSubsurfaceMeasurementDistance());
+        MinecraftRenderHooks.setSubsurfaceRadiusScale(McrtxRuntimeSettings.getSubsurfaceRadiusScale());
+        MinecraftRenderHooks.setSubsurfaceMaxSampleRadius(McrtxRuntimeSettings.getSubsurfaceMaxSampleRadius());
+        MinecraftRenderHooks.setSubsurfaceVolumetricAnisotropy(McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropy());
+        MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled());
         RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
         MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
         applyRtQualitySettings();
@@ -1661,6 +1727,51 @@ public final class MinecraftRemixHooks {
             return MinecraftRenderHooks.isNativeVirtualKeyDown(WINDOWS_VK_X);
         }
         return platform.isKeyDown(MinecraftPlatformKey.X);
+    }
+
+    private static boolean isBHotkeyDown(MinecraftPlatform platform) {
+        if (NATIVE_INPUT_BACKEND && MinecraftRenderHooks.isInitialized()) {
+            return MinecraftRenderHooks.isNativeVirtualKeyDown(WINDOWS_VK_B);
+        }
+        return platform.isKeyDown(MinecraftPlatformKey.B);
+    }
+
+    private static void syncSssQuickPanelInput(net.minecraft.client.Minecraft minecraft) {
+        if (minecraft == null) {
+            return;
+        }
+
+        MinecraftPlatform platform = MinecraftPlatformRuntime.current();
+        boolean altDown = isAltHotkeyDown(platform);
+        boolean bDown = isBHotkeyDown(platform);
+        boolean hotkeyHeld = altDown && bDown;
+        boolean hotkeyFullyReleased = !altDown && !bDown;
+        boolean quickPanelOpen = minecraft.r instanceof McrtxSssQuickScreen;
+        boolean canToggle = minecraft.r == null || quickPanelOpen;
+        long nowNanos = System.nanoTime();
+
+        if (!hotkeyFullyReleased) {
+            sssQuickPanelHotkeyReleaseStartedNanos = 0L;
+        }
+
+        if (hotkeyHeld && !sssQuickPanelHotkeyHeld && !sssQuickPanelHotkeyLocked && canToggle) {
+            if (quickPanelOpen) {
+                minecraft.a((da) null);
+            } else {
+                minecraft.a(new McrtxSssQuickScreen());
+            }
+            sssQuickPanelHotkeyLocked = true;
+        } else if (hotkeyFullyReleased && sssQuickPanelHotkeyLocked) {
+            if (sssQuickPanelHotkeyReleaseStartedNanos == 0L) {
+                sssQuickPanelHotkeyReleaseStartedNanos = nowNanos;
+            } else if (nowNanos - sssQuickPanelHotkeyReleaseStartedNanos >= REMIX_UI_HOTKEY_RELEASE_DEBOUNCE_NANOS) {
+                sssQuickPanelHotkeyLocked = false;
+            }
+        }
+
+        sssQuickPanelLastAltHotkeyDown = altDown;
+        sssQuickPanelLastBHotkeyDown = bDown;
+        sssQuickPanelHotkeyHeld = hotkeyHeld;
     }
 
     private static boolean syncRemixUiInput(net.minecraft.client.Minecraft minecraft, boolean allowHotkeyToggle) {

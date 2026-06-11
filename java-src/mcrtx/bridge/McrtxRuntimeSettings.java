@@ -34,6 +34,11 @@ public final class McrtxRuntimeSettings {
     public static final String BLOCK_OUTLINE_STYLE_KEY = "MCRTX_BLOCK_OUTLINE_STYLE";
     public static final String BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY = "MCRTX_BLOCK_OUTLINE_EMISSIVE_INTENSITY";
     public static final String DISPLACEMENT_FACTOR_KEY = "MCRTX_DISPLACEMENT_FACTOR";
+    public static final String SUBSURFACE_MEASUREMENT_DISTANCE_KEY = "MCRTX_SUBSURFACE_MEASUREMENT_DISTANCE";
+    public static final String SUBSURFACE_RADIUS_SCALE_KEY = "MCRTX_SUBSURFACE_RADIUS_SCALE";
+    public static final String SUBSURFACE_MAX_SAMPLE_RADIUS_KEY = "MCRTX_SUBSURFACE_MAX_SAMPLE_RADIUS";
+    public static final String SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY = "MCRTX_SUBSURFACE_VOLUMETRIC_ANISOTROPY";
+    public static final String SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY = "MCRTX_SUBSURFACE_DIFFUSION_PROFILE_ENABLED";
 
     public static final int MIN_GAMEPLAY_FOV_DEGREES = 30;
     public static final int MAX_GAMEPLAY_FOV_DEGREES = 120;
@@ -50,6 +55,18 @@ public final class McrtxRuntimeSettings {
     public static final int MIN_DISPLACEMENT_FACTOR_HUNDREDTHS = 0;
     public static final int MAX_DISPLACEMENT_FACTOR_HUNDREDTHS = 400;
     public static final int DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS = 100;
+    public static final int MIN_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 0;
+    public static final int MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 1000;
+    public static final int DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 100;
+    public static final int MIN_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 0;
+    public static final int MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 1000;
+    public static final int DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 100;
+    public static final int MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 0;
+    public static final int MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 6400;
+    public static final int DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 1600;
+    public static final int MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = -100;
+    public static final int MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 100;
+    public static final int DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 0;
 
     public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
     public static final int BLOCK_OUTLINE_STYLE_BOLD = 1;
@@ -117,6 +134,11 @@ public final class McrtxRuntimeSettings {
     private static int blockOutlineStyle = BLOCK_OUTLINE_STYLE_BOLD;
     private static int blockOutlineEmissiveIntensityTenths = DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
     private static int displacementFactorHundredths = DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS;
+    private static int subsurfaceMeasurementDistanceHundredths = DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS;
+    private static int subsurfaceRadiusScaleHundredths = DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS;
+    private static int subsurfaceMaxSampleRadiusHundredths = DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
+    private static int subsurfaceVolumetricAnisotropyHundredths = DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
+    private static boolean subsurfaceDiffusionProfileEnabled = true;
 
     private McrtxRuntimeSettings() {
     }
@@ -508,6 +530,69 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static int getSubsurfaceMeasurementDistanceHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return subsurfaceMeasurementDistanceHundredths;
+        }
+    }
+
+    public static float getSubsurfaceMeasurementDistance() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) subsurfaceMeasurementDistanceHundredths / 100.0f;
+        }
+    }
+
+    public static int getSubsurfaceRadiusScaleHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return subsurfaceRadiusScaleHundredths;
+        }
+    }
+
+    public static float getSubsurfaceRadiusScale() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) subsurfaceRadiusScaleHundredths / 100.0f;
+        }
+    }
+
+    public static int getSubsurfaceMaxSampleRadiusHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return subsurfaceMaxSampleRadiusHundredths;
+        }
+    }
+
+    public static float getSubsurfaceMaxSampleRadius() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) subsurfaceMaxSampleRadiusHundredths / 100.0f;
+        }
+    }
+
+    public static int getSubsurfaceVolumetricAnisotropyHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return subsurfaceVolumetricAnisotropyHundredths;
+        }
+    }
+
+    public static float getSubsurfaceVolumetricAnisotropy() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) subsurfaceVolumetricAnisotropyHundredths / 100.0f;
+        }
+    }
+
+    public static boolean isSubsurfaceDiffusionProfileEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return subsurfaceDiffusionProfileEnabled;
+        }
+    }
+
     public static void setRayReconstructionEnabled(boolean enabled) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -578,6 +663,65 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setSubsurfaceMeasurementDistanceHundredths(int distanceHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedDistanceHundredths = normalizeSubsurfaceMeasurementDistanceHundredths(distanceHundredths);
+            if (subsurfaceMeasurementDistanceHundredths == normalizedDistanceHundredths) {
+                return;
+            }
+            subsurfaceMeasurementDistanceHundredths = normalizedDistanceHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setSubsurfaceRadiusScaleHundredths(int scaleHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedScaleHundredths = normalizeSubsurfaceRadiusScaleHundredths(scaleHundredths);
+            if (subsurfaceRadiusScaleHundredths == normalizedScaleHundredths) {
+                return;
+            }
+            subsurfaceRadiusScaleHundredths = normalizedScaleHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setSubsurfaceMaxSampleRadiusHundredths(int radiusHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedRadiusHundredths = normalizeSubsurfaceMaxSampleRadiusHundredths(radiusHundredths);
+            if (subsurfaceMaxSampleRadiusHundredths == normalizedRadiusHundredths) {
+                return;
+            }
+            subsurfaceMaxSampleRadiusHundredths = normalizedRadiusHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setSubsurfaceVolumetricAnisotropyHundredths(int anisotropyHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedAnisotropyHundredths = normalizeSubsurfaceVolumetricAnisotropyHundredths(anisotropyHundredths);
+            if (subsurfaceVolumetricAnisotropyHundredths == normalizedAnisotropyHundredths) {
+                return;
+            }
+            subsurfaceVolumetricAnisotropyHundredths = normalizedAnisotropyHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setSubsurfaceDiffusionProfileEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (subsurfaceDiffusionProfileEnabled == enabled) {
+                return;
+            }
+            subsurfaceDiffusionProfileEnabled = enabled;
+            saveLocked();
+        }
+    }
+
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -614,6 +758,34 @@ public final class McrtxRuntimeSettings {
             fileValues,
             DISPLACEMENT_FACTOR_KEY,
             DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS);
+        subsurfaceMeasurementDistanceHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            SUBSURFACE_MEASUREMENT_DISTANCE_KEY,
+            DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS,
+            MIN_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS,
+            MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS);
+        subsurfaceRadiusScaleHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            SUBSURFACE_RADIUS_SCALE_KEY,
+            DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS,
+            MIN_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS,
+            MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS);
+        subsurfaceMaxSampleRadiusHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            SUBSURFACE_MAX_SAMPLE_RADIUS_KEY,
+            DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS,
+            MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS,
+            MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS);
+        subsurfaceVolumetricAnisotropyHundredths = readSignedHundredthsSetting(
+            fileValues,
+            SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY,
+            DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS,
+            MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS,
+            MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
+        subsurfaceDiffusionProfileEnabled = readBooleanSetting(
+            fileValues,
+            SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
+            true);
         loaded = true;
     }
 
@@ -948,6 +1120,30 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    private static int readPositiveHundredthsSetting(Map<String, String> fileValues, String key, int defaultValue, int minimumValue, int maximumValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeHundredths(defaultValue, minimumValue, maximumValue);
+        }
+
+        try {
+            return normalizeHundredths((int) Math.round(Double.parseDouble(configuredValue.trim()) * 100.0), minimumValue, maximumValue);
+        } catch (NumberFormatException exception) {
+            return normalizeHundredths(defaultValue, minimumValue, maximumValue);
+        }
+    }
+
+    private static int readSignedHundredthsSetting(Map<String, String> fileValues, String key, int defaultValue, int minimumValue, int maximumValue) {
+        return readPositiveHundredthsSetting(fileValues, key, defaultValue, minimumValue, maximumValue);
+    }
+
     private static void saveLocked() {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
@@ -976,6 +1172,21 @@ public final class McrtxRuntimeSettings {
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
             formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
         fileValues.put(DISPLACEMENT_FACTOR_KEY, formatDisplacementFactorHundredths(displacementFactorHundredths));
+        fileValues.put(
+            SUBSURFACE_MEASUREMENT_DISTANCE_KEY,
+            formatHundredthsValue(subsurfaceMeasurementDistanceHundredths));
+        fileValues.put(
+            SUBSURFACE_RADIUS_SCALE_KEY,
+            formatHundredthsValue(subsurfaceRadiusScaleHundredths));
+        fileValues.put(
+            SUBSURFACE_MAX_SAMPLE_RADIUS_KEY,
+            formatHundredthsValue(subsurfaceMaxSampleRadiusHundredths));
+        fileValues.put(
+            SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY,
+            formatHundredthsValue(subsurfaceVolumetricAnisotropyHundredths));
+        fileValues.put(
+            SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
+            formatBoolean(subsurfaceDiffusionProfileEnabled));
         writeFileValues(fileValues);
     }
 
@@ -1126,6 +1337,44 @@ public final class McrtxRuntimeSettings {
         return factorHundredths;
     }
 
+    private static int normalizeSubsurfaceMeasurementDistanceHundredths(int distanceHundredths) {
+        return normalizeHundredths(
+            distanceHundredths,
+            MIN_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS,
+            MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS);
+    }
+
+    private static int normalizeSubsurfaceRadiusScaleHundredths(int scaleHundredths) {
+        return normalizeHundredths(
+            scaleHundredths,
+            MIN_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS,
+            MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS);
+    }
+
+    private static int normalizeSubsurfaceMaxSampleRadiusHundredths(int radiusHundredths) {
+        return normalizeHundredths(
+            radiusHundredths,
+            MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS,
+            MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS);
+    }
+
+    private static int normalizeSubsurfaceVolumetricAnisotropyHundredths(int anisotropyHundredths) {
+        return normalizeHundredths(
+            anisotropyHundredths,
+            MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS,
+            MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
+    }
+
+    private static int normalizeHundredths(int value, int minimumValue, int maximumValue) {
+        if (value < minimumValue) {
+            return minimumValue;
+        }
+        if (value > maximumValue) {
+            return maximumValue;
+        }
+        return value;
+    }
+
     private static String formatUpscalerType(int type) {
         switch (normalizeUpscalerType(type)) {
             case UPSCALER_TYPE_NONE:
@@ -1235,11 +1484,20 @@ public final class McrtxRuntimeSettings {
 
     private static String formatDisplacementFactorHundredths(int factorHundredths) {
         int normalizedFactorHundredths = normalizeDisplacementFactorHundredths(factorHundredths);
-        int wholeValue = normalizedFactorHundredths / 100;
-        int fractionalValue = normalizedFactorHundredths % 100;
-        return Integer.toString(wholeValue)
+        return formatHundredthsValue(normalizedFactorHundredths);
+    }
+
+    private static String formatHundredthsValue(int hundredthsValue) {
+        int absoluteHundredthsValue = Math.abs(hundredthsValue);
+        int wholeValue = absoluteHundredthsValue / 100;
+        int fractionalValue = absoluteHundredthsValue % 100;
+        String formattedValue = Integer.toString(wholeValue)
             + "."
             + (fractionalValue < 10 ? "0" : "")
             + Integer.toString(fractionalValue);
+        if (hundredthsValue < 0) {
+            return "-" + formattedValue;
+        }
+        return formattedValue;
     }
 }

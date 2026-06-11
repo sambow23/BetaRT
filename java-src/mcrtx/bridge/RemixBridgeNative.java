@@ -191,6 +191,16 @@ public final class RemixBridgeNative {
 
             public static native void nSetDisplacementFactor(float factor);
 
+            public static native void nSetSubsurfaceMeasurementDistance(float distance);
+
+            public static native void nSetSubsurfaceRadiusScale(float scale);
+
+            public static native void nSetSubsurfaceMaxSampleRadius(float radius);
+
+            public static native void nSetSubsurfaceVolumetricAnisotropy(float anisotropy);
+
+            public static native void nSetSubsurfaceDiffusionProfileEnabled(boolean enabled);
+
             public static native void nSetViewModelFovDegrees(float fovYDegrees);
 
             public static native void nSetRtQuality(int rtQuality);
