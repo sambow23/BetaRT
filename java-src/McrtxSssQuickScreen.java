@@ -10,7 +10,8 @@ public final class McrtxSssQuickScreen extends da {
     private static final int SUBSURFACE_MAX_SAMPLE_RADIUS_SLIDER_ID = 303;
     private static final int SUBSURFACE_VOLUMETRIC_ANISOTROPY_SLIDER_ID = 304;
     private static final int SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID = 305;
-    private static final int CLOSE_BUTTON_ID = 306;
+    private static final int RESET_DEFAULTS_BUTTON_ID = 306;
+    private static final int CLOSE_BUTTON_ID = 307;
 
     public void b() {
         this.e.clear();
@@ -46,6 +47,13 @@ public final class McrtxSssQuickScreen extends da {
                 CONTROL_HEIGHT,
                 MinecraftRemixHooks.getSubsurfaceDiffusionProfileButtonLabel()));
         this.e.add(new ke(
+            RESET_DEFAULTS_BUTTON_ID,
+            getControlX(),
+            getResetDefaultsButtonY(),
+            getControlWidth(),
+            CONTROL_HEIGHT,
+            "Reset SSS Defaults"));
+        this.e.add(new ke(
                 CLOSE_BUTTON_ID,
                 getControlX(),
                 getCloseButtonY(),
@@ -62,6 +70,12 @@ public final class McrtxSssQuickScreen extends da {
 
         if (button.f == SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID) {
             MinecraftRemixHooks.setSubsurfaceDiffusionProfileEnabled(!MinecraftRemixHooks.isSubsurfaceDiffusionProfileEnabled());
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == RESET_DEFAULTS_BUTTON_ID) {
+            MinecraftRemixHooks.resetSubsurfaceSettingsToDefaults();
             refreshButtons();
             return;
         }
@@ -144,6 +158,10 @@ public final class McrtxSssQuickScreen extends da {
     }
 
     private int getCloseButtonY() {
+        return getResetDefaultsButtonY() + CONTROL_HEIGHT + CONTROL_GAP;
+    }
+
+    private int getResetDefaultsButtonY() {
         return getDiffusionProfileButtonY() + CONTROL_HEIGHT + CONTROL_GAP;
     }
 

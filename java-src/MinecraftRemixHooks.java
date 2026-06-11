@@ -1133,6 +1133,14 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(enabled);
     }
 
+    public static void resetSubsurfaceSettingsToDefaults() {
+        setSubsurfaceMeasurementDistanceHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS);
+        setSubsurfaceRadiusScaleHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS);
+        setSubsurfaceMaxSampleRadiusHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS);
+        setSubsurfaceVolumetricAnisotropyHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
+        setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
+    }
+
     public static void cycleBlockOutlineStyle() {
         int style = McrtxRuntimeSettings.getBlockOutlineStyle();
         switch (style) {

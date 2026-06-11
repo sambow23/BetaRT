@@ -56,17 +56,18 @@ public final class McrtxRuntimeSettings {
     public static final int MAX_DISPLACEMENT_FACTOR_HUNDREDTHS = 400;
     public static final int DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS = 100;
     public static final int MIN_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 0;
-    public static final int MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 1000;
+    public static final int MAX_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 2500;
     public static final int DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS = 100;
     public static final int MIN_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 0;
-    public static final int MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 1000;
+    public static final int MAX_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 2500;
     public static final int DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS = 100;
     public static final int MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 0;
-    public static final int MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 6400;
+    public static final int MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 25600;
     public static final int DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS = 1600;
     public static final int MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = -100;
-    public static final int MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 100;
+    public static final int MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 99;
     public static final int DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 0;
+    public static final boolean DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED = true;
 
     public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
     public static final int BLOCK_OUTLINE_STYLE_BOLD = 1;
@@ -138,7 +139,7 @@ public final class McrtxRuntimeSettings {
     private static int subsurfaceRadiusScaleHundredths = DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS;
     private static int subsurfaceMaxSampleRadiusHundredths = DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
     private static int subsurfaceVolumetricAnisotropyHundredths = DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
-    private static boolean subsurfaceDiffusionProfileEnabled = true;
+    private static boolean subsurfaceDiffusionProfileEnabled = DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED;
 
     private McrtxRuntimeSettings() {
     }
@@ -785,7 +786,7 @@ public final class McrtxRuntimeSettings {
         subsurfaceDiffusionProfileEnabled = readBooleanSetting(
             fileValues,
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
-            true);
+            DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
         loaded = true;
     }
 
