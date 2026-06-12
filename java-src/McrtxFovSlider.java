@@ -12,6 +12,7 @@ public final class McrtxFovSlider extends ke {
     private static final int SLIDER_MODE_SUBSURFACE_RADIUS_SCALE = 6;
     private static final int SLIDER_MODE_SUBSURFACE_MAX_SAMPLE_RADIUS = 7;
     private static final int SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY = 8;
+    private static final int SLIDER_MODE_WATER_MATERIAL_THICKNESS = 9;
 
     private final int minimumValue;
     private final int maximumValue;
@@ -55,6 +56,10 @@ public final class McrtxFovSlider extends ke {
         return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY);
     }
 
+    public static McrtxFovSlider createWaterMaterialThicknessSlider(int buttonId, int x, int y, int width, int height) {
+        return new McrtxFovSlider(buttonId, x, y, width, height, SLIDER_MODE_WATER_MATERIAL_THICKNESS);
+    }
+
     private McrtxFovSlider(int buttonId, int x, int y, int width, int height, int sliderMode) {
         super(buttonId, x, y, width, height, "");
         this.sliderMode = sliderMode;
@@ -82,6 +87,9 @@ public final class McrtxFovSlider extends ke {
         } else if (sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
             this.minimumValue = McrtxRuntimeSettings.MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
             this.maximumValue = McrtxRuntimeSettings.MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
+        } else if (sliderMode == SLIDER_MODE_WATER_MATERIAL_THICKNESS) {
+            this.minimumValue = McrtxRuntimeSettings.MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
         } else {
             this.minimumValue = McrtxRuntimeSettings.MIN_GAMEPLAY_FOV_DEGREES;
             this.maximumValue = McrtxRuntimeSettings.MAX_GAMEPLAY_FOV_DEGREES;
@@ -143,6 +151,8 @@ public final class McrtxFovSlider extends ke {
             sliderValue = MinecraftRemixHooks.getSubsurfaceMaxSampleRadiusHundredths();
         } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
             sliderValue = MinecraftRemixHooks.getSubsurfaceVolumetricAnisotropyHundredths();
+        } else if (this.sliderMode == SLIDER_MODE_WATER_MATERIAL_THICKNESS) {
+            sliderValue = MinecraftRemixHooks.getWaterMaterialThicknessThousandths();
         } else {
             sliderValue = MinecraftRemixHooks.getGameplayFovDegrees();
         }
@@ -177,6 +187,8 @@ public final class McrtxFovSlider extends ke {
             MinecraftRemixHooks.setSubsurfaceMaxSampleRadiusHundredths(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_VOLUMETRIC_ANISOTROPY) {
             MinecraftRemixHooks.setSubsurfaceVolumetricAnisotropyHundredths(sliderValue);
+        } else if (this.sliderMode == SLIDER_MODE_WATER_MATERIAL_THICKNESS) {
+            MinecraftRemixHooks.setWaterMaterialThicknessThousandths(sliderValue);
         } else {
             MinecraftRemixHooks.setGameplayFovDegrees(sliderValue);
         }
@@ -224,6 +236,10 @@ public final class McrtxFovSlider extends ke {
             this.e = "SSS Anisotropy: " + formatHundredthsValue(sliderValue);
             return;
         }
+        if (this.sliderMode == SLIDER_MODE_WATER_MATERIAL_THICKNESS) {
+            this.e = "Water Thickness: " + formatThousandthsValue(sliderValue);
+            return;
+        }
         this.e = "FOV: " + sliderValue;
     }
 
@@ -238,6 +254,19 @@ public final class McrtxFovSlider extends ke {
             + (absoluteHundredthsValue % 100 < 10 ? "0" : "")
             + Integer.toString(absoluteHundredthsValue % 100);
         if (hundredthsValue < 0) {
+            return "-" + formattedValue;
+        }
+        return formattedValue;
+    }
+
+    private static String formatThousandthsValue(int thousandthsValue) {
+        int absoluteThousandthsValue = Math.abs(thousandthsValue);
+        String formattedValue = Integer.toString(absoluteThousandthsValue / 1000)
+            + "."
+            + (absoluteThousandthsValue % 1000 < 100 ? "0" : "")
+            + (absoluteThousandthsValue % 1000 < 10 ? "0" : "")
+            + Integer.toString(absoluteThousandthsValue % 1000);
+        if (thousandthsValue < 0) {
             return "-" + formattedValue;
         }
         return formattedValue;

@@ -39,6 +39,9 @@ public final class McrtxRuntimeSettings {
     public static final String SUBSURFACE_MAX_SAMPLE_RADIUS_KEY = "MCRTX_SUBSURFACE_MAX_SAMPLE_RADIUS";
     public static final String SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY = "MCRTX_SUBSURFACE_VOLUMETRIC_ANISOTROPY";
     public static final String SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY = "MCRTX_SUBSURFACE_DIFFUSION_PROFILE_ENABLED";
+    public static final String WATER_THIN_WALLED_ENABLED_KEY = "MCRTX_WATER_THIN_WALLED_ENABLED";
+    public static final String WATER_MATERIAL_THICKNESS_KEY = "MCRTX_WATER_MATERIAL_THICKNESS";
+    private static final String WATER_MATERIAL_THICKNESS_MIGRATION_KEY = "MCRTX_WATER_MATERIAL_THICKNESS_MIGRATED";
 
     public static final int MIN_GAMEPLAY_FOV_DEGREES = 30;
     public static final int MAX_GAMEPLAY_FOV_DEGREES = 120;
@@ -68,6 +71,11 @@ public final class McrtxRuntimeSettings {
     public static final int MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 99;
     public static final int DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 0;
     public static final boolean DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED = true;
+    public static final boolean DEFAULT_WATER_THIN_WALLED_ENABLED = true;
+    public static final int MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
+    public static final int MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 5000;
+    public static final int DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1000;
+    private static final int LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
 
     public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
     public static final int BLOCK_OUTLINE_STYLE_BOLD = 1;
@@ -140,6 +148,8 @@ public final class McrtxRuntimeSettings {
     private static int subsurfaceMaxSampleRadiusHundredths = DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
     private static int subsurfaceVolumetricAnisotropyHundredths = DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
     private static boolean subsurfaceDiffusionProfileEnabled = DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED;
+    private static boolean waterThinWalledEnabled = DEFAULT_WATER_THIN_WALLED_ENABLED;
+    private static int waterMaterialThicknessThousandths = DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
 
     private McrtxRuntimeSettings() {
     }
@@ -594,6 +604,27 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static int getWaterMaterialThicknessThousandths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterMaterialThicknessThousandths;
+        }
+    }
+
+    public static float getWaterMaterialThickness() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterMaterialThicknessThousandths / 1000.0f;
+        }
+    }
+
+    public static boolean isWaterThinWalledEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterThinWalledEnabled;
+        }
+    }
+
     public static void setRayReconstructionEnabled(boolean enabled) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -723,6 +754,29 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setWaterThinWalledEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (waterThinWalledEnabled == enabled) {
+                return;
+            }
+            waterThinWalledEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedThicknessThousandths = normalizeWaterMaterialThicknessThousandths(thicknessThousandths);
+            if (waterMaterialThicknessThousandths == normalizedThicknessThousandths) {
+                return;
+            }
+            waterMaterialThicknessThousandths = normalizedThicknessThousandths;
+            saveLocked();
+        }
+    }
+
     private static void ensureLoaded() {
         if (loaded) {
             return;
@@ -787,7 +841,26 @@ public final class McrtxRuntimeSettings {
             fileValues,
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
             DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
+        waterThinWalledEnabled = readBooleanSetting(
+            fileValues,
+            WATER_THIN_WALLED_ENABLED_KEY,
+            DEFAULT_WATER_THIN_WALLED_ENABLED);
+        waterMaterialThicknessThousandths = readPositiveThousandthsSetting(
+            fileValues,
+            WATER_MATERIAL_THICKNESS_KEY,
+            DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
+            MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
+            MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+        final boolean migrateLegacyWaterMaterialThickness = !readBooleanSetting(fileValues, WATER_MATERIAL_THICKNESS_MIGRATION_KEY, false)
+                && fileValues.containsKey(WATER_MATERIAL_THICKNESS_KEY)
+                && waterMaterialThicknessThousandths == LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
+        if (migrateLegacyWaterMaterialThickness) {
+            waterMaterialThicknessThousandths = DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
+        }
         loaded = true;
+        if (migrateLegacyWaterMaterialThickness) {
+            saveLocked();
+        }
     }
 
     private static boolean readBooleanSetting(Map<String, String> fileValues, String key, boolean defaultValue) {
@@ -1145,6 +1218,26 @@ public final class McrtxRuntimeSettings {
         return readPositiveHundredthsSetting(fileValues, key, defaultValue, minimumValue, maximumValue);
     }
 
+    private static int readPositiveThousandthsSetting(Map<String, String> fileValues, String key, int defaultValue, int minimumValue, int maximumValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeThousandths(defaultValue, minimumValue, maximumValue);
+        }
+
+        try {
+            return normalizeThousandths((int) Math.round(Double.parseDouble(configuredValue.trim()) * 1000.0), minimumValue, maximumValue);
+        } catch (NumberFormatException exception) {
+            return normalizeThousandths(defaultValue, minimumValue, maximumValue);
+        }
+    }
+
     private static void saveLocked() {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
         fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
@@ -1188,6 +1281,13 @@ public final class McrtxRuntimeSettings {
         fileValues.put(
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
             formatBoolean(subsurfaceDiffusionProfileEnabled));
+        fileValues.put(
+            WATER_THIN_WALLED_ENABLED_KEY,
+            formatBoolean(waterThinWalledEnabled));
+        fileValues.put(
+            WATER_MATERIAL_THICKNESS_KEY,
+            formatThousandthsValue(waterMaterialThicknessThousandths));
+        fileValues.put(WATER_MATERIAL_THICKNESS_MIGRATION_KEY, formatBoolean(true));
         writeFileValues(fileValues);
     }
 
@@ -1366,6 +1466,13 @@ public final class McrtxRuntimeSettings {
             MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
     }
 
+    private static int normalizeWaterMaterialThicknessThousandths(int thicknessThousandths) {
+        return normalizeThousandths(
+            thicknessThousandths,
+            MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
+            MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+    }
+
     private static int normalizeHundredths(int value, int minimumValue, int maximumValue) {
         if (value < minimumValue) {
             return minimumValue;
@@ -1374,6 +1481,29 @@ public final class McrtxRuntimeSettings {
             return maximumValue;
         }
         return value;
+    }
+
+    private static int normalizeThousandths(int value, int minimumValue, int maximumValue) {
+        if (value < minimumValue) {
+            return minimumValue;
+        }
+        if (value > maximumValue) {
+            return maximumValue;
+        }
+        return value;
+    }
+
+    private static String formatThousandthsValue(int thousandthsValue) {
+        int absoluteThousandthsValue = Math.abs(thousandthsValue);
+        String formattedValue = Integer.toString(absoluteThousandthsValue / 1000)
+            + "."
+            + (absoluteThousandthsValue % 1000 < 100 ? "0" : "")
+            + (absoluteThousandthsValue % 1000 < 10 ? "0" : "")
+            + Integer.toString(absoluteThousandthsValue % 1000);
+        if (thousandthsValue < 0) {
+            return "-" + formattedValue;
+        }
+        return formattedValue;
     }
 
     private static String formatUpscalerType(int type) {

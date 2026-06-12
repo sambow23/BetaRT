@@ -382,6 +382,20 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetSubsurfaceDiffusionProfileEnabled(enabled);
     }
 
+    public static synchronized void setWaterThinWalledEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetWaterThinWalledEnabled(enabled);
+    }
+
+    public static synchronized void setWaterMaterialThickness(float thickness) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetWaterMaterialThickness(thickness);
+    }
+
     public static synchronized void setViewModelFovDegrees(int fovDegrees) {
         if (!initialized) {
             return;

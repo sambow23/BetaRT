@@ -679,6 +679,48 @@ void RemixRenderer::setSubsurfaceDiffusionProfileEnabled(bool enabled) {
   rebuildMaterialDependentMeshesLocked();
 }
 
+void RemixRenderer::setWaterThinWalledEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterThinWalledEnabled");
+  std::scoped_lock lock(mutex_);
+
+  if (waterThinWalledEnabled_ == enabled) {
+    return;
+  }
+
+  waterThinWalledEnabled_ = enabled;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
+void RemixRenderer::setWaterMaterialThickness(float thickness) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterMaterialThickness");
+  std::scoped_lock lock(mutex_);
+
+  if (!std::isfinite(thickness)) {
+    thickness = kWaterThinWallThickness;
+  }
+
+  if (thickness < kWaterThinWallThickness) {
+    thickness = kWaterThinWallThickness;
+  } else if (thickness > 5.0f) {
+    thickness = 5.0f;
+  }
+
+  if (std::abs(waterMaterialThickness_ - thickness) < 0.0001f) {
+    return;
+  }
+
+  waterMaterialThickness_ = thickness;
+  if (!initialized_) {
+    return;
+  }
+
+  rebuildMaterialDependentMeshesLocked();
+}
+
 void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
   destroyBlockOutlineMesh();
 

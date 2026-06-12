@@ -375,6 +375,8 @@ public:
   void setSubsurfaceMaxSampleRadius(float radius);
   void setSubsurfaceVolumetricAnisotropy(float anisotropy);
   void setSubsurfaceDiffusionProfileEnabled(bool enabled);
+  void setWaterThinWalledEnabled(bool enabled);
+  void setWaterMaterialThickness(float thickness);
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
@@ -811,6 +813,8 @@ private:
   float subsurfaceMaxSampleRadius_ {16.0f};
   float subsurfaceVolumetricAnisotropy_ {0.0f};
   bool subsurfaceDiffusionProfileEnabled_ {true};
+  bool waterThinWalledEnabled_ {true};
+  float waterMaterialThickness_ {1.0f};
   static constexpr int kRtQualityLow = 0;
   static constexpr int kRtQualityMedium = 1;
   static constexpr int kRtQualityHigh = 2;

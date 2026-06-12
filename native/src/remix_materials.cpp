@@ -798,11 +798,13 @@ bool RemixRenderer::initializeTerrainMaterials() {
     void* pNext = nullptr;
 
     if (isTranslucent) {
+      const bool useThinWalledTranslucency = materialHash == kWaterTerrainMaterialHash && waterThinWalledEnabled_;
       translucentInfo.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT;
       translucentInfo.refractiveIndex = refractiveIndex;
       translucentInfo.transmittanceColor = transmittanceColor;
       translucentInfo.transmittanceMeasurementDistance = transmittanceMeasurementDistance;
-      translucentInfo.thinWallThickness_hasvalue = FALSE;
+      translucentInfo.thinWallThickness_hasvalue = useThinWalledTranslucency ? TRUE : FALSE;
+      translucentInfo.thinWallThickness_value = useThinWalledTranslucency ? waterMaterialThickness_ : kWaterThinWallThickness;
       translucentInfo.useDiffuseLayer = TRUE;
       translucentInfo.transmittanceTexture = texturePath.c_str();
       pNext = &translucentInfo;

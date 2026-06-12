@@ -201,6 +201,10 @@ public final class RemixBridgeNative {
 
             public static native void nSetSubsurfaceDiffusionProfileEnabled(boolean enabled);
 
+            public static native void nSetWaterThinWalledEnabled(boolean enabled);
+
+            public static native void nSetWaterMaterialThickness(float thickness);
+
             public static native void nSetViewModelFovDegrees(float fovYDegrees);
 
             public static native void nSetRtQuality(int rtQuality);

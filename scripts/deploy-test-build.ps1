@@ -629,6 +629,7 @@ function Ensure-RemixViewModelConfig {
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.viewModel.enable" -Value "True"
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.enableNearPlaneOverride" -Value "True"
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.nearPlaneOverride" -Value "0.001"
+    Set-RemixConfigValue -Path $ConfigPath -Key "rtx.enableDirectTranslucentShadows" -Value "True"
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.volumetrics.froxelMaxDistanceMeters" -Value "256"
 }
 

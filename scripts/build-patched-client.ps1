@@ -1379,8 +1379,7 @@ $nativePdb = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.pdb"
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
     (Join-Path $repoRoot "java-src\McrtxFovSlider.java"),
-    (Join-Path $repoRoot "java-src\McrtxOptionsScreen.java"),
-    (Join-Path $repoRoot "java-src\McrtxSssQuickScreen.java"),
+    (Join-Path $repoRoot "java-src\McrtxQuickSettingsScreen.java"),
     (Join-Path $repoRoot "java-src\cb.java"),
     (Join-Path $repoRoot "java-src\RemixBlockOutlineCapture.java"),
     (Join-Path $repoRoot "java-src\RemixCameraState.java"),
