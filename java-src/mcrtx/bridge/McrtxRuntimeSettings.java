@@ -39,6 +39,7 @@ public final class McrtxRuntimeSettings {
     public static final String SUBSURFACE_MAX_SAMPLE_RADIUS_KEY = "MCRTX_SUBSURFACE_MAX_SAMPLE_RADIUS";
     public static final String SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY = "MCRTX_SUBSURFACE_VOLUMETRIC_ANISOTROPY";
     public static final String SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY = "MCRTX_SUBSURFACE_DIFFUSION_PROFILE_ENABLED";
+    public static final String QUICK_SETTINGS_CATEGORY_KEY = "MCRTX_QUICK_SETTINGS_CATEGORY";
     public static final String WATER_THIN_WALLED_ENABLED_KEY = "MCRTX_WATER_THIN_WALLED_ENABLED";
     public static final String WATER_MATERIAL_THICKNESS_KEY = "MCRTX_WATER_MATERIAL_THICKNESS";
     private static final String WATER_MATERIAL_THICKNESS_MIGRATION_KEY = "MCRTX_WATER_MATERIAL_THICKNESS_MIGRATED";
@@ -71,6 +72,11 @@ public final class McrtxRuntimeSettings {
     public static final int MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 99;
     public static final int DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS = 0;
     public static final boolean DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED = true;
+    public static final int QUICK_SETTINGS_CATEGORY_GAMEPLAY = 0;
+    public static final int QUICK_SETTINGS_CATEGORY_GRAPHICS = 1;
+    public static final int QUICK_SETTINGS_CATEGORY_DEBUG = 2;
+    public static final int QUICK_SETTINGS_CATEGORY_MATERIAL = 3;
+    public static final int DEFAULT_QUICK_SETTINGS_CATEGORY = QUICK_SETTINGS_CATEGORY_GAMEPLAY;
     public static final boolean DEFAULT_WATER_THIN_WALLED_ENABLED = true;
     public static final int MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
     public static final int MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 5000;
@@ -148,6 +154,7 @@ public final class McrtxRuntimeSettings {
     private static int subsurfaceMaxSampleRadiusHundredths = DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS;
     private static int subsurfaceVolumetricAnisotropyHundredths = DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS;
     private static boolean subsurfaceDiffusionProfileEnabled = DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED;
+    private static int quickSettingsCategory = DEFAULT_QUICK_SETTINGS_CATEGORY;
     private static boolean waterThinWalledEnabled = DEFAULT_WATER_THIN_WALLED_ENABLED;
     private static int waterMaterialThicknessThousandths = DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
 
@@ -231,6 +238,13 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static int getQuickSettingsCategory() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return quickSettingsCategory;
+        }
+    }
+
     public static int getGameplayFovDegrees() {
         synchronized (LOCK) {
             ensureLoaded();
@@ -249,6 +263,18 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return noCullDistanceBlocks;
+        }
+    }
+
+    public static void setQuickSettingsCategory(int category) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedCategory = normalizeQuickSettingsCategory(category);
+            if (quickSettingsCategory == normalizedCategory) {
+                return;
+            }
+            quickSettingsCategory = normalizedCategory;
+            saveLocked();
         }
     }
 
@@ -841,6 +867,10 @@ public final class McrtxRuntimeSettings {
             fileValues,
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
             DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
+        quickSettingsCategory = readQuickSettingsCategorySetting(
+            fileValues,
+            QUICK_SETTINGS_CATEGORY_KEY,
+            DEFAULT_QUICK_SETTINGS_CATEGORY);
         waterThinWalledEnabled = readBooleanSetting(
             fileValues,
             WATER_THIN_WALLED_ENABLED_KEY,
@@ -1218,6 +1248,26 @@ public final class McrtxRuntimeSettings {
         return readPositiveHundredthsSetting(fileValues, key, defaultValue, minimumValue, maximumValue);
     }
 
+    private static int readQuickSettingsCategorySetting(Map<String, String> fileValues, String key, int defaultValue) {
+        String configuredValue = fileValues.get(key);
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            String environmentValue = System.getenv(key);
+            if (environmentValue != null && !environmentValue.isEmpty()) {
+                configuredValue = environmentValue.trim();
+            }
+        }
+
+        if (configuredValue == null || configuredValue.isEmpty()) {
+            return normalizeQuickSettingsCategory(defaultValue);
+        }
+
+        try {
+            return normalizeQuickSettingsCategory(Integer.parseInt(configuredValue.trim()));
+        } catch (NumberFormatException exception) {
+            return normalizeQuickSettingsCategory(defaultValue);
+        }
+    }
+
     private static int readPositiveThousandthsSetting(Map<String, String> fileValues, String key, int defaultValue, int minimumValue, int maximumValue) {
         String configuredValue = fileValues.get(key);
         if (configuredValue == null || configuredValue.isEmpty()) {
@@ -1281,6 +1331,9 @@ public final class McrtxRuntimeSettings {
         fileValues.put(
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
             formatBoolean(subsurfaceDiffusionProfileEnabled));
+        fileValues.put(
+            QUICK_SETTINGS_CATEGORY_KEY,
+            Integer.toString(quickSettingsCategory));
         fileValues.put(
             WATER_THIN_WALLED_ENABLED_KEY,
             formatBoolean(waterThinWalledEnabled));
@@ -1351,6 +1404,13 @@ public final class McrtxRuntimeSettings {
             return type;
         }
         return UPSCALER_TYPE_DLSS;
+    }
+
+    private static int normalizeQuickSettingsCategory(int category) {
+        if (category < QUICK_SETTINGS_CATEGORY_GAMEPLAY || category > QUICK_SETTINGS_CATEGORY_MATERIAL) {
+            return DEFAULT_QUICK_SETTINGS_CATEGORY;
+        }
+        return category;
     }
 
     private static int normalizeGameplayFovDegrees(int fovDegrees) {

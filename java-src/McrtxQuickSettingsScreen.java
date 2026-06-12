@@ -1,3 +1,5 @@
+import mcrtx.bridge.McrtxRuntimeSettings;
+
 public final class McrtxQuickSettingsScreen extends da {
     private static final int PANEL_LEFT = 8;
     private static final int PANEL_TOP = 8;
@@ -46,14 +48,15 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int RESET_DEFAULTS_BUTTON_ID = 308;
     private static final int CLOSE_BUTTON_ID = 309;
 
-    private static int activeCategory = CATEGORY_GAMEPLAY;
+    private static int activeCategory = McrtxRuntimeSettings.DEFAULT_QUICK_SETTINGS_CATEGORY;
 
     private int nextControlY;
     private int panelBottomY = PANEL_TOP + 80;
 
     public void b() {
         this.e.clear();
-        nextControlY = PANEL_TOP + 40;
+        activeCategory = normalizeCategory(McrtxRuntimeSettings.getQuickSettingsCategory());
+        nextControlY = PANEL_TOP + 44;
 
         addCategorySelectorControls();
 
@@ -67,6 +70,7 @@ public final class McrtxQuickSettingsScreen extends da {
             addGameplayControls();
         }
 
+        nextControlY += CONTROL_GAP;
         addControl(new ke(
                 CLOSE_BUTTON_ID,
                 getControlX(),
@@ -74,7 +78,7 @@ public final class McrtxQuickSettingsScreen extends da {
                 getControlWidth(),
                 CONTROL_HEIGHT,
                 "Close"));
-        panelBottomY = nextControlY - CONTROL_GAP + PANEL_INSET;
+        panelBottomY = nextControlY - CONTROL_GAP + PANEL_INSET + 2;
         refreshButtons();
     }
 
@@ -233,9 +237,10 @@ public final class McrtxQuickSettingsScreen extends da {
         int panelBottom = panelBottomY;
         this.a(PANEL_LEFT, PANEL_TOP, panelRight, panelBottom, 0xB0101010, 0x90080808);
         this.a(PANEL_LEFT, PANEL_TOP, panelRight, PANEL_TOP + 1, 0x90D0D0D0);
+        this.a(PANEL_LEFT, PANEL_TOP + 31, panelRight, PANEL_TOP + 32, 0x60404040);
         this.a(PANEL_LEFT, panelBottom - 1, panelRight, panelBottom, 0x70303030);
-        this.a(this.g, "BetaRT Settings", PANEL_LEFT + PANEL_WIDTH / 2, PANEL_TOP + 8, 0xFFFFFF);
-        this.b(this.g, "Alt+B or Esc closes", getControlX(), PANEL_TOP + 22, 0xB8B8B8);
+        this.a(this.g, "BetaRT Quick Settings", PANEL_LEFT + PANEL_WIDTH / 2, PANEL_TOP + 8, 0xFFFFFF);
+        this.b(this.g, "Alt+B / Esc closes", getControlX(), PANEL_TOP + 22, 0xB8B8B8);
         super.a(mouseX, mouseY, partialTicks);
     }
 
@@ -606,10 +611,11 @@ public final class McrtxQuickSettingsScreen extends da {
 
     private void cycleCategory(int delta) {
         activeCategory = (activeCategory + delta + 4) % 4;
+        McrtxRuntimeSettings.setQuickSettingsCategory(activeCategory);
     }
 
     private String getCategoryLabel() {
-        return getCategoryName(activeCategory);
+        return "Category: " + getCategoryName(activeCategory);
     }
 
     private String getCategoryName(int category) {
@@ -645,5 +651,12 @@ public final class McrtxQuickSettingsScreen extends da {
 
     private int getControlWidth() {
         return PANEL_WIDTH - PANEL_INSET * 2;
+    }
+
+    private int normalizeCategory(int category) {
+        if (category < CATEGORY_GAMEPLAY || category > CATEGORY_MATERIAL) {
+            return CATEGORY_GAMEPLAY;
+        }
+        return category;
     }
 }
