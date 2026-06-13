@@ -5,6 +5,7 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int PANEL_TOP = 8;
     private static final int PANEL_WIDTH = 220;
     private static final int PANEL_INSET = 8;
+    private static final int HEADER_HEIGHT = 24;
     private static final int CONTROL_HEIGHT = 20;
     private static final int CONTROL_GAP = 4;
     private static final int SELECTOR_ARROW_WIDTH = 24;
@@ -56,7 +57,7 @@ public final class McrtxQuickSettingsScreen extends da {
     public void b() {
         this.e.clear();
         activeCategory = normalizeCategory(McrtxRuntimeSettings.getQuickSettingsCategory());
-        nextControlY = PANEL_TOP + 44;
+        nextControlY = PANEL_TOP + HEADER_HEIGHT + CONTROL_GAP;
 
         addCategorySelectorControls();
 
@@ -237,10 +238,9 @@ public final class McrtxQuickSettingsScreen extends da {
         int panelBottom = panelBottomY;
         this.a(PANEL_LEFT, PANEL_TOP, panelRight, panelBottom, 0xB0101010, 0x90080808);
         this.a(PANEL_LEFT, PANEL_TOP, panelRight, PANEL_TOP + 1, 0x90D0D0D0);
-        this.a(PANEL_LEFT, PANEL_TOP + 31, panelRight, PANEL_TOP + 32, 0x60404040);
+        this.a(PANEL_LEFT, PANEL_TOP + HEADER_HEIGHT - 1, panelRight, PANEL_TOP + HEADER_HEIGHT, 0x60404040);
         this.a(PANEL_LEFT, panelBottom - 1, panelRight, panelBottom, 0x70303030);
-        this.a(this.g, "BetaRT Quick Settings", PANEL_LEFT + PANEL_WIDTH / 2, PANEL_TOP + 8, 0xFFFFFF);
-        this.b(this.g, "Alt+B / Esc closes", getControlX(), PANEL_TOP + 22, 0xB8B8B8);
+        this.a(this.g, "BetaRT Settings", PANEL_LEFT + PANEL_WIDTH / 2, PANEL_TOP + 8, 0xFFFFFF);
         super.a(mouseX, mouseY, partialTicks);
     }
 
