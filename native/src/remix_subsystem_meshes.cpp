@@ -365,7 +365,7 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
     return;
   }
 
-  const bool supportsLightCreation = remix_.CreateLight != nullptr || remix_.CreateLightBatched != nullptr;
+  const bool supportsLightCreation = remix_.CreateLight != nullptr;
   if (!supportsLightCreation || !isTorchLightItemId(itemId)) {
     destroyEntityHeldTorchLight(entityId);
     return;
@@ -395,13 +395,6 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
 
   const auto createLight = [&](remixapi_LightHandle& lightHandle) {
-    if (remix_.CreateLightBatched != nullptr) {
-      return [&]() {
-        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.entityHeldTorch");
-        return remix_.CreateLightBatched(&lightInfo, &lightHandle);
-      }();
-    }
-
     return [&]() {
       MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.entityHeldTorch");
       return remix_.CreateLight(&lightInfo, &lightHandle);
@@ -1131,17 +1124,10 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
 
   remixapi_LightHandle lightHandle = nullptr;
   remixapi_ErrorCode result;
-  if (remix_.CreateLightBatched != nullptr) {
-    result = [&]() {
-      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.torch");
-      return remix_.CreateLightBatched(&lightInfo, &lightHandle);
-    }();
-  } else {
-    result = [&]() {
-      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.torch");
-      return remix_.CreateLight(&lightInfo, &lightHandle);
-    }();
-  }
+  result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.torch");
+    return remix_.CreateLight(&lightInfo, &lightHandle);
+  }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("CreateLight failed: " + errorCodeToString(result));
     return false;
@@ -1231,7 +1217,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileHeldItemTorchLight");
   MCRTX_TRACY_SCOPE("RemixRenderer::reconcileHeldItemTorchLight");
 
-  const bool supportsLightCreation = remix_.CreateLight != nullptr || remix_.CreateLightBatched != nullptr;
+  const bool supportsLightCreation = remix_.CreateLight != nullptr;
   const bool isTorch = heldItemId_ == kTorchBlockId;
   const bool isRedstoneTorch = heldItemId_ == kRedstoneTorchOnBlockId;
   if (!supportsLightCreation || (!isTorch && !isRedstoneTorch)) {
@@ -1268,17 +1254,10 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
   if (heldItemTorchLightHandle_ == nullptr) {
     MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.create");
     remixapi_ErrorCode result;
-    if (remix_.CreateLightBatched != nullptr) {
-      result = [&]() {
-        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLightBatched.heldTorch");
-        return remix_.CreateLightBatched(&lightInfo, &heldItemTorchLightHandle_);
-      }();
-    } else {
-      result = [&]() {
-        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.heldTorch");
-        return remix_.CreateLight(&lightInfo, &heldItemTorchLightHandle_);
-      }();
-    }
+    result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.heldTorch");
+      return remix_.CreateLight(&lightInfo, &heldItemTorchLightHandle_);
+    }();
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       heldItemTorchLightHandle_ = nullptr;
       setError("CreateLight failed: " + errorCodeToString(result));

@@ -1777,6 +1777,7 @@ bool RemixRenderer::loadRemix(const std::filesystem::path& remixDllPath) {
     setError("Failed to load Remix DLL: " + errorCodeToString(result));
     return false;
   }
+
   return true;
 }
 
@@ -2356,8 +2357,8 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
       } else {
         pathStream << "NONE -- lights will not be rendered";
       }
-      pathStream << "; CreateLightBatched="
-                 << (remix_.CreateLightBatched != nullptr ? "yes" : "no")
+      pathStream << "; CreateLight="
+             << (remix_.CreateLight != nullptr ? "yes" : "no")
                  << "; torch lights registered=" << snapshot.submittedTorchLights;
       log(pathStream.str());
     }
