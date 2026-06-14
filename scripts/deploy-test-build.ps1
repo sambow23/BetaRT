@@ -484,6 +484,7 @@ function Set-PrismRuntimeEnvironment {
     $envPairs.Add('\"MCRTX_PLATFORM_BACKEND\":\"' + $ConfiguredPlatformBackend + '\"')
     $envPairs.Add('\"MCRTX_INPUT_BACKEND\":\"' + $ConfiguredInputBackend + '\"')
     $envPairs.Add('\"MCRTX_NO_CULL_DISTANCE\":\"' + $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture) + '\"')
+    $envPairs.Add('\"MCRTX_FLOATING_ORIGIN\":\"1\"')
     if ($ConfiguredVerboseInputLogging) {
         $envPairs.Add('\"MCRTX_VERBOSE_INPUT_LOG\":\"1\"')
     }
@@ -518,6 +519,7 @@ function Set-McrtxRuntimeConfig {
             Value = $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture)
             Remove = $false
         }
+        [pscustomobject]@{ Key = "MCRTX_FLOATING_ORIGIN"; Value = "1"; Remove = $false }
         [pscustomobject]@{ Key = "MCRTX_VERBOSE_INPUT_LOG"; Value = "1"; Remove = -not $ConfiguredVerboseInputLogging }
     )
 
