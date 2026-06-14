@@ -260,6 +260,14 @@ bool RemixRenderer::initialize(
     }
   }
 
+  {
+    const std::string floatingOrigin = readEnvironmentVariable("MCRTX_FLOATING_ORIGIN");
+    worldOriginRebaseEnabled_ = isTruthyEnvValue(floatingOrigin.c_str());
+    if (worldOriginRebaseEnabled_) {
+      log("MCRTX_FLOATING_ORIGIN enabled: rebasing world camera and terrain chunk transforms");
+    }
+  }
+
   // Minecraft submits world positions in blocks where 1 block = 1 meter.
   // Remix defaults assume 1 world unit = 1 cm (sceneScale = 1). Without this
   // override, every meters-aware subsystem (volumetrics froxel extent,
@@ -499,8 +507,8 @@ void RemixRenderer::shutdownLocked() {
       destroyTorchLight(torchLights_.begin()->first);
     }
     destroyHeldItemTorchLight();
-    while (!entityHeldTorchLightHandles_.empty()) {
-      destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+    while (!entityHeldTorchLights_.empty()) {
+      destroyEntityHeldTorchLight(entityHeldTorchLights_.begin()->first);
     }
     destroyTerrainMaterials();
     {
@@ -528,8 +536,10 @@ void RemixRenderer::shutdownLocked() {
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
+  torchLightPlacements_.clear();
   heldItemTorchLightHandle_ = nullptr;
-  entityHeldTorchLightHandles_.clear();
+  heldItemTorchLightRenderOrigin_ = {};
+  entityHeldTorchLights_.clear();
   entityHeldTorchLightsSeenThisFrame_.clear();
   heldItemId_ = -1;
   deferredMeshDestroys_.clear();
@@ -562,6 +572,7 @@ void RemixRenderer::shutdownLocked() {
   particleQuadCount_ = 0;
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
   lastFireChunkBuildCount_ = 0xFFFFFFFFFFFFFFFFull;
+  lastFireRenderOrigin_ = {};
   appliedRemixConfigValues_.clear();
   appliedGameStateValues_.clear();
   warnedMissingSetConfigVariable_ = false;
@@ -1363,70 +1374,100 @@ void RemixRenderer::flushDeferredDestroyQueuesLocked() {
   deferredLightDestroys_.clear();
 }
 
+WorldRenderOrigin RemixRenderer::currentRenderOriginLocked() const noexcept {
+  return makeWorldRenderOrigin(
+      worldOriginRebaseEnabled_,
+      camera_.position[0],
+      camera_.position[1],
+      camera_.position[2]);
+}
+
 bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::prepareFrameSnapshotLocked");
   MCRTX_TRACY_SCOPE("RemixRenderer::prepareFrameSnapshotLocked");
+  snapshot = {};
+  snapshot.camera = camera_;
+  snapshot.renderOrigin = currentRenderOriginLocked();
+  snapshot.camera.position[0] = rebaseWorldCoordinate(snapshot.camera.position[0], snapshot.renderOrigin.x);
+  snapshot.camera.position[1] = rebaseWorldCoordinate(snapshot.camera.position[1], snapshot.renderOrigin.y);
+  snapshot.camera.position[2] = rebaseWorldCoordinate(snapshot.camera.position[2], snapshot.renderOrigin.z);
+
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.rebuildTransientMeshes");
-    if (!rebuildFireMesh()) {
+    if (!rebuildFireMesh(snapshot.renderOrigin)) {
       return false;
     }
 
-    if (!rebuildDestroyOverlayMesh()) {
+    if (!rebuildDestroyOverlayMesh(snapshot.renderOrigin)) {
       return false;
     }
 
-    if (!rebuildBlockOutlineMesh()) {
+    if (!rebuildBlockOutlineMesh(snapshot.renderOrigin)) {
       return false;
     }
 
-    if (!rebuildParticleMesh()) {
+    if (!rebuildParticleMesh(snapshot.renderOrigin)) {
       return false;
     }
   }
 
-  snapshot = {};
-  snapshot.camera = camera_;
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectChunkMeshes");
     MCRTX_TRACY_VALUE(chunkMeshes_.size());
-  snapshot.chunkMeshes.reserve(chunkMeshes_.size());
-  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
-    if (meshData.meshHandle == nullptr) {
-      continue;
-    }
+    snapshot.chunkMeshes.reserve(chunkMeshes_.size());
+    for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+      if (meshData.meshHandle == nullptr) {
+        continue;
+      }
 
-    if (meshData.hidden) {
-      continue;
-    }
+      if (meshData.hidden) {
+        continue;
+      }
 
-    if (isChunkBuried(chunkKey)) {
-      continue;
-    }
+      if (isChunkBuried(chunkKey)) {
+        continue;
+      }
 
-    ChunkRenderInstance renderInstance;
-    renderInstance.chunkKey = chunkKey;
-    renderInstance.meshHandle = meshData.meshHandle;
-    renderInstance.blockCount = meshData.blockCount;
-    snapshot.chunkMeshes.push_back(renderInstance);
-    snapshot.cachedChunkMeshes += 1;
-    snapshot.submittedChunkBlocks += meshData.blockCount;
-  }
+      ChunkRenderInstance renderInstance;
+      renderInstance.chunkKey = chunkKey;
+      renderInstance.meshHandle = meshData.meshHandle;
+      renderInstance.blockCount = meshData.blockCount;
+      snapshot.chunkMeshes.push_back(renderInstance);
+      snapshot.cachedChunkMeshes += 1;
+      snapshot.submittedChunkBlocks += meshData.blockCount;
+    }
   }
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectDynamicEntities");
     MCRTX_TRACY_VALUE(dynamicEntityFrameInstanceCount_);
-  snapshot.dynamicEntities.reserve(dynamicEntityFrameInstanceCount_);
-  for (std::size_t index = 0; index < dynamicEntityFrameInstanceCount_; ++index) {
-    const DynamicEntityFrameInstance& frameInstance = dynamicEntityFrameInstances_[index];
-    if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
-      continue;
-    }
+    snapshot.dynamicEntities.reserve(dynamicEntityFrameInstanceCount_);
+    for (std::size_t index = 0; index < dynamicEntityFrameInstanceCount_; ++index) {
+      const DynamicEntityFrameInstance& frameInstance = dynamicEntityFrameInstances_[index];
+      if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
+        continue;
+      }
 
-    snapshot.submittedDynamicEntityQuads += frameInstance.quadCount;
-    snapshot.dynamicEntities.push_back(frameInstance);
-  }
+      snapshot.submittedDynamicEntityQuads += frameInstance.quadCount;
+      DynamicEntityRenderInstance snapshotFrameInstance;
+      snapshotFrameInstance.entityId = frameInstance.entityId;
+      snapshotFrameInstance.meshHandle = frameInstance.meshHandle;
+      snapshotFrameInstance.quadCount = frameInstance.quadCount;
+      snapshotFrameInstance.boneTransforms.reserve(frameInstance.boneTransforms.size());
+      for (const DynamicEntityBoneTransform& sourceTransform : frameInstance.boneTransforms) {
+        remixapi_Transform transform = sourceTransform.transform;
+        const WorldRenderPosition rebasedPosition = rebaseWorldPosition(
+            sourceTransform.worldX,
+            sourceTransform.worldY,
+            sourceTransform.worldZ,
+            snapshot.renderOrigin);
+        transform.matrix[0][3] = rebasedPosition.x;
+        transform.matrix[1][3] = rebasedPosition.y;
+        transform.matrix[2][3] = rebasedPosition.z;
+        snapshotFrameInstance.boneTransforms.push_back(transform);
+      }
+      snapshot.dynamicEntities.push_back(std::move(snapshotFrameInstance));
+    }
   }
 
   snapshot.cloudMeshHandle = cloudMeshHandle_;
@@ -1445,49 +1486,54 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.reconcileTorchLights");
-    MCRTX_TRACY_VALUE(torchLights_.size() + entityHeldTorchLightHandles_.size());
-  if (heldTorchLightsEnabled_) {
-    if (!reconcileHeldItemTorchLight()) {
+    MCRTX_TRACY_VALUE(torchLights_.size() + entityHeldTorchLights_.size());
+    if (heldTorchLightsEnabled_) {
+      if (!reconcileHeldItemTorchLight(snapshot.renderOrigin)) {
+        return false;
+      }
+
+      for (auto lightIt = entityHeldTorchLights_.begin(); lightIt != entityHeldTorchLights_.end(); ) {
+        if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
+          ++lightIt;
+          continue;
+        }
+
+        if (lightIt->second.handle != nullptr) {
+          destroyLightHandle(lightIt->second.handle);
+        }
+        lightIt = entityHeldTorchLights_.erase(lightIt);
+      }
+
+    } else {
+      clearHeldTorchLightsLocked();
+    }
+
+    if (!refreshTorchLightDefinitions(snapshot.renderOrigin)) {
       return false;
     }
-
-    for (auto lightIt = entityHeldTorchLightHandles_.begin(); lightIt != entityHeldTorchLightHandles_.end(); ) {
-      if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
-        ++lightIt;
-        continue;
-      }
-
-      if (lightIt->second != nullptr) {
-        destroyLightHandle(lightIt->second);
-      }
-      lightIt = entityHeldTorchLightHandles_.erase(lightIt);
-    }
-  } else {
-    clearHeldTorchLightsLocked();
-  }
   }
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectTorchLights");
-  snapshot.torchLights.reserve(
-      torchLights_.size() + entityHeldTorchLightHandles_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
-  for (const auto& [position, lightHandle] : torchLights_) {
-    (void)position;
-    if (lightHandle != nullptr) {
-      snapshot.torchLights.push_back(lightHandle);
+    snapshot.torchLights.reserve(
+        torchLights_.size() + entityHeldTorchLights_.size() + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
+    for (const auto& [position, lightState] : torchLights_) {
+      (void)position;
+      if (lightState.handle != nullptr) {
+        snapshot.torchLights.push_back(lightState.handle);
+      }
     }
-  }
-  for (const auto& [entityId, lightHandle] : entityHeldTorchLightHandles_) {
-    (void)entityId;
-    if (lightHandle != nullptr) {
-      snapshot.torchLights.push_back(lightHandle);
+    for (const auto& [entityId, lightState] : entityHeldTorchLights_) {
+      (void)entityId;
+      if (lightState.handle != nullptr) {
+        snapshot.torchLights.push_back(lightState.handle);
+      }
     }
-  }
-  if (heldItemTorchLightHandle_ != nullptr) {
-    snapshot.torchLights.push_back(heldItemTorchLightHandle_);
-  }
-  snapshot.submittedTorchLights = snapshot.torchLights.size();
-  MCRTX_TRACY_VALUE(snapshot.submittedTorchLights);
+    if (heldItemTorchLightHandle_ != nullptr) {
+      snapshot.torchLights.push_back(heldItemTorchLightHandle_);
+    }
+    snapshot.submittedTorchLights = snapshot.torchLights.size();
+    MCRTX_TRACY_VALUE(snapshot.submittedTorchLights);
   }
 
   if (!snapshot.hasScene()) {
@@ -1928,9 +1974,9 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
       instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
       instanceInfo.mesh = chunkInstance.meshHandle;
       instanceInfo.transform = makeTranslationTransform(
-          static_cast<float>(chunkInstance.chunkKey.originX),
-          static_cast<float>(chunkInstance.chunkKey.originY),
-          static_cast<float>(chunkInstance.chunkKey.originZ));
+          rebaseWorldCoordinate(chunkInstance.chunkKey.originX, snapshot.renderOrigin.x),
+          rebaseWorldCoordinate(chunkInstance.chunkKey.originY, snapshot.renderOrigin.y),
+          rebaseWorldCoordinate(chunkInstance.chunkKey.originZ, snapshot.renderOrigin.z));
       instanceInfo.doubleSided = chunkInstance.chunkKey.renderPass == 1 ? TRUE : FALSE;
 
       const remixapi_ErrorCode result = [&]() {
@@ -1948,7 +1994,7 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
     MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities");
     MCRTX_TRACY_VALUE(snapshot.dynamicEntities.size());
     std::size_t dynamicEntityBoneCount = 0;
-    for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
+    for (const DynamicEntityRenderInstance& frameInstance : snapshot.dynamicEntities) {
       dynamicEntityBoneCount += frameInstance.boneTransforms.size();
     }
     MCRTX_TRACY_VALUE(dynamicEntityBoneCount);
@@ -1987,11 +2033,11 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
 
     struct RigidDynamicBatch {
       RigidDynamicBatchKey key {};
-      const DynamicEntityFrameInstance* representative {nullptr};
+      const DynamicEntityRenderInstance* representative {nullptr};
       std::vector<remixapi_Transform> instanceTransforms {};
     };
 
-    std::vector<const DynamicEntityFrameInstance*> fallbackDynamicEntities;
+    std::vector<const DynamicEntityRenderInstance*> fallbackDynamicEntities;
     fallbackDynamicEntities.reserve(snapshot.dynamicEntities.size());
     std::vector<RigidDynamicBatch> rigidDynamicBatches;
     rigidDynamicBatches.reserve(snapshot.dynamicEntities.size());
@@ -2003,7 +2049,7 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
 
     {
       MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.groupCandidates");
-      for (const DynamicEntityFrameInstance& frameInstance : snapshot.dynamicEntities) {
+      for (const DynamicEntityRenderInstance& frameInstance : snapshot.dynamicEntities) {
         if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
           continue;
         }
@@ -2060,7 +2106,7 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
 
     const remixapi_Transform rigidBoneTransform = makeTranslationTransform(0.0f, 0.0f, 0.0f);
 
-    const auto submitDynamicEntity = [&](const DynamicEntityFrameInstance& frameInstance) {
+    const auto submitDynamicEntity = [&](const DynamicEntityRenderInstance& frameInstance) {
       boneTransformsInfo.boneTransforms_values = frameInstance.boneTransforms.data();
       boneTransformsInfo.boneTransforms_count = static_cast<std::uint32_t>(frameInstance.boneTransforms.size());
       instanceInfo.pNext = &boneTransformsInfo;
@@ -2115,7 +2161,7 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
 
     {
       MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities.fallback");
-      for (const DynamicEntityFrameInstance* frameInstance : fallbackDynamicEntities) {
+      for (const DynamicEntityRenderInstance* frameInstance : fallbackDynamicEntities) {
         if (frameInstance == nullptr || frameInstance->meshHandle == nullptr || frameInstance->boneTransforms.empty()) {
           continue;
         }
@@ -2404,7 +2450,10 @@ bool RemixRenderer::submitCamera(const CameraState& camera) {
 
   remixapi_CameraInfoParameterizedEXT params {};
   params.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO_PARAMETERIZED_EXT;
-  params.position = {camera.position[0], camera.position[1], camera.position[2]};
+  params.position = {
+      static_cast<float>(camera.position[0]),
+      static_cast<float>(camera.position[1]),
+      static_cast<float>(camera.position[2])};
   params.forward = {camera.forward[0], camera.forward[1], camera.forward[2]};
   params.up = {camera.up[0], camera.up[1], camera.up[2]};
   params.right = {camera.right[0], camera.right[1], camera.right[2]};

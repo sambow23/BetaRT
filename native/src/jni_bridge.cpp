@@ -319,7 +319,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nResize(
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nUpdateCamera(
     JNIEnv*, jclass,
-    jfloat px, jfloat py, jfloat pz,
+    jdouble px, jdouble py, jdouble pz,
     jfloat fx, jfloat fy, jfloat fz,
     jfloat ux, jfloat uy, jfloat uz,
     jfloat rx, jfloat ry, jfloat rz,
@@ -444,7 +444,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetFirstPersonHeldIt
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetEntityHeldTorch(
-    JNIEnv*, jclass, jint entityId, jfloat worldX, jfloat worldY, jfloat worldZ, jint itemId) {
+    JNIEnv*, jclass, jint entityId, jdouble worldX, jdouble worldY, jdouble worldZ, jint itemId) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetEntityHeldTorch");
   RemixRenderer::instance().setEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
 }
@@ -559,9 +559,9 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetUpscalerConfig(
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(
     JNIEnv*, jclass,
     jint boneIndex,
-    jfloat m00, jfloat m01, jfloat m02, jfloat m03,
-    jfloat m10, jfloat m11, jfloat m12, jfloat m13,
-    jfloat m20, jfloat m21, jfloat m22, jfloat m23) {
+    jfloat m00, jfloat m01, jfloat m02, jdouble m03,
+    jfloat m10, jfloat m11, jfloat m12, jdouble m13,
+    jfloat m20, jfloat m21, jfloat m22, jdouble m23) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDynamicEntityBoneTransform");
   if (boneIndex < 0) {
     return;
@@ -571,16 +571,21 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBone
   transform.matrix[0][0] = m00;
   transform.matrix[0][1] = m01;
   transform.matrix[0][2] = m02;
-  transform.matrix[0][3] = m03;
+  transform.matrix[0][3] = 0.0f;
   transform.matrix[1][0] = m10;
   transform.matrix[1][1] = m11;
   transform.matrix[1][2] = m12;
-  transform.matrix[1][3] = m13;
+  transform.matrix[1][3] = 0.0f;
   transform.matrix[2][0] = m20;
   transform.matrix[2][1] = m21;
   transform.matrix[2][2] = m22;
-  transform.matrix[2][3] = m23;
-  RemixRenderer::instance().setDynamicEntityBoneTransform(static_cast<std::uint32_t>(boneIndex), transform);
+  transform.matrix[2][3] = 0.0f;
+  RemixRenderer::instance().setDynamicEntityBoneTransform(
+      static_cast<std::uint32_t>(boneIndex),
+      transform,
+      m03,
+      m13,
+      m23);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nCaptureDynamicEntityQuad(

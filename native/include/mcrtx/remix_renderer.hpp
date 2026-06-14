@@ -19,10 +19,12 @@
 
 #include <remix/remix_c.h>
 
+#include "mcrtx/world_origin.hpp"
+
 namespace mcrtx {
 
 struct CameraState {
-  float position[3] {0.0f, 0.0f, 0.0f};
+  double position[3] {0.0, 0.0, 0.0};
   float forward[3] {0.0f, 0.0f, 1.0f};
   float up[3] {0.0f, 1.0f, 0.0f};
   float right[3] {1.0f, 0.0f, 0.0f};
@@ -189,6 +191,20 @@ struct TorchLightPlacement {
   remixapi_Float3D radiance {0.0f, 0.0f, 0.0f};
 };
 
+struct EntityHeldTorchLightState {
+  remixapi_LightHandle handle {nullptr};
+  double worldX {0.0};
+  double worldY {0.0};
+  double worldZ {0.0};
+  WorldRenderOrigin renderOrigin {};
+  int itemId {-1};
+};
+
+struct TorchLightState {
+  remixapi_LightHandle handle {nullptr};
+  WorldRenderOrigin renderOrigin {};
+};
+
 struct ChunkMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
@@ -212,6 +228,13 @@ struct DynamicEntityQuad {
   std::uint64_t textureFingerprint {0};
   bool blendEnabled {false};
   std::uint32_t boneIndex {0};
+};
+
+struct DynamicEntityBoneTransform {
+  remixapi_Transform transform {};
+  double worldX {0.0};
+  double worldY {0.0};
+  double worldZ {0.0};
 };
 
 constexpr std::uint32_t kDynamicEntityMaxHurtStage = 10;
@@ -238,7 +261,7 @@ struct DynamicEntityBuildState {
   std::vector<std::string> texturePaths {};
   std::array<DynamicEntityQuad, kDynamicEntityMaxQuadCount> quads {};
   std::size_t quadCount {0};
-  std::vector<remixapi_Transform> boneTransforms {};
+  std::vector<DynamicEntityBoneTransform> boneTransforms {};
   bool active {false};
 };
 
@@ -251,6 +274,13 @@ struct DynamicEntityMeshData {
 };
 
 struct DynamicEntityFrameInstance {
+  int entityId {-1};
+  remixapi_MeshHandle meshHandle {nullptr};
+  std::size_t quadCount {0};
+  std::vector<DynamicEntityBoneTransform> boneTransforms {};
+};
+
+struct DynamicEntityRenderInstance {
   int entityId {-1};
   remixapi_MeshHandle meshHandle {nullptr};
   std::size_t quadCount {0};
@@ -288,8 +318,9 @@ struct ChunkRenderInstance {
 
 struct FrameRenderSnapshot {
   CameraState camera {};
+  WorldRenderOrigin renderOrigin {};
   std::vector<ChunkRenderInstance> chunkMeshes {};
-  std::vector<DynamicEntityFrameInstance> dynamicEntities {};
+  std::vector<DynamicEntityRenderInstance> dynamicEntities {};
   std::vector<remixapi_LightHandle> torchLights {};
   remixapi_MeshHandle cloudMeshHandle {nullptr};
   remixapi_MeshHandle fireMeshHandle {nullptr};
@@ -362,7 +393,7 @@ public:
   void beginDynamicEntity(int entityId, std::uint32_t hurtStage, std::uint32_t creeperFuseStage);
   void setDynamicEntityTexture(const std::string& texturePath);
   void setFirstPersonHeldItem(int itemId);
-  void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
+  void setEntityHeldTorch(int entityId, double worldX, double worldY, double worldZ, int itemId);
   void setPlayerShadowsEnabled(bool enabled);
   void setHeldTorchLightsEnabled(bool enabled);
   void setDynamicEntityRenderingEnabled(bool enabled);
@@ -380,7 +411,12 @@ public:
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
-  void setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform);
+  void setDynamicEntityBoneTransform(
+      std::uint32_t boneIndex,
+      const remixapi_Transform& transform,
+      double worldX,
+      double worldY,
+      double worldZ);
   void captureDynamicEntityQuad(
       float x0,
       float y0,
@@ -596,10 +632,12 @@ private:
       std::uint32_t hurtStage,
       std::uint32_t creeperFuseStage);
   remixapi_MaterialHandle acquireParticleMaterial(std::uint32_t textureKind);
-  bool createTorchLight(const TorchLightPlacement& placement);
-  bool updateTorchLight(const TorchLightPlacement& placement);
+  bool createTorchLight(const TorchLightPlacement& placement, const WorldRenderOrigin& renderOrigin);
+  bool updateTorchLight(const TorchLightPlacement& placement, const WorldRenderOrigin& renderOrigin);
   bool reconcileChunkTorchLights(ChunkMeshData& meshData, const std::vector<TorchLightPlacement>& desiredTorchLights);
-  bool reconcileHeldItemTorchLight();
+  bool reconcileHeldItemTorchLight(const WorldRenderOrigin& renderOrigin);
+  bool refreshTorchLightDefinitions(const WorldRenderOrigin& renderOrigin);
+  bool refreshEntityHeldTorchLightDefinition(int entityId, EntityHeldTorchLightState& state, const WorldRenderOrigin& renderOrigin);
   void destroyEntityHeldTorchLight(int entityId);
   bool rebuildCloudMesh(
       bool fancy,
@@ -610,16 +648,17 @@ private:
       float cloudScroll,
       float colorR,
       float colorG,
-      float colorB);
+      float colorB,
+      const WorldRenderOrigin& renderOrigin);
   DynamicEntityMeshData* findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState);
   bool rebuildChunkMesh(
       const ChunkBuildState& chunkBuild,
       const std::vector<CapturedBlockInstance>& blocks,
       ChunkMeshData& meshData);
   bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
-  bool rebuildFireMesh();
-  bool rebuildDestroyOverlayMesh();
-  bool rebuildBlockOutlineMesh();
+  bool rebuildFireMesh(const WorldRenderOrigin& renderOrigin);
+  bool rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOrigin);
+  bool rebuildBlockOutlineMesh(const WorldRenderOrigin& renderOrigin);
   static std::filesystem::path resolveCloudTexturePath();
   static std::filesystem::path resolveFireTexturePath();
   static std::filesystem::path resolveWaterTexturePath();
@@ -648,7 +687,7 @@ private:
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
-  bool rebuildParticleMesh();
+  bool rebuildParticleMesh(const WorldRenderOrigin& renderOrigin);
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   void evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks);
   void computeFaceCoverage(ChunkMeshData& meshData);
@@ -656,6 +695,7 @@ private:
   bool prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene);
   bool drawCapturedGeometry(FrameRenderSnapshot& snapshot);
   bool submitCamera(const CameraState& camera);
+  WorldRenderOrigin currentRenderOriginLocked() const noexcept;
   bool startStandaloneWorker(std::filesystem::path remixDllPath);
   bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
   void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
@@ -699,6 +739,7 @@ private:
   bool renderSubmissionInFlight_ {false};
   bool initialized_ {false};
   bool syntheticUiTestEnabled_ {false};
+  bool worldOriginRebaseEnabled_ {false};
   bool syntheticUiTextureRegistered_ {false};
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
@@ -758,6 +799,7 @@ private:
   remixapi_MeshHandle fireMeshHandle_ {nullptr};
   remixapi_MeshHandle destroyOverlayMeshHandle_ {nullptr};
   remixapi_MeshHandle blockOutlineMeshHandle_ {nullptr};
+  WorldRenderOrigin lastFireRenderOrigin_ {};
   std::uint64_t nextFireMeshHash_ {1};
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
   std::uint64_t nextBlockOutlineMeshHash_ {1};
@@ -790,9 +832,11 @@ private:
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};
-  std::unordered_map<WorldBlockPosition, remixapi_LightHandle, WorldBlockPositionHash> torchLights_ {};
+  std::unordered_map<WorldBlockPosition, TorchLightState, WorldBlockPositionHash> torchLights_ {};
+  std::unordered_map<WorldBlockPosition, TorchLightPlacement, WorldBlockPositionHash> torchLightPlacements_ {};
   remixapi_LightHandle heldItemTorchLightHandle_ {nullptr};
-  std::unordered_map<int, remixapi_LightHandle> entityHeldTorchLightHandles_ {};
+  WorldRenderOrigin heldItemTorchLightRenderOrigin_ {};
+  std::unordered_map<int, EntityHeldTorchLightState> entityHeldTorchLights_ {};
   std::unordered_set<int> entityHeldTorchLightsSeenThisFrame_ {};
   int heldItemId_ {-1};
   bool playerShadowsEnabled_ {true};

@@ -1,9 +1,9 @@
 package mcrtx.bridge;
 
 public final class CameraPose {
-    public float px;
-    public float py;
-    public float pz;
+    public double px;
+    public double py;
+    public double pz;
     public float fx;
     public float fy;
     public float fz;

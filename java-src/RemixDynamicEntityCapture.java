@@ -710,7 +710,7 @@ public final class RemixDynamicEntityCapture {
             if (modelView == null) {
                 return false;
             }
-            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             long stateReadEndNanos = System.nanoTime();
 
             MinecraftRenderHooks.beginDynamicEntity(painting.aD, 0, 0);
@@ -766,7 +766,7 @@ public final class RemixDynamicEntityCapture {
                 return;
             }
 
-            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             int sanitizedColor = ColorMath.forceOpaqueAlpha(ColorMath.sanitizePackedColor(colorRgba));
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {
@@ -865,7 +865,7 @@ public final class RemixDynamicEntityCapture {
             }
             long stateReadEndNanos = System.nanoTime();
 
-            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
             capturedColor = ColorMath.applyHurtIndicator(
                     capturedColor[0],
@@ -1324,13 +1324,15 @@ public final class RemixDynamicEntityCapture {
             return;
         }
 
-        float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
-        float[] handPosition = MatrixMath.transformPointColumnMajor(modelToWorld, 0.0f, 0.0f, 0.0f);
+        RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
+        double handX = modelToWorld.x;
+        double handY = modelToWorld.y;
+        double handZ = modelToWorld.z;
         float interpolatedYaw = player.aU + (player.aS - player.aU) * partialTicks;
         double yawRadians = Math.toRadians(interpolatedYaw);
-        handPosition[0] += (float) (-Math.cos(yawRadians)) * ENTITY_HELD_TORCH_RIGHT_NUDGE;
-        handPosition[2] += (float) (-Math.sin(yawRadians)) * ENTITY_HELD_TORCH_RIGHT_NUDGE;
-        MinecraftRenderHooks.setEntityHeldTorch(player.aD, handPosition[0], handPosition[1], handPosition[2], itemId);
+        handX += (-Math.cos(yawRadians)) * (double) ENTITY_HELD_TORCH_RIGHT_NUDGE;
+        handZ += (-Math.sin(yawRadians)) * (double) ENTITY_HELD_TORCH_RIGHT_NUDGE;
+        MinecraftRenderHooks.setEntityHeldTorch(player.aD, handX, handY, handZ, itemId);
     }
 
     public static void onEntityTextureBind(String primaryTexture, String fallbackTexture) {
@@ -1371,12 +1373,12 @@ public final class RemixDynamicEntityCapture {
             }
             long stateReadEndNanos = System.nanoTime();
 
-            float[] modelToWorld;
+            RemixCameraState.PreciseTransform modelToWorld;
             if (firstPersonShadowCaptureActive) {
                 float[] overlayNeutralModelView = MatrixMath.multiplyColumnMajor(firstPersonShadowOverlayInverse, modelView);
-                modelToWorld = MatrixMath.multiplyColumnMajor(buildCameraTranslationMatrix(), overlayNeutralModelView);
+                modelToWorld = RemixCameraState.buildCameraTranslatedModelTransform(overlayNeutralModelView);
             } else {
-                modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+                modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             }
                 float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
                 capturedColor = ColorMath.applyHurtIndicator(
@@ -1491,7 +1493,7 @@ public final class RemixDynamicEntityCapture {
                         return;
                     }
 
-                    float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+                    RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
                     int fallbackColorRgba = ColorMath.sanitizePackedColor(ColorMath.packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
                     int boneIndex = allocateDynamicBoneIndex();
                     if (boneIndex >= 0) {
@@ -1523,7 +1525,7 @@ public final class RemixDynamicEntityCapture {
             }
             long stateReadEndNanos = System.nanoTime();
 
-            float[] modelToWorld = MatrixMath.multiplyColumnMajor(RemixCameraState.buildInverseViewMatrix(), modelView);
+            RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             int fallbackColorRgba = ColorMath.sanitizePackedColor(ColorMath.packColor(currentColor[0], currentColor[1], currentColor[2], currentColor[3]));
             int boneIndex = allocateDynamicBoneIndex();
             if (boneIndex < 0) {
@@ -1857,23 +1859,12 @@ public final class RemixDynamicEntityCapture {
         return boneIndex;
     }
 
-    private static void submitDynamicBoneTransform(int boneIndex, float[] columnMajorMatrix) {
+    private static void submitDynamicBoneTransform(int boneIndex, RemixCameraState.PreciseTransform transform) {
+        float[] columnMajorMatrix = transform.matrix;
         MinecraftRenderHooks.setDynamicEntityBoneTransform(
                 boneIndex,
-                columnMajorMatrix[0], columnMajorMatrix[4], columnMajorMatrix[8], columnMajorMatrix[12],
-                columnMajorMatrix[1], columnMajorMatrix[5], columnMajorMatrix[9], columnMajorMatrix[13],
-                columnMajorMatrix[2], columnMajorMatrix[6], columnMajorMatrix[10], columnMajorMatrix[14]);
-    }
-
-    private static float[] buildCameraTranslationMatrix() {
-        return new float[] {
-                1.0f, 0.0f, 0.0f, 0.0f,
-                0.0f, 1.0f, 0.0f, 0.0f,
-                0.0f, 0.0f, 1.0f, 0.0f,
-                RemixCameraState.cameraPositionX,
-                RemixCameraState.cameraPositionY,
-                RemixCameraState.cameraPositionZ,
-                1.0f
-        };
+                columnMajorMatrix[0], columnMajorMatrix[4], columnMajorMatrix[8], transform.x,
+                columnMajorMatrix[1], columnMajorMatrix[5], columnMajorMatrix[9], transform.y,
+                columnMajorMatrix[2], columnMajorMatrix[6], columnMajorMatrix[10], transform.z);
     }
 }

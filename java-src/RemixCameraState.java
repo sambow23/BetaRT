@@ -18,9 +18,9 @@ public final class RemixCameraState {
     private static volatile double noCullDistanceBlocks = loadNoCullDistanceBlocks();
     private static volatile double noCullDistanceSq = noCullDistanceBlocks * noCullDistanceBlocks;
 
-    static float cameraPositionX;
-    static float cameraPositionY;
-    static float cameraPositionZ;
+    static double cameraPositionX;
+    static double cameraPositionY;
+    static double cameraPositionZ;
     static float cameraForwardX = 0.0f;
     static float cameraForwardY = 0.0f;
     static float cameraForwardZ = 1.0f;
@@ -39,6 +39,23 @@ public final class RemixCameraState {
     private static boolean frameViewCaptured;
     private static boolean frustumReady;
     private static final float[] frameInverseViewMatrix = new float[16];
+    private static double frameCameraPoseX;
+    private static double frameCameraPoseY;
+    private static double frameCameraPoseZ;
+
+    static final class PreciseTransform {
+        final float[] matrix;
+        final double x;
+        final double y;
+        final double z;
+
+        PreciseTransform(float[] matrix, double x, double y, double z) {
+            this.matrix = matrix;
+            this.x = x;
+            this.y = y;
+            this.z = z;
+        }
+    }
 
     private RemixCameraState() {
     }
@@ -53,9 +70,9 @@ public final class RemixCameraState {
         }
         bt position = entity.e(partialTicks);
         bt forward = entity.f(partialTicks);
-        cameraPositionX = (float) position.a;
-        cameraPositionY = (float) (position.b + (double) entity.bf - 1.62);
-        cameraPositionZ = (float) position.c;
+        cameraPositionX = position.a;
+        cameraPositionY = position.b + (double) entity.bf - 1.62;
+        cameraPositionZ = position.c;
 
         float fx = (float) forward.a;
         float fy = (float) forward.b;
@@ -132,9 +149,12 @@ public final class RemixCameraState {
 
         float[] inverse = MatrixMath.invertAffineColumnMajor(view);
         long invertViewEndNanos = System.nanoTime();
-        inverse[12] += cameraPositionX;
-        inverse[13] += cameraPositionY;
-        inverse[14] += cameraPositionZ;
+        frameCameraPoseX = cameraPositionX + (double) inverse[12];
+        frameCameraPoseY = cameraPositionY + (double) inverse[13];
+        frameCameraPoseZ = cameraPositionZ + (double) inverse[14];
+        inverse[12] = (float) frameCameraPoseX;
+        inverse[13] = (float) frameCameraPoseY;
+        inverse[14] = (float) frameCameraPoseZ;
         inverse[15] = 1.0f;
         System.arraycopy(inverse, 0, frameInverseViewMatrix, 0, 16);
         frameViewCaptured = true;
@@ -154,9 +174,9 @@ public final class RemixCameraState {
         // snap at pitch = ±90°, discarding the authoritative basis we just
         // extracted from GL_MODELVIEW.
         CameraPose cameraPose = new CameraPose();
-        cameraPose.px = inverse[12];
-        cameraPose.py = inverse[13];
-        cameraPose.pz = inverse[14];
+        cameraPose.px = frameCameraPoseX;
+        cameraPose.py = frameCameraPoseY;
+        cameraPose.pz = frameCameraPoseZ;
         cameraPose.fx = cameraForwardX;
         cameraPose.fy = cameraForwardY;
         cameraPose.fz = cameraForwardZ;
@@ -199,11 +219,54 @@ public final class RemixCameraState {
         matrix[9] = -cameraForwardY;
         matrix[10] = -cameraForwardZ;
         matrix[11] = 0.0f;
-        matrix[12] = cameraPositionX;
-        matrix[13] = cameraPositionY;
-        matrix[14] = cameraPositionZ;
+        matrix[12] = (float) cameraPositionX;
+        matrix[13] = (float) cameraPositionY;
+        matrix[14] = (float) cameraPositionZ;
         matrix[15] = 1.0f;
         return matrix;
+    }
+
+    static PreciseTransform buildModelToWorldTransform(float[] modelView) {
+        float[] matrix = MatrixMath.multiplyColumnMajor(buildInverseViewMatrix(), modelView);
+        double x = currentCameraPoseX()
+                + (double) cameraRightX * (double) modelView[12]
+                + (double) cameraUpX * (double) modelView[13]
+                - (double) cameraForwardX * (double) modelView[14];
+        double y = currentCameraPoseY()
+                + (double) cameraRightY * (double) modelView[12]
+                + (double) cameraUpY * (double) modelView[13]
+                - (double) cameraForwardY * (double) modelView[14];
+        double z = currentCameraPoseZ()
+                + (double) cameraRightZ * (double) modelView[12]
+                + (double) cameraUpZ * (double) modelView[13]
+                - (double) cameraForwardZ * (double) modelView[14];
+        matrix[12] = (float) x;
+        matrix[13] = (float) y;
+        matrix[14] = (float) z;
+        return new PreciseTransform(matrix, x, y, z);
+    }
+
+    static PreciseTransform buildCameraTranslatedModelTransform(float[] modelView) {
+        float[] matrix = modelView.clone();
+        double x = cameraPositionX + (double) modelView[12];
+        double y = cameraPositionY + (double) modelView[13];
+        double z = cameraPositionZ + (double) modelView[14];
+        matrix[12] = (float) x;
+        matrix[13] = (float) y;
+        matrix[14] = (float) z;
+        return new PreciseTransform(matrix, x, y, z);
+    }
+
+    private static double currentCameraPoseX() {
+        return frameViewCaptured ? frameCameraPoseX : cameraPositionX;
+    }
+
+    private static double currentCameraPoseY() {
+        return frameViewCaptured ? frameCameraPoseY : cameraPositionY;
+    }
+
+    private static double currentCameraPoseZ() {
+        return frameViewCaptured ? frameCameraPoseZ : cameraPositionZ;
     }
 
     static boolean shouldCaptureChunkSection(int originX, int originY, int originZ) {
@@ -307,7 +370,7 @@ public final class RemixCameraState {
         float[] right = normalizeVector(cameraRightX, cameraRightY, cameraRightZ, 1.0f, 0.0f, 0.0f);
         float[] up = normalizeVector(cameraUpX, cameraUpY, cameraUpZ, 0.0f, 1.0f, 0.0f);
 
-        float positionDotForward = dot(forward[0], forward[1], forward[2], cameraPositionX, cameraPositionY, cameraPositionZ);
+        float positionDotForward = (float) dot(forward[0], forward[1], forward[2], cameraPositionX, cameraPositionY, cameraPositionZ);
         setPlane(0, forward[0], forward[1], forward[2], -(positionDotForward + safeNearPlane));
         setPlane(1, -forward[0], -forward[1], -forward[2], positionDotForward + safeFarPlane);
         setPlaneThroughCamera(2,
@@ -330,7 +393,7 @@ public final class RemixCameraState {
     }
 
     private static void setPlaneThroughCamera(int planeIndex, float nx, float ny, float nz) {
-        setPlane(planeIndex, nx, ny, nz, -dot(nx, ny, nz, cameraPositionX, cameraPositionY, cameraPositionZ));
+        setPlane(planeIndex, nx, ny, nz, (float) -dot(nx, ny, nz, cameraPositionX, cameraPositionY, cameraPositionZ));
     }
 
     private static void setPlane(int planeIndex, float nx, float ny, float nz, float planeD) {
@@ -361,7 +424,7 @@ public final class RemixCameraState {
         return new float[] {x * inverseLength, y * inverseLength, z * inverseLength};
     }
 
-    private static float dot(float x0, float y0, float z0, float x1, float y1, float z1) {
-        return x0 * x1 + y0 * y1 + z0 * z1;
+    private static double dot(float x0, float y0, float z0, double x1, double y1, double z1) {
+        return (double) x0 * x1 + (double) y0 * y1 + (double) z0 * z1;
     }
 }

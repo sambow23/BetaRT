@@ -291,7 +291,7 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetFirstPersonHeldItem(itemId);
     }
 
-    public static synchronized void setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
+    public static synchronized void setEntityHeldTorch(int entityId, double worldX, double worldY, double worldZ, int itemId) {
         if (!initialized || entityId < 0) {
             return;
         }
@@ -422,15 +422,15 @@ public final class MinecraftRenderHooks {
             float m00,
             float m01,
             float m02,
-            float m03,
+            double m03,
             float m10,
             float m11,
             float m12,
-            float m13,
+            double m13,
             float m20,
             float m21,
             float m22,
-            float m23) {
+            double m23) {
         if (!initialized || boneIndex < 0) {
             return;
         }

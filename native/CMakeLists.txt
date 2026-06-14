@@ -1,3 +1,4 @@
+if(MCRTX_BUILD_JNI)
 set(MCRTX_DXVK_REMIX_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/../../dxvk-remix-gmod" CACHE PATH "Path to the dxvk-remix-gmod checkout")
 
 option(MCRTX_ENABLE_TRACY "Enable Tracy profiling in the native JNI bridge" ON)
@@ -50,6 +51,7 @@ add_library(mcrtx_jni SHARED
   src/remix_subsystem_meshes.cpp
   src/remix_window.cpp
   src/render_internals.cpp
+  src/world_origin.cpp
   src/perf_log.cpp
 )
 
@@ -106,3 +108,22 @@ else()
 endif()
 
 set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
+endif()
+
+if(MCRTX_BUILD_TESTS)
+  add_executable(mcrtx_world_origin_tests
+    src/world_origin.cpp
+    tests/world_origin_tests.cpp
+  )
+  target_include_directories(mcrtx_world_origin_tests
+    PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_compile_features(mcrtx_world_origin_tests PRIVATE cxx_std_20)
+  if(MSVC)
+    target_compile_options(mcrtx_world_origin_tests PRIVATE /W4 /EHsc)
+  else()
+    target_compile_options(mcrtx_world_origin_tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME mcrtx_world_origin_tests COMMAND mcrtx_world_origin_tests)
+endif()

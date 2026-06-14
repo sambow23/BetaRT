@@ -257,7 +257,7 @@ void RemixRenderer::updateCloudLayer(
         + (cloudMeshHandle_ == nullptr ? " reason=missing" : " reason=mode-switch"));
   }
 
-  rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB);
+  rebuildCloudMesh(fancy, cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB, currentRenderOriginLocked());
 }
 
 void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAtmosphere) {
@@ -351,7 +351,7 @@ void RemixRenderer::setFirstPersonHeldItem(int itemId) {
   heldItemId_ = heldTorchLightsEnabled_ ? itemId : -1;
 }
 
-void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId) {
+void RemixRenderer::setEntityHeldTorch(int entityId, double worldX, double worldY, double worldZ, int itemId) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setEntityHeldTorch");
   MCRTX_TRACY_SCOPE("RemixRenderer::setEntityHeldTorch");
   std::scoped_lock lock(mutex_);
@@ -372,71 +372,13 @@ void RemixRenderer::setEntityHeldTorch(int entityId, float worldX, float worldY,
   }
 
   entityHeldTorchLightsSeenThisFrame_.insert(entityId);
-  MCRTX_TRACY_VALUE(entityHeldTorchLightHandles_.size());
+  MCRTX_TRACY_VALUE(entityHeldTorchLights_.size());
 
-  remixapi_LightInfoSphereEXT sphereInfo {};
-  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
-  sphereInfo.position = {
-      worldX,
-      worldY,
-      worldZ,
-  };
-  sphereInfo.radius = kTorchLightRadius;
-  sphereInfo.shaping_hasvalue = FALSE;
-  sphereInfo.volumetricRadianceScale = 1.0f;
-
-  remixapi_LightInfo lightInfo {};
-  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
-  lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = makeEntityHeldTorchLightHash(entityId);
-  lightInfo.radiance = entityHeldTorchRadiance(itemId);
-  lightInfo.isDynamic = TRUE;
-  lightInfo.ignoreViewModel = FALSE;
-  lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
-
-  const auto createLight = [&](remixapi_LightHandle& lightHandle) {
-    return [&]() {
-      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.entityHeldTorch");
-      return remix_.CreateLight(&lightInfo, &lightHandle);
-    }();
-  };
-
-  auto lightIt = entityHeldTorchLightHandles_.find(entityId);
-  if (lightIt == entityHeldTorchLightHandles_.end() || lightIt->second == nullptr) {
-    MCRTX_TRACY_SCOPE("setEntityHeldTorch.createLight");
-    remixapi_LightHandle lightHandle = nullptr;
-    const remixapi_ErrorCode result = createLight(lightHandle);
-    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-      setError("CreateLight failed: " + errorCodeToString(result));
-      return;
-    }
-
-    entityHeldTorchLightHandles_[entityId] = lightHandle;
-    return;
-  }
-
-  if (remix_.UpdateLightDefinition == nullptr) {
-    MCRTX_TRACY_SCOPE("setEntityHeldTorch.recreateLight");
-    destroyEntityHeldTorchLight(entityId);
-    remixapi_LightHandle lightHandle = nullptr;
-    const remixapi_ErrorCode result = createLight(lightHandle);
-    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-      setError("CreateLight failed: " + errorCodeToString(result));
-      return;
-    }
-
-    entityHeldTorchLightHandles_[entityId] = lightHandle;
-    return;
-  }
-
-  const remixapi_ErrorCode result = [&]() {
-    MCRTX_TRACY_SCOPE("setEntityHeldTorch.updateLight");
-    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.entityHeldTorch");
-    return remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
-  }();
-  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-    setError("UpdateLightDefinition failed: " + errorCodeToString(result));
-  }
+  EntityHeldTorchLightState& lightState = entityHeldTorchLights_[entityId];
+  lightState.worldX = worldX;
+  lightState.worldY = worldY;
+  lightState.worldZ = worldZ;
+  lightState.itemId = itemId;
 }
 
 void RemixRenderer::setPlayerShadowsEnabled(bool enabled) {
@@ -522,7 +464,7 @@ void RemixRenderer::setBlockOutlineEmissiveIntensity(float intensity) {
   destroyBlockOutlineMaterials();
   createBlockOutlineMaterials();
   if (!blockOutlineInstances_.empty()) {
-    rebuildBlockOutlineMesh();
+    rebuildBlockOutlineMesh(currentRenderOriginLocked());
   }
 }
 
@@ -726,19 +668,20 @@ void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
     }
   }
 
+  const WorldRenderOrigin renderOrigin = currentRenderOriginLocked();
   if (!destroyOverlayInstances_.empty()) {
-    rebuildDestroyOverlayMesh();
+    rebuildDestroyOverlayMesh(renderOrigin);
   }
 
   if (!blockOutlineInstances_.empty()) {
-    rebuildBlockOutlineMesh();
+    rebuildBlockOutlineMesh(renderOrigin);
   }
 
   if (!particleQuads_.empty()) {
-    rebuildParticleMesh();
+    rebuildParticleMesh(renderOrigin);
   }
 
-  rebuildFireMesh();
+  rebuildFireMesh(renderOrigin);
 }
 
 void RemixRenderer::setViewModelFovDegrees(float fovYDegrees) {
@@ -803,7 +746,12 @@ void RemixRenderer::setUpscalerConfig(int upscalerType, int dlssPreset, int xess
   applyUpscalerConfigLocked();
 }
 
-void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const remixapi_Transform& transform) {
+void RemixRenderer::setDynamicEntityBoneTransform(
+    std::uint32_t boneIndex,
+    const remixapi_Transform& transform,
+    double worldX,
+    double worldY,
+    double worldZ) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setDynamicEntityBoneTransform");
   std::scoped_lock lock(mutex_);
 
@@ -814,7 +762,11 @@ void RemixRenderer::setDynamicEntityBoneTransform(std::uint32_t boneIndex, const
   if (boneIndex >= activeDynamicEntity_.boneTransforms.size()) {
     activeDynamicEntity_.boneTransforms.resize(static_cast<std::size_t>(boneIndex) + 1);
   }
-  activeDynamicEntity_.boneTransforms[boneIndex] = transform;
+  DynamicEntityBoneTransform& boneTransform = activeDynamicEntity_.boneTransforms[boneIndex];
+  boneTransform.transform = transform;
+  boneTransform.worldX = worldX;
+  boneTransform.worldY = worldY;
+  boneTransform.worldZ = worldZ;
 }
 
 void RemixRenderer::captureDynamicEntityQuad(
@@ -1077,8 +1029,8 @@ void RemixRenderer::clearWorldScene() {
   destroyOverlayInstances_.clear();
   blockOutlineInstances_.clear();
   particleQuads_.clear();
-  while (!entityHeldTorchLightHandles_.empty()) {
-    destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+  while (!entityHeldTorchLights_.empty()) {
+    destroyEntityHeldTorchLight(entityHeldTorchLights_.begin()->first);
   }
   entityHeldTorchLightsSeenThisFrame_.clear();
   activeDynamicEntity_ = {};
@@ -1100,14 +1052,19 @@ void RemixRenderer::clearWorldScene() {
   log("Cleared cached world scene state");
 }
 
-bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
+bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::createTorchLight");
-  remixapi_LightInfoSphereEXT sphereInfo {};
-  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
-  sphereInfo.position = {
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
       placement.lightX,
       placement.lightY,
       placement.lightZ,
+      renderOrigin);
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {
+      lightPosition.x,
+      lightPosition.y,
+      lightPosition.z,
   };
   sphereInfo.radius = kTorchLightRadius;
   sphereInfo.shaping_hasvalue = FALSE;
@@ -1116,7 +1073,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = makeTorchLightHash(placement.blockPosition);
+  lightInfo.hash = mixWorldRenderOriginHash(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -1133,25 +1090,36 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement) {
     return false;
   }
 
-  torchLights_[placement.blockPosition] = lightHandle;
+  torchLights_[placement.blockPosition] = {lightHandle, renderOrigin};
+  torchLightPlacements_[placement.blockPosition] = placement;
   return true;
 }
 
-bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
+bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateTorchLight");
   const auto lightIt = torchLights_.find(placement.blockPosition);
-  if (lightIt == torchLights_.end() || lightIt->second == nullptr) {
-    return createTorchLight(placement);
+  if (lightIt == torchLights_.end() || lightIt->second.handle == nullptr) {
+    return createTorchLight(placement, renderOrigin);
+  }
+
+  if (!sameWorldRenderOrigin(lightIt->second.renderOrigin, renderOrigin)) {
+    destroyTorchLight(placement.blockPosition);
+    return createTorchLight(placement, renderOrigin);
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {
     destroyTorchLight(placement.blockPosition);
-    return createTorchLight(placement);
+    return createTorchLight(placement, renderOrigin);
   }
 
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
+      placement.lightX,
+      placement.lightY,
+      placement.lightZ,
+      renderOrigin);
   remixapi_LightInfoSphereEXT sphereInfo {};
   sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
-  sphereInfo.position = {placement.lightX, placement.lightY, placement.lightZ};
+  sphereInfo.position = {lightPosition.x, lightPosition.y, lightPosition.z};
   sphereInfo.radius = kTorchLightRadius;
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
@@ -1159,7 +1127,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = makeTorchLightHash(placement.blockPosition);
+  lightInfo.hash = mixWorldRenderOriginHash(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -1167,13 +1135,15 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement) {
 
   const remixapi_ErrorCode result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.torch");
-    return remix_.UpdateLightDefinition(lightIt->second, &lightInfo);
+    return remix_.UpdateLightDefinition(lightIt->second.handle, &lightInfo);
   }();
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
     setError("UpdateLightDefinition failed: " + errorCodeToString(result));
     return false;
   }
 
+  torchLightPlacements_[placement.blockPosition] = placement;
+  lightIt->second.renderOrigin = renderOrigin;
   return true;
 }
 
@@ -1190,9 +1160,10 @@ bool RemixRenderer::reconcileChunkTorchLights(
 
   std::vector<WorldBlockPosition> createdLights;
   createdLights.reserve(desiredTorchLights.size());
+  const WorldRenderOrigin renderOrigin = currentRenderOriginLocked();
   for (const TorchLightPlacement& placement : desiredTorchLights) {
     const bool existed = torchLights_.find(placement.blockPosition) != torchLights_.end();
-    if (!updateTorchLight(placement)) {
+    if (!updateTorchLight(placement, renderOrigin)) {
       for (const WorldBlockPosition& createdPosition : createdLights) {
         destroyTorchLight(createdPosition);
       }
@@ -1213,7 +1184,107 @@ bool RemixRenderer::reconcileChunkTorchLights(
   return true;
 }
 
-bool RemixRenderer::reconcileHeldItemTorchLight() {
+bool RemixRenderer::refreshTorchLightDefinitions(const WorldRenderOrigin& renderOrigin) {
+  std::vector<TorchLightPlacement> placements;
+  placements.reserve(torchLightPlacements_.size());
+  for (const auto& [position, placement] : torchLightPlacements_) {
+    (void)position;
+    placements.push_back(placement);
+  }
+
+  for (const TorchLightPlacement& placement : placements) {
+    if (!updateTorchLight(placement, renderOrigin)) {
+      return false;
+    }
+  }
+
+  for (auto& [entityId, state] : entityHeldTorchLights_) {
+    if (!refreshEntityHeldTorchLightDefinition(entityId, state, renderOrigin)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+bool RemixRenderer::refreshEntityHeldTorchLightDefinition(
+    int entityId,
+    EntityHeldTorchLightState& state,
+    const WorldRenderOrigin& renderOrigin) {
+  if (remix_.CreateLight == nullptr || !isTorchLightItemId(state.itemId)) {
+    if (state.handle != nullptr) {
+      destroyLightHandle(state.handle);
+      state.handle = nullptr;
+    }
+    return true;
+  }
+
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
+      state.worldX,
+      state.worldY,
+      state.worldZ,
+      renderOrigin);
+
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {
+      lightPosition.x,
+      lightPosition.y,
+      lightPosition.z,
+  };
+  sphereInfo.radius = kTorchLightRadius;
+  sphereInfo.shaping_hasvalue = FALSE;
+  sphereInfo.volumetricRadianceScale = 1.0f;
+
+  remixapi_LightInfo lightInfo {};
+  lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfo.pNext = &sphereInfo;
+  lightInfo.hash = mixWorldRenderOriginHash(makeEntityHeldTorchLightHash(entityId), renderOrigin);
+  lightInfo.radiance = entityHeldTorchRadiance(state.itemId);
+  lightInfo.isDynamic = TRUE;
+  lightInfo.ignoreViewModel = FALSE;
+  lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
+
+  if (state.handle == nullptr) {
+    const remixapi_ErrorCode result = [&]() {
+      MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateLight.entityHeldTorch");
+      return remix_.CreateLight(&lightInfo, &state.handle);
+    }();
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      state.handle = nullptr;
+      setError("CreateLight failed: " + errorCodeToString(result));
+      return false;
+    }
+    state.renderOrigin = renderOrigin;
+    return true;
+  }
+
+  if (!sameWorldRenderOrigin(state.renderOrigin, renderOrigin)) {
+    destroyLightHandle(state.handle);
+    state.handle = nullptr;
+    return refreshEntityHeldTorchLightDefinition(entityId, state, renderOrigin);
+  }
+
+  if (remix_.UpdateLightDefinition == nullptr) {
+    destroyLightHandle(state.handle);
+    state.handle = nullptr;
+    return refreshEntityHeldTorchLightDefinition(entityId, state, renderOrigin);
+  }
+
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "UpdateLightDefinition.entityHeldTorch");
+    return remix_.UpdateLightDefinition(state.handle, &lightInfo);
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("UpdateLightDefinition failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  state.renderOrigin = renderOrigin;
+  return true;
+}
+
+bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileHeldItemTorchLight");
   MCRTX_TRACY_SCOPE("RemixRenderer::reconcileHeldItemTorchLight");
 
@@ -1225,9 +1296,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
     return true;
   }
 
-  remixapi_LightInfoSphereEXT sphereInfo {};
-  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
-  sphereInfo.position = {
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
       camera_.position[0] + camera_.forward[0] * kHeldTorchLightForwardOffset
           + camera_.right[0] * kHeldTorchLightRightOffset
           + camera_.up[0] * kHeldTorchLightUpOffset,
@@ -1237,7 +1306,10 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
       camera_.position[2] + camera_.forward[2] * kHeldTorchLightForwardOffset
           + camera_.right[2] * kHeldTorchLightRightOffset
           + camera_.up[2] * kHeldTorchLightUpOffset,
-  };
+      renderOrigin);
+  remixapi_LightInfoSphereEXT sphereInfo {};
+  sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+  sphereInfo.position = {lightPosition.x, lightPosition.y, lightPosition.z};
   sphereInfo.radius = kTorchLightRadius;
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
@@ -1245,7 +1317,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = kHeldTorchLightHash;
+  lightInfo.hash = mixWorldRenderOriginHash(kHeldTorchLightHash, renderOrigin);
   lightInfo.radiance = isRedstoneTorch ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
   lightInfo.isDynamic = TRUE;
   lightInfo.ignoreViewModel = TRUE;
@@ -1263,13 +1335,20 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
       setError("CreateLight failed: " + errorCodeToString(result));
       return false;
     }
+    heldItemTorchLightRenderOrigin_ = renderOrigin;
     return true;
+  }
+
+  if (!sameWorldRenderOrigin(heldItemTorchLightRenderOrigin_, renderOrigin)) {
+    MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.recreateForOrigin");
+    destroyHeldItemTorchLight();
+    return reconcileHeldItemTorchLight(renderOrigin);
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {
     MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.recreate");
     destroyHeldItemTorchLight();
-    return reconcileHeldItemTorchLight();
+    return reconcileHeldItemTorchLight(renderOrigin);
   }
 
   const remixapi_ErrorCode result = [&]() {
@@ -1282,6 +1361,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight() {
     return false;
   }
 
+  heldItemTorchLightRenderOrigin_ = renderOrigin;
   return true;
 }
 
@@ -1294,7 +1374,8 @@ bool RemixRenderer::rebuildCloudMesh(
     float cloudScroll,
     float colorR,
     float colorG,
-    float colorB) {
+    float colorB,
+    const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildCloudMesh");
   if (cloudMaterialHandle_ == nullptr) {
     destroyCloudMesh();
@@ -1310,6 +1391,19 @@ bool RemixRenderer::rebuildCloudMesh(
     appendFancyCloudGeometry(cameraX, cameraY, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB, vertices, indices);
   } else {
     appendFastCloudGeometry(cameraX, cameraZ, cloudHeight, cloudScroll, colorR, colorG, colorB, vertices, indices);
+  }
+
+  if (renderOrigin.enabled) {
+    for (remixapi_HardcodedVertex& vertex : vertices) {
+      const WorldRenderPosition position = rebaseWorldPosition(
+          vertex.position[0],
+          vertex.position[1],
+          vertex.position[2],
+          renderOrigin);
+      vertex.position[0] = position.x;
+      vertex.position[1] = position.y;
+      vertex.position[2] = position.z;
+    }
   }
 
   if (indices.empty()) {
@@ -1518,6 +1612,7 @@ void RemixRenderer::destroyFireMesh() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyFireMesh");
   destroyMeshHandle(fireMeshHandle_);
   fireQuadCount_ = 0;
+  lastFireRenderOrigin_ = {};
 }
 
 void RemixRenderer::destroyDestroyOverlayMesh() {
@@ -1542,42 +1637,47 @@ void RemixRenderer::destroyTorchLight(const WorldBlockPosition& position) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyTorchLight");
   const auto lightIt = torchLights_.find(position);
   if (lightIt == torchLights_.end()) {
+    torchLightPlacements_.erase(position);
     return;
   }
 
-  destroyLightHandle(lightIt->second);
+  destroyLightHandle(lightIt->second.handle);
   torchLights_.erase(lightIt);
+  torchLightPlacements_.erase(position);
 }
 
 void RemixRenderer::destroyHeldItemTorchLight() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyHeldItemTorchLight");
   if (heldItemTorchLightHandle_ == nullptr) {
+    heldItemTorchLightRenderOrigin_ = {};
     return;
   }
 
   destroyLightHandle(heldItemTorchLightHandle_);
   heldItemTorchLightHandle_ = nullptr;
+  heldItemTorchLightRenderOrigin_ = {};
 }
 
 void RemixRenderer::clearHeldTorchLightsLocked() {
   heldItemId_ = -1;
   destroyHeldItemTorchLight();
-  while (!entityHeldTorchLightHandles_.empty()) {
-    destroyEntityHeldTorchLight(entityHeldTorchLightHandles_.begin()->first);
+  while (!entityHeldTorchLights_.empty()) {
+    destroyEntityHeldTorchLight(entityHeldTorchLights_.begin()->first);
   }
   entityHeldTorchLightsSeenThisFrame_.clear();
 }
 
 void RemixRenderer::destroyEntityHeldTorchLight(int entityId) {
-  const auto lightIt = entityHeldTorchLightHandles_.find(entityId);
-  if (lightIt == entityHeldTorchLightHandles_.end()) {
+  const auto lightIt = entityHeldTorchLights_.find(entityId);
+  if (lightIt == entityHeldTorchLights_.end()) {
     return;
   }
 
-  if (lightIt->second != nullptr) {
-    destroyLightHandle(lightIt->second);
+  if (lightIt->second.handle != nullptr) {
+    destroyLightHandle(lightIt->second.handle);
   }
-  entityHeldTorchLightHandles_.erase(lightIt);
+  entityHeldTorchLights_.erase(lightIt);
+  entityHeldTorchLightsSeenThisFrame_.erase(entityId);
 }
 
 void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
@@ -1612,7 +1712,7 @@ void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {
   meshData.boneCount = 0;
 }
 
-bool RemixRenderer::rebuildDestroyOverlayMesh() {
+bool RemixRenderer::rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildDestroyOverlayMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::rebuildDestroyOverlayMesh");
   if (destroyOverlayInstances_.empty()) {
@@ -1695,9 +1795,14 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
     }
     resolvedCell.terrainTiles.fill(static_cast<std::int16_t>(destroyTile));
 
-    const float localX = static_cast<float>(overlay.blockX);
-    const float localY = static_cast<float>(overlay.blockY);
-    const float localZ = static_cast<float>(overlay.blockZ);
+    const WorldRenderPosition localPosition = rebaseWorldPosition(
+        static_cast<float>(overlay.blockX),
+        static_cast<float>(overlay.blockY),
+        static_cast<float>(overlay.blockZ),
+        renderOrigin);
+    const float localX = localPosition.x;
+    const float localY = localPosition.y;
+    const float localZ = localPosition.z;
 
     if (resolvedCell.renderType == kLiquidBlockRenderType) {
       continue;
@@ -2010,7 +2115,7 @@ bool RemixRenderer::rebuildDestroyOverlayMesh() {
   return true;
 }
 
-bool RemixRenderer::rebuildBlockOutlineMesh() {
+bool RemixRenderer::rebuildBlockOutlineMesh(const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildBlockOutlineMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::rebuildBlockOutlineMesh");
   if (!blockOutlineEnabled_ || blockOutlineInstances_.empty()) {
@@ -2095,20 +2200,40 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
       continue;
     }
 
-    float minX = static_cast<float>(outline.blockX) - styleParameters.inflate;
-    float minY = static_cast<float>(outline.blockY) - styleParameters.inflate;
-    float minZ = static_cast<float>(outline.blockZ) - styleParameters.inflate;
-    float maxX = static_cast<float>(outline.blockX) + 1.0f + styleParameters.inflate;
-    float maxY = static_cast<float>(outline.blockY) + 1.0f + styleParameters.inflate;
-    float maxZ = static_cast<float>(outline.blockZ) + 1.0f + styleParameters.inflate;
+    WorldRenderPosition minPosition = rebaseWorldPosition(
+        static_cast<float>(outline.blockX),
+        static_cast<float>(outline.blockY),
+        static_cast<float>(outline.blockZ),
+        renderOrigin);
+    WorldRenderPosition maxPosition = rebaseWorldPosition(
+        static_cast<float>(outline.blockX) + 1.0f,
+        static_cast<float>(outline.blockY) + 1.0f,
+        static_cast<float>(outline.blockZ) + 1.0f,
+        renderOrigin);
+    float minX = minPosition.x - styleParameters.inflate;
+    float minY = minPosition.y - styleParameters.inflate;
+    float minZ = minPosition.z - styleParameters.inflate;
+    float maxX = maxPosition.x + styleParameters.inflate;
+    float maxY = maxPosition.y + styleParameters.inflate;
+    float maxZ = maxPosition.z + styleParameters.inflate;
 
     if (const ChunkBlockCell* worldCell = findWorldCell(outline.blockX, outline.blockY, outline.blockZ); worldCell != nullptr) {
-      minX = static_cast<float>(outline.blockX) + worldCell->bounds[0] - styleParameters.inflate;
-      minY = static_cast<float>(outline.blockY) + worldCell->bounds[1] - styleParameters.inflate;
-      minZ = static_cast<float>(outline.blockZ) + worldCell->bounds[2] - styleParameters.inflate;
-      maxX = static_cast<float>(outline.blockX) + worldCell->bounds[3] + styleParameters.inflate;
-      maxY = static_cast<float>(outline.blockY) + worldCell->bounds[4] + styleParameters.inflate;
-      maxZ = static_cast<float>(outline.blockZ) + worldCell->bounds[5] + styleParameters.inflate;
+      minPosition = rebaseWorldPosition(
+          static_cast<float>(outline.blockX) + worldCell->bounds[0],
+          static_cast<float>(outline.blockY) + worldCell->bounds[1],
+          static_cast<float>(outline.blockZ) + worldCell->bounds[2],
+          renderOrigin);
+      maxPosition = rebaseWorldPosition(
+          static_cast<float>(outline.blockX) + worldCell->bounds[3],
+          static_cast<float>(outline.blockY) + worldCell->bounds[4],
+          static_cast<float>(outline.blockZ) + worldCell->bounds[5],
+          renderOrigin);
+      minX = minPosition.x - styleParameters.inflate;
+      minY = minPosition.y - styleParameters.inflate;
+      minZ = minPosition.z - styleParameters.inflate;
+      maxX = maxPosition.x + styleParameters.inflate;
+      maxY = maxPosition.y + styleParameters.inflate;
+      maxZ = maxPosition.z + styleParameters.inflate;
     }
 
     if (styleParameters.filled) {
@@ -2167,17 +2292,22 @@ bool RemixRenderer::rebuildBlockOutlineMesh() {
   return true;
 }
 
-bool RemixRenderer::rebuildFireMesh() {
+bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildFireMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::rebuildFireMesh");
-  if (fireMaterialHandle_ == nullptr) {    destroyFireMesh();
+  if (fireMaterialHandle_ == nullptr) {
+    destroyFireMesh();
     return true;
   }
 
   const std::uint32_t frameIndex = static_cast<std::uint32_t>((GetTickCount64() / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
   if (fireMeshHandle_ != nullptr
       && lastFireAnimationFrame_ == frameIndex
-      && lastFireChunkBuildCount_ == capturedChunkBuilds_) {
+      && lastFireChunkBuildCount_ == capturedChunkBuilds_
+      && lastFireRenderOrigin_.enabled == renderOrigin.enabled
+      && lastFireRenderOrigin_.x == renderOrigin.x
+      && lastFireRenderOrigin_.y == renderOrigin.y
+      && lastFireRenderOrigin_.z == renderOrigin.z) {
     return true;
   }
 
@@ -2216,43 +2346,48 @@ bool RemixRenderer::rebuildFireMesh() {
   std::size_t fireCount = 0;
   {
     MCRTX_TRACY_SCOPE("rebuildFireMesh.buildGeometry");
-  for (const auto& [chunkKey, meshData] : chunkMeshes_) {
-    if (chunkKey.renderPass != 0 || !meshData.hasOccupancy || meshData.fireCellIndices.empty()) {
-      continue;
-    }
-
-    for (std::uint16_t fireCellIndex : meshData.fireCellIndices) {
-      const ChunkBlockCell& cell = meshData.cells[fireCellIndex];
-      if (!isFireRenderType(cell.renderType)) {
+    for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+      if (chunkKey.renderPass != 0 || !meshData.hasOccupancy || meshData.fireCellIndices.empty()) {
         continue;
       }
 
-      const int localY = fireCellIndex / (kChunkDimension * kChunkDimension);
-      const int localPlaneIndex = fireCellIndex % (kChunkDimension * kChunkDimension);
-      const int localZ = localPlaneIndex / kChunkDimension;
-      const int localX = localPlaneIndex % kChunkDimension;
-      const int worldX = chunkKey.originX + localX;
-      const int worldY = chunkKey.originY + localY;
-      const int worldZ = chunkKey.originZ + localZ;
-      appendFireGeometry(
-          worldX,
-          worldY,
-          worldZ,
-          findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
-          findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
-          findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
-          findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
-          findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
-          findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
-          static_cast<float>(worldX),
-          static_cast<float>(worldY),
-          static_cast<float>(worldZ),
-          frameIndex,
-          vertices,
-          indices);
-      ++fireCount;
+      for (std::uint16_t fireCellIndex : meshData.fireCellIndices) {
+        const ChunkBlockCell& cell = meshData.cells[fireCellIndex];
+        if (!isFireRenderType(cell.renderType)) {
+          continue;
+        }
+
+        const int localY = fireCellIndex / (kChunkDimension * kChunkDimension);
+        const int localPlaneIndex = fireCellIndex % (kChunkDimension * kChunkDimension);
+        const int localZ = localPlaneIndex / kChunkDimension;
+        const int localX = localPlaneIndex % kChunkDimension;
+        const int worldX = chunkKey.originX + localX;
+        const int worldY = chunkKey.originY + localY;
+        const int worldZ = chunkKey.originZ + localZ;
+        const WorldRenderPosition firePosition = rebaseWorldPosition(
+            static_cast<float>(worldX),
+            static_cast<float>(worldY),
+            static_cast<float>(worldZ),
+            renderOrigin);
+        appendFireGeometry(
+            worldX,
+            worldY,
+            worldZ,
+            findWorldCell(worldX, worldY - 1, worldZ) != nullptr,
+            findWorldCell(worldX - 1, worldY, worldZ) != nullptr,
+            findWorldCell(worldX + 1, worldY, worldZ) != nullptr,
+            findWorldCell(worldX, worldY, worldZ - 1) != nullptr,
+            findWorldCell(worldX, worldY, worldZ + 1) != nullptr,
+            findWorldCell(worldX, worldY + 1, worldZ) != nullptr,
+            firePosition.x,
+            firePosition.y,
+            firePosition.z,
+            frameIndex,
+            vertices,
+            indices);
+        ++fireCount;
+      }
     }
-  }
   }
   MCRTX_TRACY_VALUE(fireCount);
 
@@ -2260,6 +2395,7 @@ bool RemixRenderer::rebuildFireMesh() {
     destroyFireMesh();
     lastFireAnimationFrame_ = frameIndex;
     lastFireChunkBuildCount_ = capturedChunkBuilds_;
+    lastFireRenderOrigin_ = renderOrigin;
     return true;
   }
 
@@ -2293,10 +2429,11 @@ bool RemixRenderer::rebuildFireMesh() {
   fireQuadCount_ = fireCount;
   lastFireAnimationFrame_ = frameIndex;
   lastFireChunkBuildCount_ = capturedChunkBuilds_;
+  lastFireRenderOrigin_ = renderOrigin;
   return true;
 }
 
-bool RemixRenderer::rebuildParticleMesh() {
+bool RemixRenderer::rebuildParticleMesh(const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildParticleMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::rebuildParticleMesh");
   if (particleQuads_.empty()) {
@@ -2340,11 +2477,19 @@ bool RemixRenderer::rebuildParticleMesh() {
           quad.positions[3], quad.positions[4], quad.positions[5],
           quad.positions[6], quad.positions[7], quad.positions[8]);
       SurfaceBuildBuffers& surface = acquireSurface(materialHandle);
+      const WorldRenderPosition p0 = rebaseWorldPosition(
+          quad.positions[0], quad.positions[1], quad.positions[2], renderOrigin);
+      const WorldRenderPosition p1 = rebaseWorldPosition(
+          quad.positions[3], quad.positions[4], quad.positions[5], renderOrigin);
+      const WorldRenderPosition p2 = rebaseWorldPosition(
+          quad.positions[6], quad.positions[7], quad.positions[8], renderOrigin);
+      const WorldRenderPosition p3 = rebaseWorldPosition(
+          quad.positions[9], quad.positions[10], quad.positions[11], renderOrigin);
       appendCloudQuad(
-          quad.positions[0], quad.positions[1], quad.positions[2], quad.texcoords[0], quad.texcoords[1],
-          quad.positions[3], quad.positions[4], quad.positions[5], quad.texcoords[2], quad.texcoords[3],
-          quad.positions[6], quad.positions[7], quad.positions[8], quad.texcoords[4], quad.texcoords[5],
-          quad.positions[9], quad.positions[10], quad.positions[11], quad.texcoords[6], quad.texcoords[7],
+          p0.x, p0.y, p0.z, quad.texcoords[0], quad.texcoords[1],
+          p1.x, p1.y, p1.z, quad.texcoords[2], quad.texcoords[3],
+          p2.x, p2.y, p2.z, quad.texcoords[4], quad.texcoords[5],
+          p3.x, p3.y, p3.z, quad.texcoords[6], quad.texcoords[7],
           normal[0], normal[1], normal[2],
           quad.color,
           surface.vertices,

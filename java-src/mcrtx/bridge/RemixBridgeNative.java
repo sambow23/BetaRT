@@ -131,7 +131,7 @@ public final class RemixBridgeNative {
     public static native void nResize(int width, int height);
 
     public static native void nUpdateCamera(
-            float px, float py, float pz,
+            double px, double py, double pz,
             float fx, float fy, float fz,
             float ux, float uy, float uz,
             float rx, float ry, float rz,
@@ -175,7 +175,7 @@ public final class RemixBridgeNative {
 
             public static native void nSetFirstPersonHeldItem(int itemId);
 
-            public static native void nSetEntityHeldTorch(int entityId, float worldX, float worldY, float worldZ, int itemId);
+            public static native void nSetEntityHeldTorch(int entityId, double worldX, double worldY, double worldZ, int itemId);
 
             public static native void nSetPlayerShadowsEnabled(boolean enabled);
 
@@ -213,9 +213,9 @@ public final class RemixBridgeNative {
 
             public static native void nSetDynamicEntityBoneTransform(
                 int boneIndex,
-                float m00, float m01, float m02, float m03,
-                float m10, float m11, float m12, float m13,
-                float m20, float m21, float m22, float m23);
+                float m00, float m01, float m02, double m03,
+                float m10, float m11, float m12, double m13,
+                float m20, float m21, float m22, double m23);
 
             public static native void nCaptureDynamicEntityQuad(
                 float x0, float y0, float z0, float u0, float v0,
