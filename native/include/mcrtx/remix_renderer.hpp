@@ -203,6 +203,8 @@ struct EntityHeldTorchLightState {
 struct TorchLightState {
   remixapi_LightHandle handle {nullptr};
   WorldRenderOrigin renderOrigin {};
+  std::uint64_t apiHash {0};
+  WorldRenderPosition submittedPosition {};
 };
 
 struct ChunkMeshData {
@@ -603,6 +605,7 @@ private:
   bool setConfigFloatLocked(std::string_view key, float value, int precision, bool logChange, bool force = false);
   bool setGameValueLocked(std::string_view key, const std::string& value, bool logChange);
   bool setGameValueFloatLocked(std::string_view key, float value, int precision, bool logChange);
+  void publishWorldRenderOriginLocked(const WorldRenderOrigin& origin);
   void applyRtQualityConfigLocked();
   void applyUpscalerConfigLocked();
   void applyRemixConfigPreStartupLocked();

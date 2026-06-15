@@ -1,12 +1,21 @@
 #include "mcrtx/world_origin.hpp"
 
 #include <cmath>
+#include <string>
 
 namespace mcrtx {
 
+namespace {
+
+std::string formatWorldOriginCoordinate(const WorldRenderOrigin& origin, int coordinate) {
+  return std::to_string(origin.enabled ? coordinate : 0);
+}
+
+}  // namespace
+
 int snapWorldCoordinateToChunkOrigin(double coordinate) noexcept {
-  return static_cast<int>(std::floor(coordinate / static_cast<double>(kWorldOriginChunkSize)))
-      * kWorldOriginChunkSize;
+  return static_cast<int>(std::floor(coordinate / static_cast<double>(kWorldOriginGridSize)))
+      * kWorldOriginGridSize;
 }
 
 WorldRenderOrigin makeWorldRenderOrigin(bool enabled, double cameraX, double cameraY, double cameraZ) noexcept {
@@ -75,20 +84,17 @@ bool sameWorldRenderOrigin(const WorldRenderOrigin& left, const WorldRenderOrigi
       && left.z == right.z;
 }
 
-std::uint64_t mixWorldRenderOriginHash(std::uint64_t hash, const WorldRenderOrigin& origin) noexcept {
-  if (!origin.enabled) {
-    return hash;
-  }
-
-  const auto mix = [](std::uint64_t value, std::uint64_t component) noexcept {
-    value ^= component + 0x9E3779B97F4A7C15ull + (value << 6) + (value >> 2);
-    return value;
-  };
-
-  hash = mix(hash, static_cast<std::uint32_t>(origin.x));
-  hash = mix(hash, static_cast<std::uint32_t>(origin.y));
-  hash = mix(hash, static_cast<std::uint32_t>(origin.z));
+std::uint64_t persistentLightHashForRenderOrigin(std::uint64_t hash, const WorldRenderOrigin& origin) noexcept {
+  (void)origin;
   return hash;
+}
+
+std::array<WorldRenderOriginGameValue, 3> makeWorldRenderOriginGameValues(const WorldRenderOrigin& origin) {
+  return {{
+      {kWorldOriginGameValueX, formatWorldOriginCoordinate(origin, origin.x)},
+      {kWorldOriginGameValueY, formatWorldOriginCoordinate(origin, origin.y)},
+      {kWorldOriginGameValueZ, formatWorldOriginCoordinate(origin, origin.z)},
+  }};
 }
 
 }  // namespace mcrtx

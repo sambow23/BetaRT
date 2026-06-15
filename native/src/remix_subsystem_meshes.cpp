@@ -12,6 +12,8 @@
 #include <cmath>
 #include <cstdlib>
 #include <cstddef>
+#include <cstdint>
+#include <iomanip>
 #include <iostream>
 #include <sstream>
 #include <string_view>
@@ -72,6 +74,122 @@ bool appendDynamicEntityQuadLocked(DynamicEntityBuildState& state,
   state.maxBoneCount = std::max(state.maxBoneCount, boneIndex + 1);
   hashDynamicEntityQuad(state.quadFingerprint, quad);
   return true;
+}
+
+enum class TorchLightHashLogMode {
+  Disabled,
+  Changes,
+  Verbose,
+};
+
+TorchLightHashLogMode torchLightHashLogMode() {
+  static const TorchLightHashLogMode mode = []() {
+    const std::string value = readEnvironmentVariable("MCRTX_DEBUG_LIGHT_HASHES");
+    if (value.empty()) {
+      return TorchLightHashLogMode::Disabled;
+    }
+
+    if (equalsIgnoreCase(value, "verbose") || equalsIgnoreCase(value, "all")) {
+      return TorchLightHashLogMode::Verbose;
+    }
+
+    return isTruthyEnvValue(value.c_str())
+        ? TorchLightHashLogMode::Changes
+        : TorchLightHashLogMode::Disabled;
+  }();
+  return mode;
+}
+
+bool sameWorldRenderPosition(const WorldRenderPosition& left, const WorldRenderPosition& right) noexcept {
+  return left.x == right.x
+      && left.y == right.y
+      && left.z == right.z;
+}
+
+void appendHex64(std::ostringstream& stream, std::uint64_t value) {
+  stream << "0x"
+         << std::hex << std::uppercase << std::setfill('0') << std::setw(16)
+         << value
+         << std::dec << std::nouppercase << std::setfill(' ');
+}
+
+void appendHandle(std::ostringstream& stream, remixapi_LightHandle handle) {
+  stream << "0x"
+         << std::hex << std::uppercase << reinterpret_cast<std::uintptr_t>(handle)
+         << std::dec << std::nouppercase;
+}
+
+void appendOrigin(std::ostringstream& stream, const WorldRenderOrigin& origin) {
+  stream << "(enabled=" << (origin.enabled ? "true" : "false")
+         << ", x=" << origin.x
+         << ", y=" << origin.y
+         << ", z=" << origin.z
+         << ")";
+}
+
+void appendRenderPosition(std::ostringstream& stream, const WorldRenderPosition& position) {
+  stream << std::setprecision(9)
+         << "(" << position.x
+         << ", " << position.y
+         << ", " << position.z
+         << ")";
+}
+
+bool shouldLogTorchLightHashUpdate(
+    TorchLightHashLogMode mode,
+    const TorchLightState& previousState,
+    const WorldRenderOrigin& renderOrigin,
+    const WorldRenderPosition& submittedPosition,
+    std::uint64_t apiHash) noexcept {
+  if (mode == TorchLightHashLogMode::Verbose) {
+    return true;
+  }
+
+  if (mode == TorchLightHashLogMode::Disabled) {
+    return false;
+  }
+
+  return previousState.apiHash != apiHash
+      || !sameWorldRenderOrigin(previousState.renderOrigin, renderOrigin)
+      || !sameWorldRenderPosition(previousState.submittedPosition, submittedPosition);
+}
+
+std::string describeTorchLightHashSubmission(
+    std::string_view action,
+    const TorchLightPlacement& placement,
+    const WorldRenderOrigin& renderOrigin,
+    const WorldRenderPosition& submittedPosition,
+    std::uint64_t apiHash,
+    remixapi_LightHandle handle,
+    const TorchLightState* previousState) {
+  std::ostringstream stream;
+  stream << "MCRTX_DEBUG_LIGHT_HASHES torchLight." << action
+         << " block=(" << placement.blockPosition.x
+         << ", " << placement.blockPosition.y
+         << ", " << placement.blockPosition.z
+         << ") worldLight=" << std::setprecision(9)
+         << "(" << placement.lightX
+         << ", " << placement.lightY
+         << ", " << placement.lightZ
+         << ") submittedLight=";
+  appendRenderPosition(stream, submittedPosition);
+  stream << " origin=";
+  appendOrigin(stream, renderOrigin);
+  stream << " apiHash=";
+  appendHex64(stream, apiHash);
+  stream << " handle=";
+  appendHandle(stream, handle);
+
+  if (previousState != nullptr) {
+    stream << " previousApiHash=";
+    appendHex64(stream, previousState->apiHash);
+    stream << " previousSubmittedLight=";
+    appendRenderPosition(stream, previousState->submittedPosition);
+    stream << " previousOrigin=";
+    appendOrigin(stream, previousState->renderOrigin);
+  }
+
+  return stream.str();
 }
 
 struct BlockOutlineStyleParameters {
@@ -1073,7 +1191,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = mixWorldRenderOriginHash(makeTorchLightHash(placement.blockPosition), renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -1090,7 +1208,18 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const
     return false;
   }
 
-  torchLights_[placement.blockPosition] = {lightHandle, renderOrigin};
+  if (torchLightHashLogMode() != TorchLightHashLogMode::Disabled) {
+    log(describeTorchLightHashSubmission(
+        "create",
+        placement,
+        renderOrigin,
+        lightPosition,
+        lightInfo.hash,
+        lightHandle,
+        nullptr));
+  }
+
+  torchLights_[placement.blockPosition] = {lightHandle, renderOrigin, lightInfo.hash, lightPosition};
   torchLightPlacements_[placement.blockPosition] = placement;
   return true;
 }
@@ -1099,11 +1228,6 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateTorchLight");
   const auto lightIt = torchLights_.find(placement.blockPosition);
   if (lightIt == torchLights_.end() || lightIt->second.handle == nullptr) {
-    return createTorchLight(placement, renderOrigin);
-  }
-
-  if (!sameWorldRenderOrigin(lightIt->second.renderOrigin, renderOrigin)) {
-    destroyTorchLight(placement.blockPosition);
     return createTorchLight(placement, renderOrigin);
   }
 
@@ -1127,7 +1251,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = mixWorldRenderOriginHash(makeTorchLightHash(placement.blockPosition), renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -1142,8 +1266,22 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
     return false;
   }
 
+  const TorchLightHashLogMode logMode = torchLightHashLogMode();
+  if (shouldLogTorchLightHashUpdate(logMode, lightIt->second, renderOrigin, lightPosition, lightInfo.hash)) {
+    log(describeTorchLightHashSubmission(
+        "update",
+        placement,
+        renderOrigin,
+        lightPosition,
+        lightInfo.hash,
+        lightIt->second.handle,
+        &lightIt->second));
+  }
+
   torchLightPlacements_[placement.blockPosition] = placement;
   lightIt->second.renderOrigin = renderOrigin;
+  lightIt->second.apiHash = lightInfo.hash;
+  lightIt->second.submittedPosition = lightPosition;
   return true;
 }
 
@@ -1239,7 +1377,7 @@ bool RemixRenderer::refreshEntityHeldTorchLightDefinition(
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = mixWorldRenderOriginHash(makeEntityHeldTorchLightHash(entityId), renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(makeEntityHeldTorchLightHash(entityId), renderOrigin);
   lightInfo.radiance = entityHeldTorchRadiance(state.itemId);
   lightInfo.isDynamic = TRUE;
   lightInfo.ignoreViewModel = FALSE;
@@ -1257,12 +1395,6 @@ bool RemixRenderer::refreshEntityHeldTorchLightDefinition(
     }
     state.renderOrigin = renderOrigin;
     return true;
-  }
-
-  if (!sameWorldRenderOrigin(state.renderOrigin, renderOrigin)) {
-    destroyLightHandle(state.handle);
-    state.handle = nullptr;
-    return refreshEntityHeldTorchLightDefinition(entityId, state, renderOrigin);
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {
@@ -1317,7 +1449,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &sphereInfo;
-  lightInfo.hash = mixWorldRenderOriginHash(kHeldTorchLightHash, renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(kHeldTorchLightHash, renderOrigin);
   lightInfo.radiance = isRedstoneTorch ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
   lightInfo.isDynamic = TRUE;
   lightInfo.ignoreViewModel = TRUE;
@@ -1337,12 +1469,6 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
     }
     heldItemTorchLightRenderOrigin_ = renderOrigin;
     return true;
-  }
-
-  if (!sameWorldRenderOrigin(heldItemTorchLightRenderOrigin_, renderOrigin)) {
-    MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.recreateForOrigin");
-    destroyHeldItemTorchLight();
-    return reconcileHeldItemTorchLight(renderOrigin);
   }
 
   if (remix_.UpdateLightDefinition == nullptr) {

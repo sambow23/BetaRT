@@ -645,6 +645,13 @@ bool RemixRenderer::setGameValueFloatLocked(std::string_view key, float value, i
   return setGameValueLocked(key, formatConfigFloat(value, precision), logChange);
 }
 
+void RemixRenderer::publishWorldRenderOriginLocked(const WorldRenderOrigin& origin) {
+  const auto originValues = makeWorldRenderOriginGameValues(origin);
+  for (const WorldRenderOriginGameValue& originValue : originValues) {
+    setGameValueLocked(originValue.key, originValue.value, false);
+  }
+}
+
 void RemixRenderer::applyRemixConfigPreStartupLocked() {
   setConfigVariableLocked("rtx.sceneScale", "0.01", true);
   applyRtQualityConfigLocked();
@@ -1579,6 +1586,8 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
       return false;
     }
   }
+
+  publishWorldRenderOriginLocked(snapshot.renderOrigin);
 
   if (!chunkBuildActive_) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.evictDistantChunks");
