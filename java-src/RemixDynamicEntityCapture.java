@@ -43,6 +43,7 @@ public final class RemixDynamicEntityCapture {
     private static final String SIGN_TEXT_TEXTURE_PATH = "/mcrtx_alias/sign_text/font/default.png";
     private static final String PAINTING_TEXTURE_PATH = "/art/kz.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
+    private static final String SHEEP_FUR_TEXTURE_PATH = "/mob/sheep_fur.png";
     private static final String TERRAIN_TEXTURE_PATH = "/terrain.png";
     private static final String GUI_ITEMS_TEXTURE_PATH = "/gui/items.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
@@ -866,7 +867,8 @@ public final class RemixDynamicEntityCapture {
             long stateReadEndNanos = System.nanoTime();
 
             RemixCameraState.PreciseTransform modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
-            float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
+            float[] capturedColor = sanitizeDynamicModelPartColor(
+                    activeDynamicEntityTexture, color[0], color[1], color[2], color[3]);
             capturedColor = ColorMath.applyHurtIndicator(
                     capturedColor[0],
                     capturedColor[1],
@@ -1014,6 +1016,14 @@ public final class RemixDynamicEntityCapture {
             handleHookFailure(new RuntimeException("Failed to access sign model polygons", exception));
             return null;
         }
+    }
+
+    static float[] sanitizeDynamicModelPartColor(String texturePath, float red, float green, float blue, float alpha) {
+        if (SHEEP_FUR_TEXTURE_PATH.equals(texturePath)) {
+            return new float[]{red, green, blue, alpha};
+        }
+
+        return ColorMath.sanitizeDynamicEntityColor(red, green, blue, alpha);
     }
 
     private static int[] resolveFontCharacterWidths(sj fontRenderer) {
@@ -1392,7 +1402,8 @@ public final class RemixDynamicEntityCapture {
             } else {
                 modelToWorld = RemixCameraState.buildModelToWorldTransform(modelView);
             }
-                float[] capturedColor = ColorMath.sanitizeDynamicEntityColor(color[0], color[1], color[2], color[3]);
+                float[] capturedColor = sanitizeDynamicModelPartColor(
+                    activeTexture, color[0], color[1], color[2], color[3]);
                 capturedColor = ColorMath.applyHurtIndicator(
                     capturedColor[0],
                     capturedColor[1],
