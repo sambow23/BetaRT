@@ -370,6 +370,8 @@ public final class RemixBridgeNative {
 
     public static native boolean nPresent();
 
+    public static native boolean nRequestPresentedScreenshot(String absolutePath);
+
     public static native String nGetLastError();
 
     public static native void nRecordJavaSample(int side, String site, long nanoseconds);

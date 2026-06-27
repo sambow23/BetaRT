@@ -7,6 +7,10 @@ import mcrtx.bridge.MinecraftPlatformRuntime;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
+import java.io.File;
+import java.text.DateFormat;
+import java.text.SimpleDateFormat;
+import java.util.Date;
 import java.util.Locale;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
@@ -18,6 +22,7 @@ import org.lwjgl.opengl.GL11;
  * not change without updating {@code ClientPatchTool} in lockstep.
  */
 public final class MinecraftRemixHooks {
+    private static final DateFormat SCREENSHOT_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss");
     private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final int WINDOWS_VK_MENU = 0x12;
@@ -233,6 +238,36 @@ public final class MinecraftRemixHooks {
         } finally {
             HookProfiler.endHook("hook.onPresent", __perf);
         }
+    }
+
+    public static String onScreenshot(File minecraftDir, int width, int height) {
+        long __perf = HookProfiler.begin();
+        try {
+            File destination = nextVanillaScreenshotFile(minecraftDir);
+            if (MinecraftRenderHooks.requestPresentedScreenshot(destination.getAbsolutePath())) {
+                return "Saved screenshot as " + destination.getName();
+            }
+        } catch (Exception exception) {
+            exception.printStackTrace();
+            return "Failed to save: " + exception;
+        } finally {
+            HookProfiler.endHook("hook.onScreenshot", __perf);
+        }
+
+        return hj.a(minecraftDir, width, height);
+    }
+
+    private static File nextVanillaScreenshotFile(File minecraftDir) {
+        File screenshotDir = new File(minecraftDir, "screenshots");
+        screenshotDir.mkdir();
+        String baseName = SCREENSHOT_DATE_FORMAT.format(new Date());
+        int index = 1;
+        File candidate;
+        do {
+            candidate = new File(screenshotDir, baseName + (index == 1 ? "" : "_" + index) + ".png");
+            ++index;
+        } while (candidate.exists());
+        return candidate;
     }
 
     public static void onUiRenderBegin(int width, int height) {

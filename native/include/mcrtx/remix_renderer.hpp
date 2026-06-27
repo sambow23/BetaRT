@@ -588,6 +588,7 @@ public:
       bool setNativeMouseGrabbed(bool grabbed);
       bool setNativeCursorPosition(std::int32_t x, std::int32_t y);
       bool setOutputWindowFullscreen(bool fullscreen);
+  bool requestPresentedScreenshot(const std::string& absolutePath);
   bool present();
 
   bool isInitialized() const;

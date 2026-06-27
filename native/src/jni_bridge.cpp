@@ -1084,6 +1084,25 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nPresent(JNIEnv*,
   return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().present()));
 }
 
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixBridgeNative_nRequestPresentedScreenshot(
+    JNIEnv* env,
+    jclass,
+    jstring absolutePath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nRequestPresentedScreenshot");
+  if (absolutePath == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  const char* utfChars = env->GetStringUTFChars(absolutePath, nullptr);
+  if (utfChars == nullptr) {
+    return static_cast<jboolean>(fromJniBoolean(false));
+  }
+
+  const std::string path(utfChars);
+  env->ReleaseStringUTFChars(absolutePath, utfChars);
+  return static_cast<jboolean>(fromJniBoolean(RemixRenderer::instance().requestPresentedScreenshot(path)));
+}
+
 JNIEXPORT jstring JNICALL Java_mcrtx_bridge_RemixBridgeNative_nGetLastError(JNIEnv* env, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetLastError");
   const auto message = RemixRenderer::instance().lastError();

@@ -154,6 +154,8 @@ public final class ClientPatchTool {
                 patchDisplayIsActiveChecks(method);
             } else if (method.name.equals("run") && method.desc.equals("()V")) {
                 patchDisplayIsActiveChecks(method);
+            } else if (method.name.equals("z") && method.desc.equals("()V")) {
+                patchMinecraftScreenshot(method);
             }
         }
         return writeClass(classNode);
@@ -595,6 +597,28 @@ public final class ClientPatchTool {
                 }
             }
         }
+    }
+
+    private static void patchMinecraftScreenshot(MethodNode method) {
+        if (hasHelperCall(method, "onScreenshot", "(Ljava/io/File;II)Ljava/lang/String;")) {
+            return;
+        }
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (node instanceof MethodInsnNode methodInsnNode
+                    && methodInsnNode.getOpcode() == Opcodes.INVOKESTATIC
+                    && methodInsnNode.owner.equals("hj")
+                    && methodInsnNode.name.equals("a")
+                    && methodInsnNode.desc.equals("(Ljava/io/File;II)Ljava/lang/String;")) {
+                method.instructions.set(methodInsnNode, new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        REMIX_HELPER_CLASS,
+                        "onScreenshot",
+                        "(Ljava/io/File;II)Ljava/lang/String;",
+                        false));
+                return;
+            }
+        }
+        throw new IllegalStateException("Failed to find vanilla screenshot call in Minecraft.z()");
     }
 
     private static void patchDisplayIsActiveChecks(MethodNode method) {

@@ -671,8 +671,8 @@ public final class RemixDynamicEntityCapture {
             return false;
         }
 
-        CachedModelPartMesh signBoardMesh = resolveCachedModelPartMesh(signModel.a, 0.0625f);
-        CachedModelPartMesh signPostMesh = resolveCachedModelPartMesh(signModel.b, 0.0625f);
+        CachedModelPartMesh signBoardMesh = resolveVisibleCachedModelPartMesh(signModel.a, 0.0625f);
+        CachedModelPartMesh signPostMesh = resolveVisibleCachedModelPartMesh(signModel.b, 0.0625f);
         return captureCachedSignModel(signBoardMesh, signPostMesh);
     }
 
@@ -912,6 +912,18 @@ public final class RemixDynamicEntityCapture {
 
         MinecraftRenderHooks.captureDynamicEntityQuadBatch(mesh.quadData, mesh.quadCount, colorRgba, boneIndex);
         return true;
+    }
+
+    static boolean shouldCaptureModelPart(ps modelPart) {
+        return modelPart != null && modelPart.h && !modelPart.i;
+    }
+
+    private static CachedModelPartMesh resolveVisibleCachedModelPartMesh(ps modelPart, float scale) {
+        if (!shouldCaptureModelPart(modelPart)) {
+            return null;
+        }
+
+        return resolveCachedModelPartMesh(modelPart, scale);
     }
 
     private static CachedModelPartMesh resolveCachedModelPartMesh(ps modelPart, float scale) {

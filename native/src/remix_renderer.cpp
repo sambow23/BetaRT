@@ -1327,6 +1327,38 @@ bool RemixRenderer::present() {
   return ok;
 }
 
+bool RemixRenderer::requestPresentedScreenshot(const std::string& absolutePath) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::requestPresentedScreenshot");
+  MCRTX_TRACY_SCOPE("RemixRenderer::requestPresentedScreenshot");
+  std::scoped_lock lock(mutex_);
+
+  if (!initialized_) {
+    setError("requestPresentedScreenshot called before initialize");
+    return false;
+  }
+
+  if (absolutePath.empty()) {
+    setError("Screenshot path is empty");
+    return false;
+  }
+
+  if (remix_.RequestPresentedScreenshot == nullptr) {
+    setError("Loaded Remix runtime does not support presented screenshot requests");
+    return false;
+  }
+
+  const remixapi_ErrorCode result = [&]() {
+    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "RequestPresentedScreenshot");
+    return remix_.RequestPresentedScreenshot(absolutePath.c_str());
+  }();
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    setError("RequestPresentedScreenshot failed: " + errorCodeToString(result));
+    return false;
+  }
+
+  return true;
+}
+
 void RemixRenderer::destroyMeshHandle(remixapi_MeshHandle& meshHandle) {
   if (meshHandle == nullptr) {
     return;

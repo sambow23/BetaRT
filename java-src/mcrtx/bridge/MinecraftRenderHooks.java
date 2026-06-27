@@ -714,6 +714,19 @@ public final class MinecraftRenderHooks {
         return initialized && RemixBridgeNative.nPresent();
     }
 
+    public static synchronized boolean requestPresentedScreenshot(String absolutePath) {
+        if (!initialized || absolutePath == null || absolutePath.length() == 0) {
+            return false;
+        }
+        boolean accepted = RemixBridgeNative.nRequestPresentedScreenshot(absolutePath);
+        if (!accepted) {
+            lastError = RemixBridgeNative.nGetLastError();
+        } else {
+            lastError = "";
+        }
+        return accepted;
+    }
+
     public static boolean beginChunkBuild(
             int originX,
             int originY,
