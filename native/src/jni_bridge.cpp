@@ -405,6 +405,12 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIE
   RemixRenderer::instance().clearCloudLayer();
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetRemixAtmosphereCloudsEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRemixAtmosphereCloudsEnabled");
+  RemixRenderer::instance().setRemixAtmosphereCloudsEnabled(enabled == JNI_TRUE);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntityFrame(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDynamicEntityFrame");
   RemixRenderer::instance().beginDynamicEntityFrame();

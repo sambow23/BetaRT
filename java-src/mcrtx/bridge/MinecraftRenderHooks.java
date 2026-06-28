@@ -263,6 +263,13 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nClearCloudLayer();
     }
 
+    public static synchronized void setRemixAtmosphereCloudsEnabled(boolean enabled) {
+        if (!initialized) {
+            return;
+        }
+        RemixBridgeNative.nSetRemixAtmosphereCloudsEnabled(enabled);
+    }
+
     public static synchronized void beginDynamicEntityFrame() {
         if (!initialized) {
             return;

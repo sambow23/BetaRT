@@ -1,4 +1,5 @@
 import mcrtx.bridge.HookProfiler;
+import mcrtx.bridge.McrtxCloudMode;
 import mcrtx.bridge.McrtxRuntimeConfig;
 import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftPlatform;
@@ -916,6 +917,10 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled();
     }
 
+    public static boolean isRemixAtmosphereCloudsEnabled() {
+        return McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
+    }
+
     public static boolean shouldShowWaterMaterialThicknessSlider() {
         return isWaterThinWalledEnabled();
     }
@@ -1013,6 +1018,10 @@ public final class MinecraftRemixHooks {
                 : "Water Mode: Refractive";
     }
 
+    public static String getRemixAtmosphereCloudsButtonLabel() {
+        return McrtxCloudMode.formatButtonLabel(isRemixAtmosphereCloudsEnabled());
+    }
+
     public static void setPlayerShadowsEnabled(boolean enabled) {
         McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
         RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
@@ -1089,6 +1098,15 @@ public final class MinecraftRemixHooks {
 
     public static void setSignVanillaSuppressionEnabled(boolean enabled) {
         McrtxRuntimeSettings.setSignVanillaSuppressionEnabled(enabled);
+    }
+
+    public static void setRemixAtmosphereCloudsEnabled(boolean enabled) {
+        boolean previousEnabled = McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
+        McrtxRuntimeSettings.setRemixAtmosphereCloudsEnabled(enabled);
+        if (McrtxCloudMode.shouldClearGameCloudLayerAfterToggle(previousEnabled, enabled)) {
+            MinecraftRenderHooks.clearCloudLayer();
+        }
+        MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled);
     }
 
     public static void setGameplayFovDegrees(int fovDegrees) {
@@ -1492,6 +1510,7 @@ public final class MinecraftRemixHooks {
         MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled());
         MinecraftRenderHooks.setWaterThinWalledEnabled(McrtxRuntimeSettings.isWaterThinWalledEnabled());
         MinecraftRenderHooks.setWaterMaterialThickness(McrtxRuntimeSettings.getWaterMaterialThickness());
+        MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled());
         RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
         MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
         applyRtQualitySettings();

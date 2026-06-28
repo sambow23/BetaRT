@@ -45,6 +45,7 @@ find_package(JNI REQUIRED)
 
 add_library(mcrtx_jni SHARED
   src/jni_bridge.cpp
+  src/remix_cloud_mode.cpp
   src/remix_renderer.cpp
   src/remix_chunk_mesh.cpp
   src/remix_materials.cpp
@@ -126,4 +127,20 @@ if(MCRTX_BUILD_TESTS)
     target_compile_options(mcrtx_world_origin_tests PRIVATE -Wall -Wextra -Wpedantic)
   endif()
   add_test(NAME mcrtx_world_origin_tests COMMAND mcrtx_world_origin_tests)
+
+  add_executable(mcrtx_remix_cloud_mode_tests
+    src/remix_cloud_mode.cpp
+    tests/remix_cloud_mode_tests.cpp
+  )
+  target_include_directories(mcrtx_remix_cloud_mode_tests
+    PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_compile_features(mcrtx_remix_cloud_mode_tests PRIVATE cxx_std_20)
+  if(MSVC)
+    target_compile_options(mcrtx_remix_cloud_mode_tests PRIVATE /W4 /EHsc)
+  else()
+    target_compile_options(mcrtx_remix_cloud_mode_tests PRIVATE -Wall -Wextra -Wpedantic)
+  endif()
+  add_test(NAME mcrtx_remix_cloud_mode_tests COMMAND mcrtx_remix_cloud_mode_tests)
 endif()

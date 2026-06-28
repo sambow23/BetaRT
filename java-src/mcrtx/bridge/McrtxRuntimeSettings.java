@@ -21,6 +21,7 @@ public final class McrtxRuntimeSettings {
     public static final String SIGN_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_CAPTURE_ENABLED";
     public static final String SIGN_TEXT_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_TEXT_CAPTURE_ENABLED";
     public static final String SIGN_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_SIGN_VANILLA_SUPPRESSION_ENABLED";
+    public static final String REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY = McrtxCloudMode.REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY;
     public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
     public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
@@ -136,6 +137,7 @@ public final class McrtxRuntimeSettings {
     private static boolean signCaptureEnabled = true;
     private static boolean signTextCaptureEnabled = true;
     private static boolean signVanillaSuppressionEnabled;
+    private static boolean remixAtmosphereCloudsEnabled = McrtxCloudMode.DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED;
     private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
     private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
@@ -235,6 +237,13 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return signVanillaSuppressionEnabled;
+        }
+    }
+
+    public static boolean isRemixAtmosphereCloudsEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return remixAtmosphereCloudsEnabled;
         }
     }
 
@@ -395,6 +404,17 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             signVanillaSuppressionEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setRemixAtmosphereCloudsEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (remixAtmosphereCloudsEnabled == enabled) {
+                return;
+            }
+            remixAtmosphereCloudsEnabled = enabled;
             saveLocked();
         }
     }
@@ -820,6 +840,10 @@ public final class McrtxRuntimeSettings {
         signCaptureEnabled = readBooleanSetting(fileValues, SIGN_CAPTURE_ENABLED_KEY, true);
         signTextCaptureEnabled = readBooleanSetting(fileValues, SIGN_TEXT_CAPTURE_ENABLED_KEY, true);
         signVanillaSuppressionEnabled = readBooleanSetting(fileValues, SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        remixAtmosphereCloudsEnabled = readBooleanSetting(
+            fileValues,
+            REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY,
+            McrtxCloudMode.DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED);
         gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
         viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
         noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
@@ -1301,6 +1325,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(SIGN_CAPTURE_ENABLED_KEY, formatBoolean(signCaptureEnabled));
         fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, formatBoolean(signTextCaptureEnabled));
         fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(signVanillaSuppressionEnabled));
+        fileValues.put(REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, formatBoolean(remixAtmosphereCloudsEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

@@ -167,6 +167,8 @@ public final class RemixBridgeNative {
 
         public static native void nClearCloudLayer();
 
+        public static native void nSetRemixAtmosphereCloudsEnabled(boolean enabled);
+
             public static native void nBeginDynamicEntityFrame();
 
             public static native void nBeginDynamicEntity(int entityId, int hurtStage, int creeperFuseStage);

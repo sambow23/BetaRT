@@ -1,4 +1,5 @@
 #include "mcrtx/remix_renderer.hpp"
+#include "mcrtx/remix_cloud_mode.hpp"
 #include "mcrtx/render_internals.hpp"
 #include "mcrtx/perf_log.hpp"
 
@@ -777,8 +778,14 @@ void RemixRenderer::applyUpscalerConfigLocked() {
   }
 }
 
+void RemixRenderer::applyRemixAtmosphereCloudConfigLocked() {
+  for (const RemixConfigValue& configValue : remixAtmosphereCloudConfigValues(remixAtmosphereCloudsEnabled_)) {
+    setConfigVariableLocked(configValue.key, std::string(configValue.value), true, true);
+  }
+}
+
 void RemixRenderer::applyRemixConfigPostStartupLocked() {
-  setConfigVariableLocked("rtx.skyMode", "1", true, true);
+  applyRemixAtmosphereCloudConfigLocked();
   applyRtQualityConfigLocked();
   applyUpscalerConfigLocked();
   setConfigVariableLocked(
@@ -786,6 +793,19 @@ void RemixRenderer::applyRemixConfigPostStartupLocked() {
       playerShadowsEnabled_ ? "True" : "False",
       true,
       true);
+}
+
+void RemixRenderer::setRemixAtmosphereCloudsEnabled(bool enabled) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setRemixAtmosphereCloudsEnabled");
+  std::scoped_lock lock(mutex_);
+  remixAtmosphereCloudsEnabled_ = enabled;
+  if (!initialized_) {
+    return;
+  }
+  applyRemixAtmosphereCloudConfigLocked();
+  if (enabled) {
+    destroyCloudMesh();
+  }
 }
 
 void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {

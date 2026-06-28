@@ -1,14 +1,25 @@
 import mcrtx.bridge.HookProfiler;
+import mcrtx.bridge.McrtxCloudMode;
+import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftRenderHooks;
 
 public final class RemixCloudCapture {
+    private static boolean gameCloudLayerClearedForRemixClouds;
+
     private RemixCloudCapture() {
     }
 
     public static void onCloudRender(net.minecraft.client.Minecraft minecraft, fd world, int cloudTick, float partialTicks, boolean fancy) {
-        if (!MinecraftRenderHooks.isInitialized()) {
+        boolean initialized = MinecraftRenderHooks.isInitialized();
+        boolean remixAtmosphereCloudsEnabled = McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
+        if (!McrtxCloudMode.shouldSubmitGameCloudLayer(initialized, remixAtmosphereCloudsEnabled)) {
+            if (initialized && remixAtmosphereCloudsEnabled && !gameCloudLayerClearedForRemixClouds) {
+                MinecraftRenderHooks.clearCloudLayer();
+                gameCloudLayerClearedForRemixClouds = true;
+            }
             return;
         }
+        gameCloudLayerClearedForRemixClouds = false;
 
         long renderStartNanos = System.nanoTime();
 
