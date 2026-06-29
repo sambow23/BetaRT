@@ -561,6 +561,8 @@ void RemixRenderer::shutdownLocked() {
   loggedPopulatedSubmissionSummaryCount_ = 0;
   terrainAtlasPath_.clear();
   cloudTexturePath_.clear();
+  sunTexturePath_.clear();
+  moonTexturePath_.clear();
   fireTexturePath_.clear();
   nextFireMeshHash_ = 1;
   nextDestroyOverlayMeshHash_ = 1;
@@ -808,7 +810,35 @@ void RemixRenderer::setRemixAtmosphereCloudsEnabled(bool enabled) {
   }
 }
 
+void RemixRenderer::publishCelestialTexturePathsLocked() {
+  if (sunTexturePath_.empty()) {
+    sunTexturePath_ = resolveSunTexturePath();
+    if (sunTexturePath_.empty()) {
+      log("Sun texture asset not found; Numos sun disk texture will be skipped");
+    }
+  }
+
+  if (moonTexturePath_.empty()) {
+    moonTexturePath_ = resolveMoonTexturePath();
+    if (moonTexturePath_.empty()) {
+      log("Moon texture asset not found; Numos moon disk will use the procedural fallback");
+    }
+  }
+
+  const auto values = makeCelestialTextureGameValues({
+      sunTexturePath_,
+      moonTexturePath_,
+  });
+  for (const auto& value : values) {
+    if (!value.second.empty()) {
+      setGameValueLocked(value.first, value.second, false);
+    }
+  }
+}
+
 void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {
+  publishCelestialTexturePathsLocked();
+
   if (forceDarkAtmosphere) {
     setConfigFloatLocked("rtx.atmosphere.sunElevation", -30.0f, 2, false);
     setGameValueLocked("__atmosphere.moon0.enabled", "0", false);

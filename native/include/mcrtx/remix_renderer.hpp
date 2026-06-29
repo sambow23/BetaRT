@@ -19,6 +19,7 @@
 
 #include <remix/remix_c.h>
 
+#include "mcrtx/celestial_textures.hpp"
 #include "mcrtx/world_origin.hpp"
 
 namespace mcrtx {
@@ -613,6 +614,7 @@ private:
   void applyRemixAtmosphereCloudConfigLocked();
   void applyRemixConfigPreStartupLocked();
   void applyRemixConfigPostStartupLocked();
+  void publishCelestialTexturePathsLocked();
   void updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere);
   bool hasWindowFocusLocked() const;
   HWND resolveNativeMouseWindowLocked() const;
@@ -666,6 +668,8 @@ private:
   bool rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOrigin);
   bool rebuildBlockOutlineMesh(const WorldRenderOrigin& renderOrigin);
   static std::filesystem::path resolveCloudTexturePath();
+  static std::filesystem::path resolveSunTexturePath();
+  static std::filesystem::path resolveMoonTexturePath();
   static std::filesystem::path resolveFireTexturePath();
   static std::filesystem::path resolveWaterTexturePath();
   static std::filesystem::path resolveLavaTexturePath();
@@ -789,6 +793,8 @@ private:
   std::filesystem::path terrainAtlasPath_ {};
   std::filesystem::path terrainEmissiveTexturePath_ {};
   std::filesystem::path cloudTexturePath_ {};
+  std::filesystem::path sunTexturePath_ {};
+  std::filesystem::path moonTexturePath_ {};
   std::filesystem::path fireTexturePath_ {};
   std::filesystem::path waterTexturePath_ {};
   std::filesystem::path lavaTexturePath_ {};

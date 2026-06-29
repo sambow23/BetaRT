@@ -515,6 +515,20 @@ std::filesystem::path RemixRenderer::resolveCloudTexturePath() {
   return {};
 }
 
+std::filesystem::path RemixRenderer::resolveSunTexturePath() {
+  return resolveCelestialTexturePath(
+      CelestialTextureKind::Sun,
+      getCurrentModuleDirectory(),
+      std::filesystem::current_path());
+}
+
+std::filesystem::path RemixRenderer::resolveMoonTexturePath() {
+  return resolveCelestialTexturePath(
+      CelestialTextureKind::Moon0,
+      getCurrentModuleDirectory(),
+      std::filesystem::current_path());
+}
+
 std::filesystem::path RemixRenderer::resolveFireTexturePath() {
   std::vector<std::filesystem::path> attemptedPaths;
 
