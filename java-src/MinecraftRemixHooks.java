@@ -943,6 +943,10 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
     }
 
+    public static boolean isGameRainParticlesEnabled() {
+        return McrtxRuntimeSettings.isGameRainParticlesEnabled();
+    }
+
     public static boolean shouldShowWaterMaterialThicknessSlider() {
         return isWaterThinWalledEnabled();
     }
@@ -1044,6 +1048,10 @@ public final class MinecraftRemixHooks {
         return McrtxCloudMode.formatButtonLabel(isRemixAtmosphereCloudsEnabled());
     }
 
+    public static String getGameRainParticlesButtonLabel() {
+        return "Game Rain: " + formatToggleState(isGameRainParticlesEnabled());
+    }
+
     public static void setPlayerShadowsEnabled(boolean enabled) {
         McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
         RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
@@ -1129,6 +1137,10 @@ public final class MinecraftRemixHooks {
             MinecraftRenderHooks.clearCloudLayer();
         }
         MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled);
+    }
+
+    public static void setGameRainParticlesEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setGameRainParticlesEnabled(enabled);
     }
 
     public static void setGameplayFovDegrees(int fovDegrees) {

@@ -47,6 +47,7 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID = 28;
     private static final int WATER_THIN_WALL_BUTTON_ID = 29;
     private static final int REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID = 30;
+    private static final int GAME_RAIN_PARTICLES_BUTTON_ID = 31;
     private static final int RESET_DEFAULTS_BUTTON_ID = 308;
     private static final int CLOSE_BUTTON_ID = 309;
 
@@ -139,6 +140,12 @@ public final class McrtxQuickSettingsScreen extends da {
 
         if (button.f == REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID) {
             MinecraftRemixHooks.setRemixAtmosphereCloudsEnabled(!MinecraftRemixHooks.isRemixAtmosphereCloudsEnabled());
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == GAME_RAIN_PARTICLES_BUTTON_ID) {
+            MinecraftRemixHooks.setGameRainParticlesEnabled(!MinecraftRemixHooks.isGameRainParticlesEnabled());
             refreshButtons();
             return;
         }
@@ -294,6 +301,11 @@ public final class McrtxQuickSettingsScreen extends da {
         ke remixAtmosphereCloudsButton = findButton(REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID);
         if (remixAtmosphereCloudsButton != null) {
             remixAtmosphereCloudsButton.e = MinecraftRemixHooks.getRemixAtmosphereCloudsButtonLabel();
+        }
+
+        ke gameRainParticlesButton = findButton(GAME_RAIN_PARTICLES_BUTTON_ID);
+        if (gameRainParticlesButton != null) {
+            gameRainParticlesButton.e = MinecraftRemixHooks.getGameRainParticlesButtonLabel();
         }
 
         ke blockOutlineButton = findButton(BLOCK_OUTLINE_BUTTON_ID);
@@ -482,6 +494,13 @@ public final class McrtxQuickSettingsScreen extends da {
                 getControlWidth(),
                 CONTROL_HEIGHT,
                 MinecraftRemixHooks.getRemixAtmosphereCloudsButtonLabel()));
+        addControl(new ke(
+                GAME_RAIN_PARTICLES_BUTTON_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT,
+                MinecraftRemixHooks.getGameRainParticlesButtonLabel()));
         addControl(McrtxFovSlider.createNoCullDistanceSlider(
                 NO_CULL_DISTANCE_SLIDER_ID,
                 getControlX(),

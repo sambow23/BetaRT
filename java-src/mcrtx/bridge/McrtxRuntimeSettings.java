@@ -22,6 +22,7 @@ public final class McrtxRuntimeSettings {
     public static final String SIGN_TEXT_CAPTURE_ENABLED_KEY = "MCRTX_SIGN_TEXT_CAPTURE_ENABLED";
     public static final String SIGN_VANILLA_SUPPRESSION_ENABLED_KEY = "MCRTX_SIGN_VANILLA_SUPPRESSION_ENABLED";
     public static final String REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY = McrtxCloudMode.REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY;
+    public static final String GAME_RAIN_PARTICLES_ENABLED_KEY = "MCRTX_GAME_RAIN_PARTICLES_ENABLED";
     public static final String GAMEPLAY_FOV_KEY = "MCRTX_GAMEPLAY_FOV";
     public static final String VIEW_MODEL_FOV_KEY = "MCRTX_VIEWMODEL_FOV";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
@@ -78,6 +79,7 @@ public final class McrtxRuntimeSettings {
     public static final int QUICK_SETTINGS_CATEGORY_DEBUG = 2;
     public static final int QUICK_SETTINGS_CATEGORY_MATERIAL = 3;
     public static final int DEFAULT_QUICK_SETTINGS_CATEGORY = QUICK_SETTINGS_CATEGORY_GAMEPLAY;
+    public static final boolean DEFAULT_GAME_RAIN_PARTICLES_ENABLED = true;
     public static final boolean DEFAULT_WATER_THIN_WALLED_ENABLED = true;
     public static final int MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
     public static final int MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 5000;
@@ -138,6 +140,7 @@ public final class McrtxRuntimeSettings {
     private static boolean signTextCaptureEnabled = true;
     private static boolean signVanillaSuppressionEnabled;
     private static boolean remixAtmosphereCloudsEnabled = McrtxCloudMode.DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED;
+    private static boolean gameRainParticlesEnabled = DEFAULT_GAME_RAIN_PARTICLES_ENABLED;
     private static int gameplayFovDegrees = DEFAULT_GAMEPLAY_FOV_DEGREES;
     private static int viewModelFovDegrees = DEFAULT_VIEW_MODEL_FOV_DEGREES;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
@@ -244,6 +247,13 @@ public final class McrtxRuntimeSettings {
         synchronized (LOCK) {
             ensureLoaded();
             return remixAtmosphereCloudsEnabled;
+        }
+    }
+
+    public static boolean isGameRainParticlesEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return gameRainParticlesEnabled;
         }
     }
 
@@ -415,6 +425,17 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             remixAtmosphereCloudsEnabled = enabled;
+            saveLocked();
+        }
+    }
+
+    public static void setGameRainParticlesEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (gameRainParticlesEnabled == enabled) {
+                return;
+            }
+            gameRainParticlesEnabled = enabled;
             saveLocked();
         }
     }
@@ -844,6 +865,10 @@ public final class McrtxRuntimeSettings {
             fileValues,
             REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY,
             McrtxCloudMode.DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED);
+        gameRainParticlesEnabled = readBooleanSetting(
+            fileValues,
+            GAME_RAIN_PARTICLES_ENABLED_KEY,
+            DEFAULT_GAME_RAIN_PARTICLES_ENABLED);
         gameplayFovDegrees = readGameplayFovSetting(fileValues, GAMEPLAY_FOV_KEY, DEFAULT_GAMEPLAY_FOV_DEGREES);
         viewModelFovDegrees = readViewModelFovSetting(fileValues, VIEW_MODEL_FOV_KEY, DEFAULT_VIEW_MODEL_FOV_DEGREES);
         noCullDistanceBlocks = readNoCullDistanceSetting(fileValues, NO_CULL_DISTANCE_KEY, DEFAULT_NO_CULL_DISTANCE_BLOCKS);
@@ -1326,6 +1351,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, formatBoolean(signTextCaptureEnabled));
         fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(signVanillaSuppressionEnabled));
         fileValues.put(REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, formatBoolean(remixAtmosphereCloudsEnabled));
+        fileValues.put(GAME_RAIN_PARTICLES_ENABLED_KEY, formatBoolean(gameRainParticlesEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

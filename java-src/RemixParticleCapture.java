@@ -2,6 +2,7 @@ import java.nio.FloatBuffer;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.MatrixMath;
+import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -174,6 +175,11 @@ public final class RemixParticleCapture {
         return activeWeatherTextureKind != WEATHER_TEXTURE_KIND_NONE;
     }
 
+    private static boolean shouldSubmitWeatherRainQuad() {
+        return activeWeatherTextureKind != WEATHER_TEXTURE_KIND_RAIN
+                || McrtxRuntimeSettings.isGameRainParticlesEnabled();
+    }
+
     public static void onTessellatorDraw(
             int[] rawVertexData,
             int vertexCount,
@@ -237,9 +243,13 @@ public final class RemixParticleCapture {
                     Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 1]),
                     Float.intBitsToFloat(rawVertexData[(vertexIndex + 5) * 8 + 2]));
 
-                if (!shouldCaptureRainQuad(p0, p1, p2, p3)) {
+            if (!shouldSubmitWeatherRainQuad()) {
                 continue;
-                }
+            }
+
+            if (!shouldCaptureRainQuad(p0, p1, p2, p3)) {
+                continue;
+            }
 
             MinecraftRenderHooks.captureParticleQuad(
                     p0[0], p0[1], p0[2], Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 3]), Float.intBitsToFloat(rawVertexData[vertexIndex * 8 + 4]),
