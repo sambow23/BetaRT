@@ -106,6 +106,20 @@ bool sameWorldRenderPosition(const WorldRenderPosition& left, const WorldRenderP
       && left.z == right.z;
 }
 
+remixapi_LightInfoLocalOriginEXT makeLightLocalOriginInfo(
+    const WorldRenderOrigin& renderOrigin,
+    void* next) noexcept {
+  remixapi_LightInfoLocalOriginEXT originInfo {};
+  originInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_LOCAL_ORIGIN_EXT;
+  originInfo.pNext = next;
+  originInfo.origin = {
+      static_cast<float>(renderOrigin.x),
+      static_cast<float>(renderOrigin.y),
+      static_cast<float>(renderOrigin.z),
+  };
+  return originInfo;
+}
+
 void appendHex64(std::ostringstream& stream, std::uint64_t value) {
   stream << "0x"
          << std::hex << std::uppercase << std::setfill('0') << std::setw(16)
@@ -1188,9 +1202,11 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
 
+  remixapi_LightInfoLocalOriginEXT originInfo = makeLightLocalOriginInfo(renderOrigin, &sphereInfo);
+
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
-  lightInfo.pNext = &sphereInfo;
+  lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
@@ -1248,9 +1264,11 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
 
+  remixapi_LightInfoLocalOriginEXT originInfo = makeLightLocalOriginInfo(renderOrigin, &sphereInfo);
+
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
-  lightInfo.pNext = &sphereInfo;
+  lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
@@ -1374,9 +1392,11 @@ bool RemixRenderer::refreshEntityHeldTorchLightDefinition(
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
 
+  remixapi_LightInfoLocalOriginEXT originInfo = makeLightLocalOriginInfo(renderOrigin, &sphereInfo);
+
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
-  lightInfo.pNext = &sphereInfo;
+  lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(makeEntityHeldTorchLightHash(entityId), renderOrigin);
   lightInfo.radiance = entityHeldTorchRadiance(state.itemId);
   lightInfo.isDynamic = TRUE;
@@ -1446,9 +1466,11 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   sphereInfo.shaping_hasvalue = FALSE;
   sphereInfo.volumetricRadianceScale = 1.0f;
 
+  remixapi_LightInfoLocalOriginEXT originInfo = makeLightLocalOriginInfo(renderOrigin, &sphereInfo);
+
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
-  lightInfo.pNext = &sphereInfo;
+  lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(kHeldTorchLightHash, renderOrigin);
   lightInfo.radiance = isRedstoneTorch ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
   lightInfo.isDynamic = TRUE;

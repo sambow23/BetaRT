@@ -46,6 +46,7 @@ public final class ClientPatchTool {
     private static final String CHUNK_RENDERER_CLASS = "dk";
     private static final String LIVING_RENDER_MANAGER_CLASS = "th";
     private static final String BASE_RENDERER_CLASS = "bw";
+    private static final String BASE_LIVING_RENDERER_CLASS = "gv";
     private static final String ITEM_ENTITY_RENDERER_CLASS = "bb";
     private static final String PLAYER_RENDERER_CLASS = "ds";
     private static final String HUMANOID_MOB_RENDERER_CLASS = "v";
@@ -92,6 +93,8 @@ public final class ClientPatchTool {
                     content = patchTh(content);
                 } else if (entryName.equals(BASE_RENDERER_CLASS + ".class")) {
                     content = patchBw(content);
+                } else if (entryName.equals(BASE_LIVING_RENDERER_CLASS + ".class")) {
+                    content = patchGv(content);
                 } else if (entryName.equals(ITEM_ENTITY_RENDERER_CLASS + ".class")) {
                     content = patchBb(content);
                 } else if (entryName.equals(PLAYER_RENDERER_CLASS + ".class")) {
@@ -313,11 +316,23 @@ public final class ClientPatchTool {
         return writeClass(classNode);
     }
 
+    private static byte[] patchGv(byte[] content) {
+        ClassNode classNode = readClass(content);
+        for (MethodNode method : classNode.methods) {
+            if (method.name.equals("a") && method.desc.equals("(Lls;Ljava/lang/String;DDDI)V")) {
+                patchNameTagRender(method);
+            }
+        }
+        return writeClass(classNode);
+    }
+
     private static byte[] patchDs(byte[] content) {
         ClassNode classNode = readClass(content);
         for (MethodNode method : classNode.methods) {
             if (method.name.equals("a") && method.desc.equals("(Lgs;F)V")) {
                 patchPlayerEquippedItemRender(method);
+            } else if (method.name.equals("a") && method.desc.equals("(Lgs;DDD)V")) {
+                patchDsNameTagRender(method);
             }
         }
         return writeClass(classNode);
@@ -1177,6 +1192,59 @@ public final class ClientPatchTool {
 
         LabelNode continueLabel = new LabelNode();
         method.instructions.insertBefore(method.instructions.getFirst(), fontRenderReplacementCall(continueLabel));
+    }
+
+    private static void patchNameTagRender(MethodNode method) {
+        if (hasHelperCall(method, "onNameTagRenderBegin", "()V")) {
+            return;
+        }
+
+        AbstractInsnNode insertBefore = null;
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (isStaticCall(node, GL11_CLASS, "glPushMatrix", "()V")) {
+                insertBefore = node;
+                break;
+            }
+        }
+        if (insertBefore == null) {
+            throw new IllegalStateException(
+                    "ClientPatchTool: could not find name-tag glPushMatrix in "
+                            + method.name + method.desc);
+        }
+
+        method.instructions.insertBefore(insertBefore, staticHelperCall("onNameTagRenderBegin", "()V"));
+        insertNameTagEndBeforeReturns(method);
+    }
+
+    private static void patchDsNameTagRender(MethodNode method) {
+        if (hasHelperCall(method, "onNameTagRenderBegin", "()V")) {
+            return;
+        }
+
+        AbstractInsnNode insertBefore = null;
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+            if (isStaticCall(node, GL11_CLASS, "glPushMatrix", "()V")) {
+                insertBefore = node;
+                break;
+            }
+        }
+        if (insertBefore == null) {
+            throw new IllegalStateException(
+                    "ClientPatchTool: could not find player name-tag glPushMatrix in ds.a(Lgs;DDD)V");
+        }
+
+        method.instructions.insertBefore(insertBefore, staticHelperCall("onNameTagRenderBegin", "()V"));
+        insertNameTagEndBeforeReturns(method);
+    }
+
+    private static void insertNameTagEndBeforeReturns(MethodNode method) {
+        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; ) {
+            AbstractInsnNode next = node.getNext();
+            if (node.getOpcode() == Opcodes.RETURN) {
+                method.instructions.insertBefore(node, staticHelperCall("onNameTagRenderEnd", "()V"));
+            }
+            node = next;
+        }
     }
 
     private static boolean isStaticCall(AbstractInsnNode node, String owner, String name, String desc) {

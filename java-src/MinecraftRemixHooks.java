@@ -628,6 +628,28 @@ public final class MinecraftRemixHooks {
         return shouldSuppressWorldRasterVanillaDraw();
     }
 
+    public static void onNameTagRenderBegin() {
+        long __perf = HookProfiler.begin();
+        try {
+            Minecraft minecraft = MinecraftRenderHooks.getRememberedMinecraft();
+            if (minecraft == null) {
+                return;
+            }
+            RemixUiCapture.beginNameTagCapture(minecraft.d, minecraft.e);
+        } finally {
+            HookProfiler.endHook("hook.onNameTagRenderBegin", __perf);
+        }
+    }
+
+    public static void onNameTagRenderEnd() {
+        long __perf = HookProfiler.begin();
+        try {
+            RemixUiCapture.endNameTagCapture();
+        } finally {
+            HookProfiler.endHook("hook.onNameTagRenderEnd", __perf);
+        }
+    }
+
     public static boolean captureFontStringAndMaybeSuppress(
             String text,
             int x,

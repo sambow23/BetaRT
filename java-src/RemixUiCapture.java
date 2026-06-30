@@ -5,6 +5,7 @@ import java.util.Set;
 
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
+import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.RemixBridgeNative;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
@@ -90,6 +91,10 @@ public final class RemixUiCapture {
     private static final int[] QUAD_CORNER_OFFSETS = {0, 1, 2, 5};
     private static final int VERTEX_NORMAL_OFFSET_INTS = 6;
 
+    private static final float NAME_TAG_DEPTH_BIAS = 0.00005f;
+    private static final float NAME_TAG_FADE_START_DISTANCE = 32.0f;
+    private static final float NAME_TAG_FADE_END_DISTANCE = 64.0f;
+
     private static final FloatBuffer MATRIX_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
 
@@ -108,6 +113,14 @@ public final class RemixUiCapture {
     private static int[] cmdQuadCounts = new int[256];
     private static int[] cmdFlags = new int[256];
     private static int cmdCount;
+    private static boolean nameTagCaptureActive;
+    private static int pendingNameTagVertexCount;
+    private static int pendingNameTagCmdCount;
+    private static int nameTagCaptureStartVertexCount;
+    private static int nameTagCaptureStartCmdCount;
+    private static boolean nameTagCaptureDiscarded;
+    private static float nameTagAnchorDepth = 1.0f;
+    private static float nameTagAlphaScale = 1.0f;
 
     private static final Set<Long> uploadedTextures = new HashSet<>();
     private static ByteBuffer textureReadBuffer;
@@ -124,8 +137,7 @@ public final class RemixUiCapture {
         }
         displayWidth = width;
         displayHeight = height;
-        vertexCount = 0;
-        cmdCount = 0;
+        seedActiveDrawListFromPendingNameTags();
         active = true;
     }
 
@@ -136,12 +148,56 @@ public final class RemixUiCapture {
         displayWidth = width;
         displayHeight = height;
         active = false;
+        nameTagCaptureActive = false;
         vertexCount = 0;
         cmdCount = 0;
+        pendingNameTagVertexCount = 0;
+        pendingNameTagCmdCount = 0;
+        nameTagCaptureStartVertexCount = 0;
+        nameTagCaptureStartCmdCount = 0;
+        nameTagCaptureDiscarded = false;
+        nameTagAnchorDepth = 1.0f;
+        nameTagAlphaScale = 1.0f;
         MinecraftRenderHooks.submitUiDrawList(
                 xyzuv, colors, 0,
                 cmdTextureIds, cmdQuadCounts, cmdFlags, 0,
                 displayWidth, displayHeight);
+    }
+
+    public static void beginNameTagCapture(int width, int height) {
+        if (active || !MinecraftRenderHooks.isInitialized() || width <= 0 || height <= 0) {
+            return;
+        }
+        displayWidth = width;
+        displayHeight = height;
+        vertexCount = pendingNameTagVertexCount;
+        cmdCount = pendingNameTagCmdCount;
+        nameTagCaptureActive = true;
+        beginProjectedLabelCapture();
+    }
+
+    public static void endNameTagCapture() {
+        if (!nameTagCaptureActive) {
+            return;
+        }
+        if (nameTagCaptureDiscarded) {
+            vertexCount = nameTagCaptureStartVertexCount;
+            cmdCount = nameTagCaptureStartCmdCount;
+        }
+        nameTagCaptureActive = false;
+        pendingNameTagVertexCount = vertexCount;
+        pendingNameTagCmdCount = cmdCount;
+        nameTagCaptureStartVertexCount = vertexCount;
+        nameTagCaptureStartCmdCount = cmdCount;
+        nameTagCaptureDiscarded = false;
+    }
+
+    public static boolean isCapturingUiOrNameTags() {
+        return active || nameTagCaptureActive;
+    }
+
+    public static boolean hasPendingNameTagDraws() {
+        return pendingNameTagVertexCount > 0 && pendingNameTagCmdCount > 0;
     }
 
     public static void onTessellatorDraw(
@@ -150,7 +206,7 @@ public final class RemixUiCapture {
             int drawMode,
             boolean hasTexture,
             boolean hasColor) {
-        if (!active || rawVertexData == null) {
+        if (!isCapturingUiOrNameTags() || rawVertexData == null) {
             return;
         }
         if (drawMode != QUAD_DRAW_MODE
@@ -172,7 +228,12 @@ public final class RemixUiCapture {
         if (modelView == null || projection == null) {
             return;
         }
+        projection = projectionForCurrentCapture(projection);
         float[] mvp = MatrixMath.multiplyColumnMajor(projection, modelView);
+        if (nameTagCaptureActive && !isNameTagAnchorVisible(mvp, modelView)) {
+            discardActiveNameTagCapture();
+            return;
+        }
 
         int fallbackColor = hasColor ? 0 : captureCurrentColorPacked();
 
@@ -198,6 +259,10 @@ public final class RemixUiCapture {
                 }
                 if (eyeZ > maxEyeZ) {
                     maxEyeZ = eyeZ;
+                }
+                if (nameTagCaptureActive && !projectToScreenPixels(mvp, x, y, z).projectable) {
+                    discardActiveNameTagCapture();
+                    return;
                 }
             }
         }
@@ -234,17 +299,24 @@ public final class RemixUiCapture {
                 if (is3D) {
                     color = scaleColorRgb(color, lightFactor);
                 }
+                if (nameTagCaptureActive) {
+                    color = applyNameTagFade(color);
+                }
 
-                // Ortho GUI projection keeps w == 1, so the transformed point
-                // is already in NDC.
-                float[] ndc = MatrixMath.transformPointColumnMajor(mvp, x, y, z);
-                float px = (ndc[0] * 0.5f + 0.5f) * displayWidth;
-                float py = (0.5f - ndc[1] * 0.5f) * displayHeight;
+                ProjectedPoint projected = projectToScreenPixels(mvp, x, y, z);
+                if (nameTagCaptureActive && !projected.projectable) {
+                    discardActiveNameTagCapture();
+                    return;
+                }
+                float px = projected.x;
+                float py = projected.y;
 
                 int out = vertexCount * 5;
                 xyzuv[out] = px;
                 xyzuv[out + 1] = py;
-                xyzuv[out + 2] = is3D ? mapUiDepth(eyeSpaceZ(modelView, x, y, z)) : 0.0f;
+                xyzuv[out + 2] = nameTagCaptureActive
+                        ? nameTagDepthForLayer(false)
+                        : (is3D ? mapUiDepth(eyeSpaceZ(modelView, x, y, z)) : 0.0f);
                 xyzuv[out + 3] = u;
                 xyzuv[out + 4] = v;
                 colors[vertexCount] = color;
@@ -252,7 +324,8 @@ public final class RemixUiCapture {
             }
         }
 
-        appendCommand(textureId, quadCount, is3D ? UI_DRAW_FLAG_DEPTH_TEST : 0);
+        appendCommand(textureId, quadCount,
+                nameTagCaptureActive ? nameTagCommandFlags() : (is3D ? UI_DRAW_FLAG_DEPTH_TEST : 0));
     }
 
     /**
@@ -276,10 +349,16 @@ public final class RemixUiCapture {
             boolean shadow,
             int[] charWidths,
             int fontTextureGlId) {
-        if (!active || text == null || text.isEmpty() || charWidths == null) {
+        if (!isCapturingUiOrNameTags() || text == null || text.isEmpty() || charWidths == null) {
+            return;
+        }
+        if (nameTagCaptureDiscarded) {
             return;
         }
         if (fontTextureGlId <= 0 || !ensureTextureUploadedById(fontTextureGlId)) {
+            if (nameTagCaptureActive) {
+                discardActiveNameTagCapture();
+            }
             return;
         }
         long textureId = fontTextureGlId & 0xFFFFFFFFL;
@@ -287,9 +366,17 @@ public final class RemixUiCapture {
         float[] modelView = captureMatrix(GL_MODELVIEW_MATRIX);
         float[] projection = captureMatrix(GL_PROJECTION_MATRIX);
         if (modelView == null || projection == null) {
+            if (nameTagCaptureActive) {
+                discardActiveNameTagCapture();
+            }
             return;
         }
+        projection = projectionForCurrentCapture(projection);
         float[] mvp = MatrixMath.multiplyColumnMajor(projection, modelView);
+        if (nameTagCaptureActive && !isNameTagAnchorVisible(mvp, modelView)) {
+            discardActiveNameTagCapture();
+            return;
+        }
 
         int currentColor = darkenAndPack(color, shadow);
         int currentAlpha = currentColor >>> 24;
@@ -338,16 +425,19 @@ public final class RemixUiCapture {
 
             // Corner order matches the Tessellator glyph quad (BL, BR, TR, TL),
             // consumed by the native index generator as (0,1,2,0,2,3).
-            appendGlyphVertex(mvp, x0, y1, u0, v1, currentColor);
-            appendGlyphVertex(mvp, x1, y1, u1, v1, currentColor);
-            appendGlyphVertex(mvp, x1, y0, u1, v0, currentColor);
-            appendGlyphVertex(mvp, x0, y0, u0, v0, currentColor);
+            if (!appendGlyphVertex(mvp, x0, y1, u0, v1, currentColor)
+                    || !appendGlyphVertex(mvp, x1, y1, u1, v1, currentColor)
+                    || !appendGlyphVertex(mvp, x1, y0, u1, v0, currentColor)
+                    || !appendGlyphVertex(mvp, x0, y0, u0, v0, currentColor)) {
+                discardActiveNameTagCapture();
+                return;
+            }
             glyphQuads++;
 
             cursorX += charWidths[glyphId];
         }
 
-        appendCommand(textureId, glyphQuads, 0);
+        appendCommand(textureId, glyphQuads, nameTagCommandFlags());
     }
 
     /** True while a UI capture frame is open (between {@link #begin}/{@link #end}). */
@@ -438,9 +528,52 @@ public final class RemixUiCapture {
 
     public static void reset() {
         active = false;
+        nameTagCaptureActive = false;
         vertexCount = 0;
         cmdCount = 0;
+        pendingNameTagVertexCount = 0;
+        pendingNameTagCmdCount = 0;
+        nameTagCaptureStartVertexCount = 0;
+        nameTagCaptureStartCmdCount = 0;
+        nameTagCaptureDiscarded = false;
+        nameTagAnchorDepth = 1.0f;
+        nameTagAlphaScale = 1.0f;
         uploadedTextures.clear();
+    }
+
+    private static void seedActiveDrawListFromPendingNameTags() {
+        if (hasPendingNameTagDraws()) {
+            vertexCount = pendingNameTagVertexCount;
+            cmdCount = pendingNameTagCmdCount;
+        } else {
+            vertexCount = 0;
+            cmdCount = 0;
+        }
+        pendingNameTagVertexCount = 0;
+        pendingNameTagCmdCount = 0;
+        nameTagCaptureActive = false;
+        nameTagCaptureStartVertexCount = vertexCount;
+        nameTagCaptureStartCmdCount = cmdCount;
+        nameTagCaptureDiscarded = false;
+        nameTagAnchorDepth = 1.0f;
+        nameTagAlphaScale = 1.0f;
+    }
+
+    private static void beginProjectedLabelCapture() {
+        nameTagCaptureStartVertexCount = vertexCount;
+        nameTagCaptureStartCmdCount = cmdCount;
+        nameTagCaptureDiscarded = false;
+        nameTagAnchorDepth = 1.0f;
+        nameTagAlphaScale = 1.0f;
+    }
+
+    private static void discardActiveNameTagCapture() {
+        if (!nameTagCaptureActive) {
+            return;
+        }
+        vertexCount = nameTagCaptureStartVertexCount;
+        cmdCount = nameTagCaptureStartCmdCount;
+        nameTagCaptureDiscarded = true;
     }
 
     private static void appendCommand(long textureId, int quadCount, int flags) {
@@ -469,25 +602,29 @@ public final class RemixUiCapture {
         cmdCount++;
     }
 
-    private static void appendGlyphVertex(float[] mvp, float gx, float gy, float u, float v, int color) {
-        float[] ndc = MatrixMath.transformPointColumnMajor(mvp, gx, gy, 0.0f);
-        float px = (ndc[0] * 0.5f + 0.5f) * displayWidth;
-        float py = (0.5f - ndc[1] * 0.5f) * displayHeight;
+    private static boolean appendGlyphVertex(float[] mvp, float gx, float gy, float u, float v, int color) {
+        ProjectedPoint projected = projectToScreenPixels(mvp, gx, gy, 0.0f);
+        if (!projected.projectable) {
+            return false;
+        }
+        float px = projected.x;
+        float py = projected.y;
         int out = vertexCount * 5;
         xyzuv[out] = px;
         xyzuv[out + 1] = py;
-        xyzuv[out + 2] = 0.0f;
+        xyzuv[out + 2] = nameTagCaptureActive ? nameTagDepthForLayer(true) : 0.0f;
         xyzuv[out + 3] = u;
         xyzuv[out + 4] = v;
-        colors[vertexCount] = color;
+        colors[vertexCount] = nameTagCaptureActive ? applyNameTagFade(color) : color;
         vertexCount++;
+        return true;
     }
 
     private static void appendModelVertex(float[] mvp, float[] modelView,
             float x, float y, float z, float u, float v, int color) {
-        float[] ndc = MatrixMath.transformPointColumnMajor(mvp, x, y, z);
-        float px = (ndc[0] * 0.5f + 0.5f) * displayWidth;
-        float py = (0.5f - ndc[1] * 0.5f) * displayHeight;
+        ProjectedPoint projected = projectToScreenPixels(mvp, x, y, z);
+        float px = projected.x;
+        float py = projected.y;
         // Depth from eye-space z mapped through the tight UI window (see
         // UI_DEPTH_EYE_NEAR/FAR) so the item's small z-span fills [0,1].
         float vkz = mapUiDepth(eyeSpaceZ(modelView, x, y, z));
@@ -601,6 +738,141 @@ public final class RemixUiCapture {
     /** Eye-space z (modelview row 2) of a model-space point. */
     private static float eyeSpaceZ(float[] modelView, float x, float y, float z) {
         return modelView[2] * x + modelView[6] * y + modelView[10] * z + modelView[14];
+    }
+
+    private static float[] projectionForCurrentCapture(float[] projection) {
+        if (!nameTagCaptureActive || projection == null || displayWidth <= 0 || displayHeight <= 0) {
+            return projection;
+        }
+
+        float fovYDegrees = McrtxRuntimeSettings.getGameplayFovDegrees();
+        if (fovYDegrees < 1.0f) {
+            fovYDegrees = 1.0f;
+        } else if (fovYDegrees > 179.0f) {
+            fovYDegrees = 179.0f;
+        }
+
+        float yScale = 1.0f / (float) Math.tan(Math.toRadians(fovYDegrees) * 0.5);
+        float aspect = (float) displayWidth / (float) displayHeight;
+        float[] adjusted = projection.clone();
+        adjusted[0] = yScale / aspect;
+        adjusted[5] = yScale;
+        return adjusted;
+    }
+
+    private static boolean isNameTagAnchorVisible(float[] mvp, float[] modelView) {
+        ProjectedPoint projected = projectToScreenPixels(mvp, 0.0f, 0.0f, 0.0f);
+        if (!projected.projectable || !projected.insideClip) {
+            return false;
+        }
+        nameTagAnchorDepth = projected.depth;
+        nameTagAlphaScale = computeNameTagAlphaScale(modelView);
+        return nameTagAlphaScale > 0.001f;
+    }
+
+    private static int nameTagCommandFlags() {
+        return nameTagCaptureActive ? UI_DRAW_FLAG_DEPTH_TEST : 0;
+    }
+
+    private static float nameTagDepthForLayer(boolean textLayer) {
+        float depth = nameTagAnchorDepth + (textLayer ? -NAME_TAG_DEPTH_BIAS : NAME_TAG_DEPTH_BIAS);
+        if (depth < 0.0f) {
+            return 0.0f;
+        }
+        if (depth > 1.0f) {
+            return 1.0f;
+        }
+        return depth;
+    }
+
+    private static float computeNameTagAlphaScale(float[] modelView) {
+        if (modelView == null) {
+            return 1.0f;
+        }
+        float eyeX = modelView[12];
+        float eyeY = modelView[13];
+        float eyeZ = modelView[14];
+        float distance = (float) Math.sqrt(eyeX * eyeX + eyeY * eyeY + eyeZ * eyeZ);
+        if (distance <= NAME_TAG_FADE_START_DISTANCE) {
+            return 1.0f;
+        }
+        if (distance >= NAME_TAG_FADE_END_DISTANCE) {
+            return 0.0f;
+        }
+        float t = (distance - NAME_TAG_FADE_START_DISTANCE)
+                / (NAME_TAG_FADE_END_DISTANCE - NAME_TAG_FADE_START_DISTANCE);
+        return 1.0f - t;
+    }
+
+    private static int applyNameTagFade(int color) {
+        if (!nameTagCaptureActive || nameTagAlphaScale >= 0.999f) {
+            return color;
+        }
+        int alpha = (color >>> 24) & 0xFF;
+        int fadedAlpha = Math.round(alpha * nameTagAlphaScale);
+        if (fadedAlpha < 0) {
+            fadedAlpha = 0;
+        } else if (fadedAlpha > 255) {
+            fadedAlpha = 255;
+        }
+        return (color & 0x00FFFFFF) | (fadedAlpha << 24);
+    }
+
+    private static ProjectedPoint projectToScreenPixels(float[] mvp, float x, float y, float z) {
+        float clipX = mvp[0] * x + mvp[4] * y + mvp[8] * z + mvp[12];
+        float clipY = mvp[1] * x + mvp[5] * y + mvp[9] * z + mvp[13];
+        float clipZ = mvp[2] * x + mvp[6] * y + mvp[10] * z + mvp[14];
+        float clipW = mvp[3] * x + mvp[7] * y + mvp[11] * z + mvp[15];
+
+        boolean finite = Float.isFinite(clipX)
+                && Float.isFinite(clipY)
+                && Float.isFinite(clipZ)
+                && Float.isFinite(clipW);
+        boolean projectable = finite && clipW > 1.0e-6f;
+        if (!projectable) {
+            return new ProjectedPoint(0.0f, 0.0f, 1.0f, false, false);
+        }
+
+        boolean insideClip = clipX >= -clipW
+                && clipX <= clipW
+                && clipY >= -clipW
+                && clipY <= clipW
+                && clipZ >= -clipW
+                && clipZ <= clipW;
+
+        float invW = 1.0f / clipW;
+        float ndcX = clipX * invW;
+        float ndcY = clipY * invW;
+        float ndcZ = clipZ * invW;
+        float depth = ndcZ * 0.5f + 0.5f;
+        if (depth < 0.0f) {
+            depth = 0.0f;
+        } else if (depth > 1.0f) {
+            depth = 1.0f;
+        }
+
+        return new ProjectedPoint(
+                (ndcX * 0.5f + 0.5f) * displayWidth,
+                (0.5f - ndcY * 0.5f) * displayHeight,
+                depth,
+                true,
+                insideClip);
+    }
+
+    private static final class ProjectedPoint {
+        final float x;
+        final float y;
+        final float depth;
+        final boolean projectable;
+        final boolean insideClip;
+
+        ProjectedPoint(float x, float y, float depth, boolean projectable, boolean insideClip) {
+            this.x = x;
+            this.y = y;
+            this.depth = depth;
+            this.projectable = projectable;
+            this.insideClip = insideClip;
+        }
     }
 
     /**
