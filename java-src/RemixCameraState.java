@@ -71,7 +71,13 @@ public final class RemixCameraState {
         bt position = entity.e(partialTicks);
         bt forward = entity.f(partialTicks);
         cameraPositionX = position.a;
-        cameraPositionY = position.b + (double) entity.bf - 1.62;
+        // Raw interpolated posY: this is the GL-world render origin. The eye
+        // offset (yOffset - 1.62) is applied inside the GL modelview by
+        // orientCamera's glTranslatef, so captureFrameView() recovers it via
+        // the inverse-view translation. Adding it here double-counts it with
+        // the wrong sign whenever yOffset != 1.62 (e.g. sleeping), sinking
+        // the camera and all dynamic entities below the ground.
+        cameraPositionY = position.b;
         cameraPositionZ = position.c;
 
         float fx = (float) forward.a;
