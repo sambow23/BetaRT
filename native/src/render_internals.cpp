@@ -3353,14 +3353,72 @@ void appendRepeaterGeometry(
       vertices,
       indices);
 
+  // Each post is emitted as a narrow cross clipped to the visible torch body
+  // texels (tile columns 7-9, rows 6-16). The full-block torch helper would
+  // put both posts' side quads in the same planes, and coplanar alpha-cutout
+  // quads flicker under path tracing depending on camera angle.
   const auto appendTorchPost = [&](float offsetX, float offsetZ) {
-    appendTorchGeometry(
-      localX + offsetX,
-      localY - 0.1875f,
-      localZ + offsetZ,
-      0.0f,
-      0.0f,
-      cell.terrainTiles[0],
+    const int tileIndex = normalizeTerrainTileIndex(cell.terrainTiles[0]);
+    const float tileU = static_cast<float>((tileIndex & 0x0F) * 16) / kAtlasSizePixels;
+    const float tileV = static_cast<float>(tileIndex & 0xF0) / kAtlasSizePixels;
+    const float bodyMinU = tileU + 7.0f / 256.0f;
+    const float bodyMaxU = tileU + 9.0f / 256.0f;
+    const float bodyMinV = tileV + 6.0f / 256.0f;
+    const float bodyMaxV = tileV + 15.99f / 256.0f;
+    const float capMinU = tileU + 7.0f / 256.0f;
+    const float capMaxU = tileU + 9.0f / 256.0f;
+    const float capMinV = tileV + 6.0f / 256.0f;
+    const float capMaxV = tileV + 8.0f / 256.0f;
+
+    const float anchorY = localY - 0.1875f;
+    const float centerX = localX + offsetX + 0.5f;
+    const float centerZ = localZ + offsetZ + 0.5f;
+    const float halfWidth = 0.0625f;
+    const float bodyBottomY = anchorY;
+    const float bodyTopY = anchorY + 0.625f;
+    const float capY = bodyTopY;
+    const float minX = centerX - halfWidth;
+    const float maxX = centerX + halfWidth;
+    const float minZ = centerZ - halfWidth;
+    const float maxZ = centerZ + halfWidth;
+
+    appendDoubleSidedTexturedQuad(
+        minX, capY, minZ, capMinU, capMinV,
+        minX, capY, maxZ, capMinU, capMaxV,
+        maxX, capY, maxZ, capMaxU, capMaxV,
+        maxX, capY, minZ, capMaxU, capMinV,
+        vertices,
+        indices);
+
+    appendDoubleSidedTexturedQuad(
+        minX, bodyTopY, minZ, bodyMinU, bodyMinV,
+        minX, bodyBottomY, minZ, bodyMinU, bodyMaxV,
+        minX, bodyBottomY, maxZ, bodyMaxU, bodyMaxV,
+        minX, bodyTopY, maxZ, bodyMaxU, bodyMinV,
+        vertices,
+        indices);
+
+    appendDoubleSidedTexturedQuad(
+        maxX, bodyTopY, maxZ, bodyMinU, bodyMinV,
+        maxX, bodyBottomY, maxZ, bodyMinU, bodyMaxV,
+        maxX, bodyBottomY, minZ, bodyMaxU, bodyMaxV,
+        maxX, bodyTopY, minZ, bodyMaxU, bodyMinV,
+        vertices,
+        indices);
+
+    appendDoubleSidedTexturedQuad(
+        minX, bodyTopY, maxZ, bodyMinU, bodyMinV,
+        minX, bodyBottomY, maxZ, bodyMinU, bodyMaxV,
+        maxX, bodyBottomY, maxZ, bodyMaxU, bodyMaxV,
+        maxX, bodyTopY, maxZ, bodyMaxU, bodyMinV,
+        vertices,
+        indices);
+
+    appendDoubleSidedTexturedQuad(
+        maxX, bodyTopY, minZ, bodyMinU, bodyMinV,
+        maxX, bodyBottomY, minZ, bodyMinU, bodyMaxV,
+        minX, bodyBottomY, minZ, bodyMaxU, bodyMaxV,
+        minX, bodyTopY, minZ, bodyMaxU, bodyMinV,
         vertices,
         indices);
   };
