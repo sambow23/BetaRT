@@ -850,22 +850,22 @@ public final class McrtxRuntimeSettings {
         }
 
         Map<String, String> fileValues = McrtxRuntimeConfig.loadFileValuesSnapshot();
-        playerShadowsEnabled = readBooleanSetting(fileValues, PLAYER_SHADOWS_ENABLED_KEY, true);
-        heldTorchLightsEnabled = readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
-        dynamicEntityRenderingEnabled = readBooleanSetting(fileValues, DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, true);
-        livingEntityRenderingEnabled = readBooleanSetting(fileValues, LIVING_ENTITY_RENDERING_ENABLED_KEY, true);
-        itemEntityRenderingEnabled = readBooleanSetting(fileValues, ITEM_ENTITY_RENDERING_ENABLED_KEY, true);
-        paintingVanillaSuppressionEnabled = readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
-        movingPistonVanillaSuppressionEnabled = readBooleanSetting(fileValues, MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, false);
-        worldRasterVanillaSuppressionEnabled = readBooleanSetting(fileValues, WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, false);
-        signCaptureEnabled = readBooleanSetting(fileValues, SIGN_CAPTURE_ENABLED_KEY, true);
-        signTextCaptureEnabled = readBooleanSetting(fileValues, SIGN_TEXT_CAPTURE_ENABLED_KEY, true);
-        signVanillaSuppressionEnabled = readBooleanSetting(fileValues, SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, false);
-        remixAtmosphereCloudsEnabled = readBooleanSetting(
+        playerShadowsEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, PLAYER_SHADOWS_ENABLED_KEY, true);
+        heldTorchLightsEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, HELD_TORCH_LIGHTS_ENABLED_KEY, true);
+        dynamicEntityRenderingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, true);
+        livingEntityRenderingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, LIVING_ENTITY_RENDERING_ENABLED_KEY, true);
+        itemEntityRenderingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, ITEM_ENTITY_RENDERING_ENABLED_KEY, true);
+        paintingVanillaSuppressionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        movingPistonVanillaSuppressionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        worldRasterVanillaSuppressionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        signCaptureEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, SIGN_CAPTURE_ENABLED_KEY, true);
+        signTextCaptureEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, SIGN_TEXT_CAPTURE_ENABLED_KEY, true);
+        signVanillaSuppressionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, false);
+        remixAtmosphereCloudsEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
             fileValues,
             REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY,
             McrtxCloudMode.DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED);
-        gameRainParticlesEnabled = readBooleanSetting(
+        gameRainParticlesEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
             fileValues,
             GAME_RAIN_PARTICLES_ENABLED_KEY,
             DEFAULT_GAME_RAIN_PARTICLES_ENABLED);
@@ -876,9 +876,9 @@ public final class McrtxRuntimeSettings {
         dlssPreset = readDlssPresetSetting(fileValues, DLSS_PRESET_KEY, DLSS_PRESET_AUTO);
         xessPreset = readXessPresetSetting(fileValues, XESS_PRESET_KEY, XESS_PRESET_BALANCED);
         taauPreset = readTaauPresetSetting(fileValues, TAAU_PRESET_KEY, TAAU_PRESET_BALANCED);
-        rayReconstructionEnabled = readBooleanSetting(fileValues, RAY_RECONSTRUCTION_ENABLED_KEY, true);
+        rayReconstructionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, RAY_RECONSTRUCTION_ENABLED_KEY, true);
         rtQuality = readRtQualitySetting(fileValues, RT_QUALITY_KEY, RT_QUALITY_HIGH);
-        blockOutlineEnabled = readBooleanSetting(fileValues, BLOCK_OUTLINE_ENABLED_KEY, true);
+        blockOutlineEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, BLOCK_OUTLINE_ENABLED_KEY, true);
         blockOutlineStyle = readBlockOutlineStyleSetting(fileValues, BLOCK_OUTLINE_STYLE_KEY, BLOCK_OUTLINE_STYLE_BOLD);
         blockOutlineEmissiveIntensityTenths = readBlockOutlineEmissiveIntensityTenthsSetting(
             fileValues,
@@ -912,7 +912,7 @@ public final class McrtxRuntimeSettings {
             DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS,
             MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS,
             MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
-        subsurfaceDiffusionProfileEnabled = readBooleanSetting(
+        subsurfaceDiffusionProfileEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
             fileValues,
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
             DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
@@ -920,7 +920,7 @@ public final class McrtxRuntimeSettings {
             fileValues,
             QUICK_SETTINGS_CATEGORY_KEY,
             DEFAULT_QUICK_SETTINGS_CATEGORY);
-        waterThinWalledEnabled = readBooleanSetting(
+        waterThinWalledEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
             fileValues,
             WATER_THIN_WALLED_ENABLED_KEY,
             DEFAULT_WATER_THIN_WALLED_ENABLED);
@@ -930,7 +930,7 @@ public final class McrtxRuntimeSettings {
             DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
             MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
             MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
-        final boolean migrateLegacyWaterMaterialThickness = !readBooleanSetting(fileValues, WATER_MATERIAL_THICKNESS_MIGRATION_KEY, false)
+        final boolean migrateLegacyWaterMaterialThickness = !McrtxRuntimeSettingParser.readBooleanSetting(fileValues, WATER_MATERIAL_THICKNESS_MIGRATION_KEY, false)
                 && fileValues.containsKey(WATER_MATERIAL_THICKNESS_KEY)
                 && waterMaterialThicknessThousandths == LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
         if (migrateLegacyWaterMaterialThickness) {
@@ -940,22 +940,6 @@ public final class McrtxRuntimeSettings {
         if (migrateLegacyWaterMaterialThickness) {
             saveLocked();
         }
-    }
-
-    private static boolean readBooleanSetting(Map<String, String> fileValues, String key, boolean defaultValue) {
-        String configuredValue = fileValues.get(key);
-        if (configuredValue == null || configuredValue.isEmpty()) {
-            String environmentValue = System.getenv(key);
-            if (environmentValue != null && !environmentValue.isEmpty()) {
-                configuredValue = environmentValue.trim();
-            }
-        }
-
-        if (configuredValue == null || configuredValue.isEmpty()) {
-            return defaultValue;
-        }
-
-        return McrtxRuntimeConfig.isTruthyValue(configuredValue);
     }
 
     private static int readDlssPresetSetting(Map<String, String> fileValues, String key, int defaultValue) {
@@ -1339,59 +1323,59 @@ public final class McrtxRuntimeSettings {
 
     private static void saveLocked() {
         Map<String, String> fileValues = new TreeMap<String, String>(McrtxRuntimeConfig.loadFileValuesSnapshot());
-        fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, formatBoolean(playerShadowsEnabled));
-        fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, formatBoolean(heldTorchLightsEnabled));
-        fileValues.put(DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(dynamicEntityRenderingEnabled));
-        fileValues.put(LIVING_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(livingEntityRenderingEnabled));
-        fileValues.put(ITEM_ENTITY_RENDERING_ENABLED_KEY, formatBoolean(itemEntityRenderingEnabled));
-        fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(paintingVanillaSuppressionEnabled));
-        fileValues.put(MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(movingPistonVanillaSuppressionEnabled));
-        fileValues.put(WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(worldRasterVanillaSuppressionEnabled));
-        fileValues.put(SIGN_CAPTURE_ENABLED_KEY, formatBoolean(signCaptureEnabled));
-        fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, formatBoolean(signTextCaptureEnabled));
-        fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, formatBoolean(signVanillaSuppressionEnabled));
-        fileValues.put(REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, formatBoolean(remixAtmosphereCloudsEnabled));
-        fileValues.put(GAME_RAIN_PARTICLES_ENABLED_KEY, formatBoolean(gameRainParticlesEnabled));
+        fileValues.put(PLAYER_SHADOWS_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(playerShadowsEnabled));
+        fileValues.put(HELD_TORCH_LIGHTS_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(heldTorchLightsEnabled));
+        fileValues.put(DYNAMIC_ENTITY_RENDERING_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(dynamicEntityRenderingEnabled));
+        fileValues.put(LIVING_ENTITY_RENDERING_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(livingEntityRenderingEnabled));
+        fileValues.put(ITEM_ENTITY_RENDERING_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(itemEntityRenderingEnabled));
+        fileValues.put(PAINTING_VANILLA_SUPPRESSION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(paintingVanillaSuppressionEnabled));
+        fileValues.put(MOVING_PISTON_VANILLA_SUPPRESSION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(movingPistonVanillaSuppressionEnabled));
+        fileValues.put(WORLD_RASTER_VANILLA_SUPPRESSION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(worldRasterVanillaSuppressionEnabled));
+        fileValues.put(SIGN_CAPTURE_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(signCaptureEnabled));
+        fileValues.put(SIGN_TEXT_CAPTURE_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(signTextCaptureEnabled));
+        fileValues.put(SIGN_VANILLA_SUPPRESSION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(signVanillaSuppressionEnabled));
+        fileValues.put(REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(remixAtmosphereCloudsEnabled));
+        fileValues.put(GAME_RAIN_PARTICLES_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(gameRainParticlesEnabled));
         fileValues.put(GAMEPLAY_FOV_KEY, Integer.toString(gameplayFovDegrees));
         fileValues.put(VIEW_MODEL_FOV_KEY, Integer.toString(viewModelFovDegrees));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));
-        fileValues.put(UPSCALER_TYPE_KEY, formatUpscalerType(upscalerType));
-        fileValues.put(DLSS_PRESET_KEY, formatDlssPreset(dlssPreset));
-        fileValues.put(XESS_PRESET_KEY, formatXessPreset(xessPreset));
-        fileValues.put(TAAU_PRESET_KEY, formatTaauPreset(taauPreset));
-        fileValues.put(RAY_RECONSTRUCTION_ENABLED_KEY, formatBoolean(rayReconstructionEnabled));
-        fileValues.put(RT_QUALITY_KEY, formatRtQuality(rtQuality));
-        fileValues.put(BLOCK_OUTLINE_ENABLED_KEY, formatBoolean(blockOutlineEnabled));
-        fileValues.put(BLOCK_OUTLINE_STYLE_KEY, formatBlockOutlineStyle(blockOutlineStyle));
+        fileValues.put(UPSCALER_TYPE_KEY, McrtxRuntimeSettingFormatter.formatUpscalerType(upscalerType));
+        fileValues.put(DLSS_PRESET_KEY, McrtxRuntimeSettingFormatter.formatDlssPreset(dlssPreset));
+        fileValues.put(XESS_PRESET_KEY, McrtxRuntimeSettingFormatter.formatXessPreset(xessPreset));
+        fileValues.put(TAAU_PRESET_KEY, McrtxRuntimeSettingFormatter.formatTaauPreset(taauPreset));
+        fileValues.put(RAY_RECONSTRUCTION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(rayReconstructionEnabled));
+        fileValues.put(RT_QUALITY_KEY, McrtxRuntimeSettingFormatter.formatRtQuality(rtQuality));
+        fileValues.put(BLOCK_OUTLINE_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(blockOutlineEnabled));
+        fileValues.put(BLOCK_OUTLINE_STYLE_KEY, McrtxRuntimeSettingFormatter.formatBlockOutlineStyle(blockOutlineStyle));
         fileValues.put(
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
-            formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
-        fileValues.put(DISPLACEMENT_FACTOR_KEY, formatDisplacementFactorHundredths(displacementFactorHundredths));
+            McrtxRuntimeSettingFormatter.formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
+        fileValues.put(DISPLACEMENT_FACTOR_KEY, McrtxRuntimeSettingFormatter.formatDisplacementFactorHundredths(displacementFactorHundredths));
         fileValues.put(
             SUBSURFACE_MEASUREMENT_DISTANCE_KEY,
-            formatHundredthsValue(subsurfaceMeasurementDistanceHundredths));
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(subsurfaceMeasurementDistanceHundredths));
         fileValues.put(
             SUBSURFACE_RADIUS_SCALE_KEY,
-            formatHundredthsValue(subsurfaceRadiusScaleHundredths));
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(subsurfaceRadiusScaleHundredths));
         fileValues.put(
             SUBSURFACE_MAX_SAMPLE_RADIUS_KEY,
-            formatHundredthsValue(subsurfaceMaxSampleRadiusHundredths));
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(subsurfaceMaxSampleRadiusHundredths));
         fileValues.put(
             SUBSURFACE_VOLUMETRIC_ANISOTROPY_KEY,
-            formatHundredthsValue(subsurfaceVolumetricAnisotropyHundredths));
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(subsurfaceVolumetricAnisotropyHundredths));
         fileValues.put(
             SUBSURFACE_DIFFUSION_PROFILE_ENABLED_KEY,
-            formatBoolean(subsurfaceDiffusionProfileEnabled));
+            McrtxRuntimeSettingFormatter.formatBoolean(subsurfaceDiffusionProfileEnabled));
         fileValues.put(
             QUICK_SETTINGS_CATEGORY_KEY,
             Integer.toString(quickSettingsCategory));
         fileValues.put(
             WATER_THIN_WALLED_ENABLED_KEY,
-            formatBoolean(waterThinWalledEnabled));
+            McrtxRuntimeSettingFormatter.formatBoolean(waterThinWalledEnabled));
         fileValues.put(
             WATER_MATERIAL_THICKNESS_KEY,
-            formatThousandthsValue(waterMaterialThicknessThousandths));
-        fileValues.put(WATER_MATERIAL_THICKNESS_MIGRATION_KEY, formatBoolean(true));
+            McrtxRuntimeSettingFormatter.formatThousandthsValue(waterMaterialThicknessThousandths));
+        fileValues.put(WATER_MATERIAL_THICKNESS_MIGRATION_KEY, McrtxRuntimeSettingFormatter.formatBoolean(true));
         writeFileValues(fileValues);
     }
 
@@ -1436,10 +1420,6 @@ public final class McrtxRuntimeSettings {
                 }
             }
         }
-    }
-
-    private static String formatBoolean(boolean enabled) {
-        return enabled ? "1" : "0";
     }
 
     private static int deriveDefaultUpscalerType(Map<String, String> fileValues) {
@@ -1604,142 +1584,4 @@ public final class McrtxRuntimeSettings {
         return value;
     }
 
-    private static String formatThousandthsValue(int thousandthsValue) {
-        int absoluteThousandthsValue = Math.abs(thousandthsValue);
-        String formattedValue = Integer.toString(absoluteThousandthsValue / 1000)
-            + "."
-            + (absoluteThousandthsValue % 1000 < 100 ? "0" : "")
-            + (absoluteThousandthsValue % 1000 < 10 ? "0" : "")
-            + Integer.toString(absoluteThousandthsValue % 1000);
-        if (thousandthsValue < 0) {
-            return "-" + formattedValue;
-        }
-        return formattedValue;
-    }
-
-    private static String formatUpscalerType(int type) {
-        switch (normalizeUpscalerType(type)) {
-            case UPSCALER_TYPE_NONE:
-                return "None";
-            case UPSCALER_TYPE_TAAU:
-                return "TAAU";
-            case UPSCALER_TYPE_XESS:
-                return "XeSS";
-            case UPSCALER_TYPE_DLSS:
-            default:
-                return "DLSS";
-        }
-    }
-
-    private static String formatDlssPreset(int preset) {
-        switch (normalizeDlssPreset(preset)) {
-            case DLSS_PRESET_QUALITY:
-                return "MaxQuality";
-            case DLSS_PRESET_BALANCED:
-                return "Balanced";
-            case DLSS_PRESET_PERFORMANCE:
-                return "MaxPerf";
-            case DLSS_PRESET_ULTRA_PERFORMANCE:
-                return "UltraPerf";
-            case DLSS_PRESET_DLAA:
-                return "FullResolution";
-            case DLSS_PRESET_AUTO:
-            default:
-                return "Auto";
-        }
-    }
-
-    private static String formatXessPreset(int preset) {
-        switch (normalizeXessPreset(preset)) {
-            case XESS_PRESET_ULTRA_PERFORMANCE:
-                return "UltraPerf";
-            case XESS_PRESET_PERFORMANCE:
-                return "Performance";
-            case XESS_PRESET_QUALITY:
-                return "Quality";
-            case XESS_PRESET_ULTRA_QUALITY:
-                return "UltraQuality";
-            case XESS_PRESET_ULTRA_QUALITY_PLUS:
-                return "UltraQualityPlus";
-            case XESS_PRESET_NATIVE_AA:
-                return "NativeAA";
-            case XESS_PRESET_BALANCED:
-            default:
-                return "Balanced";
-        }
-    }
-
-    private static String formatTaauPreset(int preset) {
-        switch (normalizeTaauPreset(preset)) {
-            case TAAU_PRESET_ULTRA_PERFORMANCE:
-                return "UltraPerformance";
-            case TAAU_PRESET_PERFORMANCE:
-                return "Performance";
-            case TAAU_PRESET_QUALITY:
-                return "Quality";
-            case TAAU_PRESET_FULLSCREEN:
-                return "Fullscreen";
-            case TAAU_PRESET_BALANCED:
-            default:
-                return "Balanced";
-        }
-    }
-
-    private static String formatRtQuality(int quality) {
-        switch (normalizeRtQuality(quality)) {
-            case RT_QUALITY_POTATO:
-                return "Potato";
-            case RT_QUALITY_LOW:
-                return "Low";
-            case RT_QUALITY_MEDIUM:
-                return "Medium";
-            case RT_QUALITY_ULTRA:
-                return "Ultra";
-            case RT_QUALITY_HIGH:
-            default:
-                return "High";
-        }
-    }
-
-    private static String formatBlockOutlineStyle(int style) {
-        switch (normalizeBlockOutlineStyle(style)) {
-            case BLOCK_OUTLINE_STYLE_SUBTLE:
-                return "Subtle";
-            case BLOCK_OUTLINE_STYLE_GLOW:
-                return "Glow";
-            case BLOCK_OUTLINE_STYLE_RGB:
-                return "RGB";
-            case BLOCK_OUTLINE_STYLE_THIN:
-                return "Thin";
-            case BLOCK_OUTLINE_STYLE_SOLID:
-                return "Solid";
-            case BLOCK_OUTLINE_STYLE_BOLD:
-            default:
-                return "Bold";
-        }
-    }
-
-    private static String formatBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
-        return Integer.toString(normalizedIntensityTenths / 10) + "." + Integer.toString(normalizedIntensityTenths % 10);
-    }
-
-    private static String formatDisplacementFactorHundredths(int factorHundredths) {
-        int normalizedFactorHundredths = normalizeDisplacementFactorHundredths(factorHundredths);
-        return formatHundredthsValue(normalizedFactorHundredths);
-    }
-
-    private static String formatHundredthsValue(int hundredthsValue) {
-        int absoluteHundredthsValue = Math.abs(hundredthsValue);
-        int wholeValue = absoluteHundredthsValue / 100;
-        int fractionalValue = absoluteHundredthsValue % 100;
-        String formattedValue = Integer.toString(wholeValue)
-            + "."
-            + (fractionalValue < 10 ? "0" : "")
-            + Integer.toString(fractionalValue);
-        if (hundredthsValue < 0) {
-            return "-" + formattedValue;
-        }
-        return formattedValue;
-    }
 }

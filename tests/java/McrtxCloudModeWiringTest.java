@@ -5,6 +5,7 @@ import java.nio.file.Paths;
 public final class McrtxCloudModeWiringTest {
   public static void main(String[] args) throws Exception {
     String remixCloudCapture = read("java-src/RemixCloudCapture.java");
+    String hookSettingsUi = read("java-src/McrtxHookSettingsUi.java");
     requireContains(remixCloudCapture, "McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled()", "cloud capture reads setting");
     requireContains(remixCloudCapture, "McrtxCloudMode.shouldSubmitGameCloudLayer", "cloud capture uses mode predicate");
     requireContains(remixCloudCapture, "gameCloudLayerClearedForRemixClouds", "cloud capture remembers clear state");
@@ -14,7 +15,8 @@ public final class McrtxCloudModeWiringTest {
     requireContains(minecraftRemixHooks, "isRemixAtmosphereCloudsEnabled()", "hook getter");
     requireContains(minecraftRemixHooks, "setRemixAtmosphereCloudsEnabled(boolean enabled)", "hook setter");
     requireContains(minecraftRemixHooks, "getRemixAtmosphereCloudsButtonLabel()", "hook label");
-    requireContains(minecraftRemixHooks, "MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled)", "hook forwards native state");
+    requireContains(minecraftRemixHooks, "McrtxHookSettingsUi.setRemixAtmosphereCloudsEnabled(enabled)", "hook delegates cloud setter");
+    requireContains(hookSettingsUi, "MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled)", "settings helper forwards native state");
 
     String quickSettings = read("java-src/McrtxQuickSettingsScreen.java");
     requireContains(quickSettings, "REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID", "button id");

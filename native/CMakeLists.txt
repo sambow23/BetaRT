@@ -51,6 +51,11 @@ add_library(mcrtx_jni SHARED
   src/remix_chunk_mesh.cpp
   src/remix_materials.cpp
   src/remix_subsystem_meshes.cpp
+  src/remix_subsystem_config.cpp
+  src/remix_subsystem_dynamic.cpp
+  src/remix_subsystem_lights.cpp
+  src/remix_subsystem_overlays.cpp
+  src/remix_subsystem_world.cpp
   src/remix_window.cpp
   src/render_internals.cpp
   src/world_origin.cpp

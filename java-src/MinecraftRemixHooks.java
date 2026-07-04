@@ -1,5 +1,4 @@
 import mcrtx.bridge.HookProfiler;
-import mcrtx.bridge.McrtxCloudMode;
 import mcrtx.bridge.McrtxRuntimeConfig;
 import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftPlatform;
@@ -9,10 +8,6 @@ import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.UiOverlayCapture;
 import net.minecraft.client.Minecraft;
 import java.io.File;
-import java.text.DateFormat;
-import java.text.SimpleDateFormat;
-import java.util.Date;
-import java.util.Locale;
 import org.lwjgl.opengl.Display;
 import org.lwjgl.opengl.GL11;
 
@@ -23,9 +18,7 @@ import org.lwjgl.opengl.GL11;
  * not change without updating {@code ClientPatchTool} in lockstep.
  */
 public final class MinecraftRemixHooks {
-    private static final DateFormat SCREENSHOT_DATE_FORMAT = new SimpleDateFormat("yyyy-MM-dd_HH.mm.ss");
     private static final int DEFAULT_REMIX_UI_STATE = MinecraftRenderHooks.REMIX_UI_STATE_ADVANCED;
-    private static final int PERF_LOG_INTERVAL_FRAMES = 60;
     private static final int WINDOWS_VK_MENU = 0x12;
     private static final int WINDOWS_VK_X = 0x58;
     private static final int WINDOWS_VK_B = 0x42;
@@ -54,26 +47,6 @@ public final class MinecraftRemixHooks {
     private static boolean quickSettingsLastBHotkeyDown;
     private static long quickSettingsHotkeyReleaseStartedNanos;
     private static int preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
-    private static long perfFrameCount;
-    private static long perfTotalFrameNanos;
-    private static long perfMaxFrameNanos;
-    private static long perfTotalRenderMethodNanos;
-    private static long perfMaxRenderMethodNanos;
-    private static long perfTotalPrePresentNanos;
-    private static long perfMaxPrePresentNanos;
-    private static long perfTotalFlushNanos;
-    private static long perfMaxFlushNanos;
-    private static long perfTotalPresentNanos;
-    private static long perfMaxPresentNanos;
-    private static long perfTotalPostPresentNanos;
-    private static long perfMaxPostPresentNanos;
-    private static long perfTotalQueueDepthBeforeFlush;
-    private static int perfMaxQueueDepthBeforeFlush;
-    private static long perfTotalQueueDepthAfterFlush;
-    private static int perfMaxQueueDepthAfterFlush;
-    private static long perfTotalSectionsRecaptured;
-    private static int perfMaxSectionsRecaptured;
-    private static long activeRenderMethodStartNanos;
     private static long activeUiRenderBeginNanos;
     private static float lastCameraPartialTicks;
 
@@ -101,11 +74,11 @@ public final class MinecraftRemixHooks {
                 System.out.println("[mcrtx] input backend=" + (NATIVE_INPUT_BACKEND ? "native" : "platform"));
             }
             resetRemixUiTracking();
-            resetPerfTracking();
+            McrtxHookPerfTracker.reset();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
             MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
-            applySavedMcrtxSettings();
+            McrtxHookSettingsUi.applySavedMcrtxSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayCreated", __perf);
         }
@@ -116,7 +89,7 @@ public final class MinecraftRemixHooks {
         try {
             System.out.println("[mcrtx] onShutdown");
             resetRemixUiTracking();
-            resetPerfTracking();
+            McrtxHookPerfTracker.reset();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
             MinecraftRenderHooks.shutdown();
@@ -134,7 +107,7 @@ public final class MinecraftRemixHooks {
                 System.out.println("[mcrtx] onDisplayReset width=" + width + " height=" + height);
             }
             resetRemixUiTracking();
-            resetPerfTracking();
+            McrtxHookPerfTracker.reset();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
             if (SINGLE_NATIVE_WINDOW_MODE) {
@@ -142,7 +115,7 @@ public final class MinecraftRemixHooks {
             } else {
                 MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
             }
-            applySavedMcrtxSettings();
+            McrtxHookSettingsUi.applySavedMcrtxSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayReset", __perf);
         }
@@ -180,7 +153,7 @@ public final class MinecraftRemixHooks {
         long __perf = HookProfiler.begin();
         try {
             long frameStartNanos = System.nanoTime();
-            long renderMethodStartNanos = activeRenderMethodStartNanos;
+            long renderMethodStartNanos = McrtxHookPerfTracker.renderMethodStartNanos();
             long uiRenderBeginNanos = activeUiRenderBeginNanos;
             RemixChunkCapture.flushPendingChunkRecaptures();
             long flushEndNanos = System.nanoTime();
@@ -199,7 +172,7 @@ public final class MinecraftRemixHooks {
             long frameEndNanos = System.nanoTime();
             long prePresentNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameStartNanos - renderMethodStartNanos) : 0L;
             long renderMethodNanos = renderMethodStartNanos > 0L ? Math.max(0L, frameEndNanos - renderMethodStartNanos) : 0L;
-            activeRenderMethodStartNanos = 0L;
+            McrtxHookPerfTracker.clearRenderMethodStartNanos();
             activeUiRenderBeginNanos = 0L;
 
             // onPresent sub-site breakdown. Uses the raw timestamps captured
@@ -225,7 +198,7 @@ public final class MinecraftRemixHooks {
                 }
             }
 
-            recordPresentPerf(
+            McrtxHookPerfTracker.recordPresent(
                     frameEndNanos - frameStartNanos,
                 renderMethodNanos,
                 prePresentNanos,
@@ -235,7 +208,8 @@ public final class MinecraftRemixHooks {
                     RemixChunkCapture.lastFlushDurationNanos(),
                     RemixChunkCapture.lastPendingQueueDepthBeforeFlush(),
                     RemixChunkCapture.lastPendingQueueDepthAfterFlush(),
-                    RemixChunkCapture.lastSectionsRecaptured());
+                    RemixChunkCapture.lastSectionsRecaptured(),
+                    VERBOSE_LOGGING);
         } finally {
             HookProfiler.endHook("hook.onPresent", __perf);
         }
@@ -244,31 +218,13 @@ public final class MinecraftRemixHooks {
     public static String onScreenshot(File minecraftDir, int width, int height) {
         long __perf = HookProfiler.begin();
         try {
-            File destination = nextVanillaScreenshotFile(minecraftDir);
-            if (MinecraftRenderHooks.requestPresentedScreenshot(destination.getAbsolutePath())) {
-                return "Saved screenshot as " + destination.getName();
-            }
+            return McrtxHookScreenshotHelper.requestPresentedScreenshot(minecraftDir, width, height);
         } catch (Exception exception) {
             exception.printStackTrace();
             return "Failed to save: " + exception;
         } finally {
             HookProfiler.endHook("hook.onScreenshot", __perf);
         }
-
-        return hj.a(minecraftDir, width, height);
-    }
-
-    private static File nextVanillaScreenshotFile(File minecraftDir) {
-        File screenshotDir = new File(minecraftDir, "screenshots");
-        screenshotDir.mkdir();
-        String baseName = SCREENSHOT_DATE_FORMAT.format(new Date());
-        int index = 1;
-        File candidate;
-        do {
-            candidate = new File(screenshotDir, baseName + (index == 1 ? "" : "_" + index) + ".png");
-            ++index;
-        } while (candidate.exists());
-        return candidate;
     }
 
     public static void onUiRenderBegin(int width, int height) {
@@ -948,136 +904,115 @@ public final class MinecraftRemixHooks {
     }
 
     public static boolean shouldShowWaterMaterialThicknessSlider() {
-        return isWaterThinWalledEnabled();
+        return McrtxHookSettingsUi.shouldShowWaterMaterialThicknessSlider();
     }
 
     public static boolean shouldShowBlockOutlineIntensitySlider() {
-        return isBlockOutlineEnabled() && isBlockOutlineEmissiveStyle(getBlockOutlineStyle());
+        return McrtxHookSettingsUi.shouldShowBlockOutlineIntensitySlider();
     }
 
     public static String getPlayerShadowsButtonLabel() {
-        return "Player Shadows: " + formatToggleState(isPlayerShadowsEnabled());
+        return McrtxHookSettingsUi.getPlayerShadowsButtonLabel();
     }
 
     public static String getHeldTorchLightsButtonLabel() {
-        return "Held Torch Lights: " + formatToggleState(isHeldTorchLightsEnabled());
+        return McrtxHookSettingsUi.getHeldTorchLightsButtonLabel();
     }
 
     public static String getDynamicEntityRenderingButtonLabel() {
-        return "Dynamic Entities: " + formatToggleState(isDynamicEntityRenderingEnabled());
+        return McrtxHookSettingsUi.getDynamicEntityRenderingButtonLabel();
     }
 
     public static String getLivingEntityRenderingButtonLabel() {
-        return "Living Entities: " + formatToggleState(isLivingEntityRenderingEnabled());
+        return McrtxHookSettingsUi.getLivingEntityRenderingButtonLabel();
     }
 
     public static String getItemEntityRenderingButtonLabel() {
-        return "Item Entities: " + formatToggleState(isItemEntityRenderingEnabled());
+        return McrtxHookSettingsUi.getItemEntityRenderingButtonLabel();
     }
 
     public static String getPaintingVanillaSuppressionButtonLabel() {
-        return "Replace Paintings: " + formatToggleState(isPaintingVanillaSuppressionEnabled());
+        return McrtxHookSettingsUi.getPaintingVanillaSuppressionButtonLabel();
     }
 
     public static String getMovingPistonVanillaSuppressionButtonLabel() {
-        return "Replace Moving Pistons: " + formatToggleState(isMovingPistonVanillaSuppressionEnabled());
+        return McrtxHookSettingsUi.getMovingPistonVanillaSuppressionButtonLabel();
     }
 
     public static String getWorldRasterVanillaSuppressionButtonLabel() {
-        return "Suppress World Raster: " + formatToggleState(isWorldRasterVanillaSuppressionEnabled());
+        return McrtxHookSettingsUi.getWorldRasterVanillaSuppressionButtonLabel();
     }
 
     public static String getSignCaptureButtonLabel() {
-        return "Capture Signs: " + formatToggleState(isSignCaptureEnabled());
+        return McrtxHookSettingsUi.getSignCaptureButtonLabel();
     }
 
     public static String getSignTextCaptureButtonLabel() {
-        return "Capture Sign Text: " + formatToggleState(isSignTextCaptureEnabled());
+        return McrtxHookSettingsUi.getSignTextCaptureButtonLabel();
     }
 
     public static String getSignVanillaSuppressionButtonLabel() {
-        return "Replace Signs: " + formatToggleState(isSignVanillaSuppressionEnabled());
+        return McrtxHookSettingsUi.getSignVanillaSuppressionButtonLabel();
     }
 
     public static String getRtQualityButtonLabel() {
-        return "PT Quality: " + describeRtQuality(McrtxRuntimeSettings.getRtQuality());
+        return McrtxHookSettingsUi.getRtQualityButtonLabel();
     }
 
     public static String getUpscalerButtonLabel() {
-        return "Upscaler: " + describeUpscalerType(McrtxRuntimeSettings.getUpscalerType());
+        return McrtxHookSettingsUi.getUpscalerButtonLabel();
     }
 
     public static String getUpscalerPresetButtonLabel() {
-        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
-        switch (upscalerType) {
-            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
-                return "Preset: " + describeDlssPreset(McrtxRuntimeSettings.getDlssPreset());
-            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
-                return "Preset: " + describeXessPreset(McrtxRuntimeSettings.getXessPreset());
-            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
-                return "Preset: " + describeTaauPreset(McrtxRuntimeSettings.getTaauPreset());
-            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
-            default:
-                return "Preset: N/A";
-        }
+        return McrtxHookSettingsUi.getUpscalerPresetButtonLabel();
     }
 
     public static String getRayReconstructionButtonLabel() {
-        return "Ray Reconstruction: " + formatToggleState(McrtxRuntimeSettings.isRayReconstructionEnabled());
+        return McrtxHookSettingsUi.getRayReconstructionButtonLabel();
     }
 
     public static String getBlockOutlineButtonLabel() {
-        return "Block Outline: " + formatToggleState(isBlockOutlineEnabled());
+        return McrtxHookSettingsUi.getBlockOutlineButtonLabel();
     }
 
     public static String getBlockOutlineStyleButtonLabel() {
-        return "Outline Style: " + describeBlockOutlineStyle(getBlockOutlineStyle());
+        return McrtxHookSettingsUi.getBlockOutlineStyleButtonLabel();
     }
 
     public static String getSubsurfaceDiffusionProfileButtonLabel() {
-        return "SSS Diffusion: " + formatToggleState(isSubsurfaceDiffusionProfileEnabled());
+        return McrtxHookSettingsUi.getSubsurfaceDiffusionProfileButtonLabel();
     }
 
     public static String getWaterThinWallButtonLabel() {
-        return isWaterThinWalledEnabled()
-                ? "Water Mode: Thin-Walled"
-                : "Water Mode: Refractive";
+        return McrtxHookSettingsUi.getWaterThinWallButtonLabel();
     }
 
     public static String getRemixAtmosphereCloudsButtonLabel() {
-        return McrtxCloudMode.formatButtonLabel(isRemixAtmosphereCloudsEnabled());
+        return McrtxHookSettingsUi.getRemixAtmosphereCloudsButtonLabel();
     }
 
     public static String getGameRainParticlesButtonLabel() {
-        return "Game Rain: " + formatToggleState(isGameRainParticlesEnabled());
+        return McrtxHookSettingsUi.getGameRainParticlesButtonLabel();
     }
 
     public static void setPlayerShadowsEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setPlayerShadowsEnabled(enabled);
-        RemixDynamicEntityCapture.setPlayerShadowsEnabled(enabled);
-        MinecraftRenderHooks.setPlayerShadowsEnabled(enabled);
+        McrtxHookSettingsUi.setPlayerShadowsEnabled(enabled);
     }
 
     public static void setHeldTorchLightsEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setHeldTorchLightsEnabled(enabled);
-        RemixDynamicEntityCapture.setHeldTorchLightsEnabled(enabled);
-        MinecraftRenderHooks.setHeldTorchLightsEnabled(enabled);
+        McrtxHookSettingsUi.setHeldTorchLightsEnabled(enabled);
     }
 
     public static void setDynamicEntityRenderingEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setDynamicEntityRenderingEnabled(enabled);
-        RemixDynamicEntityCapture.setDynamicEntityRenderingEnabled(enabled);
-        MinecraftRenderHooks.setDynamicEntityRenderingEnabled(enabled);
+        McrtxHookSettingsUi.setDynamicEntityRenderingEnabled(enabled);
     }
 
     public static void setLivingEntityRenderingEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setLivingEntityRenderingEnabled(enabled);
-        RemixDynamicEntityCapture.setLivingEntityRenderingEnabled(enabled);
+        McrtxHookSettingsUi.setLivingEntityRenderingEnabled(enabled);
     }
 
     public static void setItemEntityRenderingEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setItemEntityRenderingEnabled(enabled);
-        RemixDynamicEntityCapture.setItemEntityRenderingEnabled(enabled);
+        McrtxHookSettingsUi.setItemEntityRenderingEnabled(enabled);
     }
 
     public static boolean isPaintingVanillaSuppressionEnabled() {
@@ -1105,215 +1040,115 @@ public final class MinecraftRemixHooks {
     }
 
     public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setPaintingVanillaSuppressionEnabled(enabled);
+        McrtxHookSettingsUi.setPaintingVanillaSuppressionEnabled(enabled);
     }
 
     public static void setMovingPistonVanillaSuppressionEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setMovingPistonVanillaSuppressionEnabled(enabled);
+        McrtxHookSettingsUi.setMovingPistonVanillaSuppressionEnabled(enabled);
     }
 
     public static void setWorldRasterVanillaSuppressionEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setWorldRasterVanillaSuppressionEnabled(enabled);
+        McrtxHookSettingsUi.setWorldRasterVanillaSuppressionEnabled(enabled);
     }
 
     public static void setSignCaptureEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setSignCaptureEnabled(enabled);
-        RemixDynamicEntityCapture.setSignCaptureEnabled(enabled);
+        McrtxHookSettingsUi.setSignCaptureEnabled(enabled);
     }
 
     public static void setSignTextCaptureEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setSignTextCaptureEnabled(enabled);
-        RemixDynamicEntityCapture.setSignTextCaptureEnabled(enabled);
+        McrtxHookSettingsUi.setSignTextCaptureEnabled(enabled);
     }
 
     public static void setSignVanillaSuppressionEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setSignVanillaSuppressionEnabled(enabled);
+        McrtxHookSettingsUi.setSignVanillaSuppressionEnabled(enabled);
     }
 
     public static void setRemixAtmosphereCloudsEnabled(boolean enabled) {
-        boolean previousEnabled = McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
-        McrtxRuntimeSettings.setRemixAtmosphereCloudsEnabled(enabled);
-        if (McrtxCloudMode.shouldClearGameCloudLayerAfterToggle(previousEnabled, enabled)) {
-            MinecraftRenderHooks.clearCloudLayer();
-        }
-        MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled);
+        McrtxHookSettingsUi.setRemixAtmosphereCloudsEnabled(enabled);
     }
 
     public static void setGameRainParticlesEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setGameRainParticlesEnabled(enabled);
+        McrtxHookSettingsUi.setGameRainParticlesEnabled(enabled);
     }
 
     public static void setGameplayFovDegrees(int fovDegrees) {
-        McrtxRuntimeSettings.setGameplayFovDegrees(fovDegrees);
+        McrtxHookSettingsUi.setGameplayFovDegrees(fovDegrees);
     }
 
     public static void setViewModelFovDegrees(int fovDegrees) {
-        McrtxRuntimeSettings.setViewModelFovDegrees(fovDegrees);
-        MinecraftRenderHooks.setViewModelFovDegrees(fovDegrees);
+        McrtxHookSettingsUi.setViewModelFovDegrees(fovDegrees);
     }
 
     public static void setNoCullDistanceBlocks(int blockDistance) {
-        McrtxRuntimeSettings.setNoCullDistanceBlocks(blockDistance);
-        RemixCameraState.setNoCullDistanceBlocks(blockDistance);
+        McrtxHookSettingsUi.setNoCullDistanceBlocks(blockDistance);
     }
 
     public static void setBlockOutlineEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setBlockOutlineEnabled(enabled);
-        MinecraftRenderHooks.setBlockOutlineEnabled(enabled);
+        McrtxHookSettingsUi.setBlockOutlineEnabled(enabled);
     }
 
     public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        McrtxRuntimeSettings.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
-        MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
+        McrtxHookSettingsUi.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
     }
 
     public static void setDisplacementFactorHundredths(int factorHundredths) {
-        McrtxRuntimeSettings.setDisplacementFactorHundredths(factorHundredths);
-        MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
+        McrtxHookSettingsUi.setDisplacementFactorHundredths(factorHundredths);
     }
 
     public static void setSubsurfaceMeasurementDistanceHundredths(int distanceHundredths) {
-        McrtxRuntimeSettings.setSubsurfaceMeasurementDistanceHundredths(distanceHundredths);
-        MinecraftRenderHooks.setSubsurfaceMeasurementDistance(McrtxRuntimeSettings.getSubsurfaceMeasurementDistance());
+        McrtxHookSettingsUi.setSubsurfaceMeasurementDistanceHundredths(distanceHundredths);
     }
 
     public static void setSubsurfaceRadiusScaleHundredths(int scaleHundredths) {
-        McrtxRuntimeSettings.setSubsurfaceRadiusScaleHundredths(scaleHundredths);
-        MinecraftRenderHooks.setSubsurfaceRadiusScale(McrtxRuntimeSettings.getSubsurfaceRadiusScale());
+        McrtxHookSettingsUi.setSubsurfaceRadiusScaleHundredths(scaleHundredths);
     }
 
     public static void setSubsurfaceMaxSampleRadiusHundredths(int radiusHundredths) {
-        McrtxRuntimeSettings.setSubsurfaceMaxSampleRadiusHundredths(radiusHundredths);
-        MinecraftRenderHooks.setSubsurfaceMaxSampleRadius(McrtxRuntimeSettings.getSubsurfaceMaxSampleRadius());
+        McrtxHookSettingsUi.setSubsurfaceMaxSampleRadiusHundredths(radiusHundredths);
     }
 
     public static void setSubsurfaceVolumetricAnisotropyHundredths(int anisotropyHundredths) {
-        McrtxRuntimeSettings.setSubsurfaceVolumetricAnisotropyHundredths(anisotropyHundredths);
-        MinecraftRenderHooks.setSubsurfaceVolumetricAnisotropy(McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropy());
+        McrtxHookSettingsUi.setSubsurfaceVolumetricAnisotropyHundredths(anisotropyHundredths);
     }
 
     public static void setSubsurfaceDiffusionProfileEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setSubsurfaceDiffusionProfileEnabled(enabled);
-        MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(enabled);
+        McrtxHookSettingsUi.setSubsurfaceDiffusionProfileEnabled(enabled);
     }
 
     public static void setWaterThinWalledEnabled(boolean enabled) {
-        McrtxRuntimeSettings.setWaterThinWalledEnabled(enabled);
-        MinecraftRenderHooks.setWaterThinWalledEnabled(enabled);
+        McrtxHookSettingsUi.setWaterThinWalledEnabled(enabled);
     }
 
     public static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
-        McrtxRuntimeSettings.setWaterMaterialThicknessThousandths(thicknessThousandths);
-        MinecraftRenderHooks.setWaterMaterialThickness(McrtxRuntimeSettings.getWaterMaterialThickness());
+        McrtxHookSettingsUi.setWaterMaterialThicknessThousandths(thicknessThousandths);
     }
 
     public static void resetSubsurfaceSettingsToDefaults() {
-        setSubsurfaceMeasurementDistanceHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS);
-        setSubsurfaceRadiusScaleHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS);
-        setSubsurfaceMaxSampleRadiusHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS);
-        setSubsurfaceVolumetricAnisotropyHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
-        setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
-        setWaterThinWalledEnabled(McrtxRuntimeSettings.DEFAULT_WATER_THIN_WALLED_ENABLED);
-        setWaterMaterialThicknessThousandths(McrtxRuntimeSettings.DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+        McrtxHookSettingsUi.resetSubsurfaceSettingsToDefaults();
     }
 
     public static void cycleBlockOutlineStyle() {
-        int style = McrtxRuntimeSettings.getBlockOutlineStyle();
-        switch (style) {
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN);
-                break;
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW);
-                break;
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB);
-                break;
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD);
-                break;
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID);
-                break;
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID:
-            default:
-                McrtxRuntimeSettings.setBlockOutlineStyle(McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE);
-                break;
-        }
-        MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
+        McrtxHookSettingsUi.cycleBlockOutlineStyle();
     }
 
     public static void cycleRtQuality() {
-        int rtQuality = McrtxRuntimeSettings.getRtQuality();
-        switch (rtQuality) {
-            case McrtxRuntimeSettings.RT_QUALITY_LOW:
-                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_MEDIUM);
-                break;
-            case McrtxRuntimeSettings.RT_QUALITY_MEDIUM:
-                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_HIGH);
-                break;
-            case McrtxRuntimeSettings.RT_QUALITY_HIGH:
-                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_ULTRA);
-                break;
-            case McrtxRuntimeSettings.RT_QUALITY_ULTRA:
-                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_POTATO);
-                break;
-            case McrtxRuntimeSettings.RT_QUALITY_POTATO:
-            default:
-                McrtxRuntimeSettings.setRtQuality(McrtxRuntimeSettings.RT_QUALITY_LOW);
-                break;
-        }
-        applyRtQualitySettings();
+        McrtxHookSettingsUi.cycleRtQuality();
     }
 
     public static void cycleUpscalerType() {
-        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
-        switch (upscalerType) {
-            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
-                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_DLSS);
-                break;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
-                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_XESS);
-                break;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
-                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_TAAU);
-                break;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
-            default:
-                McrtxRuntimeSettings.setUpscalerType(McrtxRuntimeSettings.UPSCALER_TYPE_NONE);
-                break;
-        }
-        applyUpscalerSettings();
+        McrtxHookSettingsUi.cycleUpscalerType();
     }
 
     public static void cycleUpscalerPreset() {
-        int upscalerType = McrtxRuntimeSettings.getUpscalerType();
-        switch (upscalerType) {
-            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
-                cycleDlssPreset();
-                return;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
-                cycleXessPreset();
-                return;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
-                cycleTaauPreset();
-                return;
-            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
-            default:
-                return;
-        }
+        McrtxHookSettingsUi.cycleUpscalerPreset();
     }
 
     public static boolean shouldShowRayReconstructionOption() {
-        return McrtxRuntimeSettings.getUpscalerType() == McrtxRuntimeSettings.UPSCALER_TYPE_DLSS;
+        return McrtxHookSettingsUi.shouldShowRayReconstructionOption();
     }
 
     public static void toggleRayReconstructionEnabled() {
-        if (!shouldShowRayReconstructionOption()) {
-            return;
-        }
-        McrtxRuntimeSettings.setRayReconstructionEnabled(!McrtxRuntimeSettings.isRayReconstructionEnabled());
-        applyUpscalerSettings();
+        McrtxHookSettingsUi.toggleRayReconstructionEnabled();
     }
 
     private static void resetRemixUiTracking() {
@@ -1330,29 +1165,6 @@ public final class MinecraftRemixHooks {
         quickSettingsHotkeyReleaseStartedNanos = 0L;
         preferredRemixUiState = DEFAULT_REMIX_UI_STATE;
         MinecraftRenderHooks.setRemixUiInputActive(false);
-    }
-
-    private static void resetPerfTracking() {
-        perfFrameCount = 0L;
-        perfTotalFrameNanos = 0L;
-        perfMaxFrameNanos = 0L;
-        perfTotalRenderMethodNanos = 0L;
-        perfMaxRenderMethodNanos = 0L;
-        perfTotalPrePresentNanos = 0L;
-        perfMaxPrePresentNanos = 0L;
-        perfTotalFlushNanos = 0L;
-        perfMaxFlushNanos = 0L;
-        perfTotalPresentNanos = 0L;
-        perfMaxPresentNanos = 0L;
-        perfTotalPostPresentNanos = 0L;
-        perfMaxPostPresentNanos = 0L;
-        perfTotalQueueDepthBeforeFlush = 0L;
-        perfMaxQueueDepthBeforeFlush = 0;
-        perfTotalQueueDepthAfterFlush = 0L;
-        perfMaxQueueDepthAfterFlush = 0;
-        perfTotalSectionsRecaptured = 0L;
-        perfMaxSectionsRecaptured = 0;
-        activeRenderMethodStartNanos = 0L;
     }
 
     private static boolean shouldSuppressWorldRasterVanillaDraw() {
@@ -1379,111 +1191,10 @@ public final class MinecraftRemixHooks {
                         minecraft.f.b(lastCameraPartialTicks),
                         minecraft.f.t instanceof wd);
             }
-            activeRenderMethodStartNanos = System.nanoTime();
+            McrtxHookPerfTracker.onFrameRenderStart();
         } finally {
             HookProfiler.endHook("hook.onFrameRenderStart", __perf);
         }
-    }
-
-    private static void recordPresentPerf(
-            long frameNanos,
-            long renderMethodNanos,
-            long prePresentNanos,
-            long hookFlushNanos,
-            long presentNanos,
-            long postPresentNanos,
-            long chunkFlushNanos,
-            int queueDepthBeforeFlush,
-            int queueDepthAfterFlush,
-            int sectionsRecaptured) {
-        long flushNanos = chunkFlushNanos > 0L ? chunkFlushNanos : hookFlushNanos;
-        ++perfFrameCount;
-        perfTotalFrameNanos += frameNanos;
-        perfMaxFrameNanos = Math.max(perfMaxFrameNanos, frameNanos);
-        perfTotalRenderMethodNanos += renderMethodNanos;
-        perfMaxRenderMethodNanos = Math.max(perfMaxRenderMethodNanos, renderMethodNanos);
-        perfTotalPrePresentNanos += prePresentNanos;
-        perfMaxPrePresentNanos = Math.max(perfMaxPrePresentNanos, prePresentNanos);
-        perfTotalFlushNanos += flushNanos;
-        perfMaxFlushNanos = Math.max(perfMaxFlushNanos, flushNanos);
-        perfTotalPresentNanos += presentNanos;
-        perfMaxPresentNanos = Math.max(perfMaxPresentNanos, presentNanos);
-        perfTotalPostPresentNanos += postPresentNanos;
-        perfMaxPostPresentNanos = Math.max(perfMaxPostPresentNanos, postPresentNanos);
-        perfTotalQueueDepthBeforeFlush += queueDepthBeforeFlush;
-        perfMaxQueueDepthBeforeFlush = Math.max(perfMaxQueueDepthBeforeFlush, queueDepthBeforeFlush);
-        perfTotalQueueDepthAfterFlush += queueDepthAfterFlush;
-        perfMaxQueueDepthAfterFlush = Math.max(perfMaxQueueDepthAfterFlush, queueDepthAfterFlush);
-        perfTotalSectionsRecaptured += sectionsRecaptured;
-        perfMaxSectionsRecaptured = Math.max(perfMaxSectionsRecaptured, sectionsRecaptured);
-
-        if (perfFrameCount < PERF_LOG_INTERVAL_FRAMES) {
-            return;
-        }
-
-        StringBuilder summary = new StringBuilder(256);
-        summary.append("[mcrtx] perf java frames=")
-                .append(perfFrameCount)
-                .append(" frameAvgMs=")
-                .append(formatAverageMillis(perfTotalFrameNanos, perfFrameCount))
-                .append(" frameMaxMs=")
-                .append(formatMillis(perfMaxFrameNanos))
-            .append(" renderMethodAvgMs=")
-            .append(formatAverageMillis(perfTotalRenderMethodNanos, perfFrameCount))
-            .append(" renderMethodMaxMs=")
-            .append(formatMillis(perfMaxRenderMethodNanos))
-            .append(" prePresentAvgMs=")
-            .append(formatAverageMillis(perfTotalPrePresentNanos, perfFrameCount))
-            .append(" prePresentMaxMs=")
-            .append(formatMillis(perfMaxPrePresentNanos))
-                .append(" flushAvgMs=")
-                .append(formatAverageMillis(perfTotalFlushNanos, perfFrameCount))
-                .append(" flushMaxMs=")
-                .append(formatMillis(perfMaxFlushNanos))
-                .append(" presentAvgMs=")
-                .append(formatAverageMillis(perfTotalPresentNanos, perfFrameCount))
-                .append(" presentMaxMs=")
-                .append(formatMillis(perfMaxPresentNanos))
-                .append(" postAvgMs=")
-                .append(formatAverageMillis(perfTotalPostPresentNanos, perfFrameCount))
-                .append(" queueBeforeAvg=")
-                .append(formatAverageCount(perfTotalQueueDepthBeforeFlush, perfFrameCount))
-                .append(" queueBeforeMax=")
-                .append(perfMaxQueueDepthBeforeFlush)
-                .append(" queueAfterAvg=")
-                .append(formatAverageCount(perfTotalQueueDepthAfterFlush, perfFrameCount))
-                .append(" queueAfterMax=")
-                .append(perfMaxQueueDepthAfterFlush)
-                .append(" sectionsAvg=")
-                .append(formatAverageCount(perfTotalSectionsRecaptured, perfFrameCount))
-                .append(" sectionsMax=")
-                .append(perfMaxSectionsRecaptured);
-        if (VERBOSE_LOGGING) {
-            System.out.println(summary.toString());
-        }
-        resetPerfTracking();
-    }
-
-    private static String formatAverageMillis(long totalNanos, long sampleCount) {
-        if (sampleCount <= 0L) {
-            return "0.00";
-        }
-        return formatDouble((double) totalNanos / (double) sampleCount / 1000000.0);
-    }
-
-    private static String formatAverageCount(long totalCount, long sampleCount) {
-        if (sampleCount <= 0L) {
-            return "0.0";
-        }
-        return formatDouble((double) totalCount / (double) sampleCount);
-    }
-
-    private static String formatMillis(long nanos) {
-        return formatDouble((double) nanos / 1000000.0);
-    }
-
-    private static String formatDouble(double value) {
-        return String.format(Locale.ROOT, "%.2f", value);
     }
 
     private static boolean detectStandaloneWindowMode() {
@@ -1515,242 +1226,8 @@ public final class MinecraftRemixHooks {
         return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
     }
 
-    private static void applySavedMcrtxSettings() {
-        boolean playerShadowsEnabled = McrtxRuntimeSettings.isPlayerShadowsEnabled();
-        boolean heldTorchLightsEnabled = McrtxRuntimeSettings.isHeldTorchLightsEnabled();
-        boolean dynamicEntityRenderingEnabled = McrtxRuntimeSettings.isDynamicEntityRenderingEnabled();
-        boolean livingEntityRenderingEnabled = McrtxRuntimeSettings.isLivingEntityRenderingEnabled();
-        boolean itemEntityRenderingEnabled = McrtxRuntimeSettings.isItemEntityRenderingEnabled();
-        boolean signCaptureEnabled = McrtxRuntimeSettings.isSignCaptureEnabled();
-        boolean signTextCaptureEnabled = McrtxRuntimeSettings.isSignTextCaptureEnabled();
-        RemixDynamicEntityCapture.setPlayerShadowsEnabled(playerShadowsEnabled);
-        RemixDynamicEntityCapture.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
-        RemixDynamicEntityCapture.setDynamicEntityRenderingEnabled(dynamicEntityRenderingEnabled);
-        RemixDynamicEntityCapture.setLivingEntityRenderingEnabled(livingEntityRenderingEnabled);
-        RemixDynamicEntityCapture.setItemEntityRenderingEnabled(itemEntityRenderingEnabled);
-        RemixDynamicEntityCapture.setSignCaptureEnabled(signCaptureEnabled);
-        RemixDynamicEntityCapture.setSignTextCaptureEnabled(signTextCaptureEnabled);
-        MinecraftRenderHooks.setPlayerShadowsEnabled(playerShadowsEnabled);
-        MinecraftRenderHooks.setHeldTorchLightsEnabled(heldTorchLightsEnabled);
-        MinecraftRenderHooks.setDynamicEntityRenderingEnabled(dynamicEntityRenderingEnabled);
-        MinecraftRenderHooks.setBlockOutlineEnabled(McrtxRuntimeSettings.isBlockOutlineEnabled());
-        MinecraftRenderHooks.setBlockOutlineStyle(McrtxRuntimeSettings.getBlockOutlineStyle());
-        MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
-        MinecraftRenderHooks.setDisplacementFactor(McrtxRuntimeSettings.getDisplacementFactor());
-        MinecraftRenderHooks.setSubsurfaceMeasurementDistance(McrtxRuntimeSettings.getSubsurfaceMeasurementDistance());
-        MinecraftRenderHooks.setSubsurfaceRadiusScale(McrtxRuntimeSettings.getSubsurfaceRadiusScale());
-        MinecraftRenderHooks.setSubsurfaceMaxSampleRadius(McrtxRuntimeSettings.getSubsurfaceMaxSampleRadius());
-        MinecraftRenderHooks.setSubsurfaceVolumetricAnisotropy(McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropy());
-        MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled());
-        MinecraftRenderHooks.setWaterThinWalledEnabled(McrtxRuntimeSettings.isWaterThinWalledEnabled());
-        MinecraftRenderHooks.setWaterMaterialThickness(McrtxRuntimeSettings.getWaterMaterialThickness());
-        MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled());
-        RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
-        MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
-        applyRtQualitySettings();
-        applyUpscalerSettings();
-    }
-
-    private static String formatToggleState(boolean enabled) {
-        return enabled ? "ON" : "OFF";
-    }
-
-    private static String describeBlockOutlineStyle(int style) {
-        switch (style) {
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SUBTLE:
-                return "Subtle";
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_THIN:
-                return "Thin";
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW:
-                return "Glow";
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB:
-                return "RGB";
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_SOLID:
-                return "Solid Fill";
-            case McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD:
-            default:
-                return "Bold";
-        }
-    }
-
-    private static boolean isBlockOutlineEmissiveStyle(int style) {
-        return style == McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_GLOW
-                || style == McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_RGB;
-    }
-
-    private static void cycleDlssPreset() {
-        int preset = McrtxRuntimeSettings.getDlssPreset();
-        switch (preset) {
-            case McrtxRuntimeSettings.DLSS_PRESET_AUTO:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_QUALITY);
-                break;
-            case McrtxRuntimeSettings.DLSS_PRESET_QUALITY:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_BALANCED);
-                break;
-            case McrtxRuntimeSettings.DLSS_PRESET_BALANCED:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE);
-                break;
-            case McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE);
-                break;
-            case McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_DLAA);
-                break;
-            case McrtxRuntimeSettings.DLSS_PRESET_DLAA:
-            default:
-                McrtxRuntimeSettings.setDlssPreset(McrtxRuntimeSettings.DLSS_PRESET_AUTO);
-                break;
-        }
-        applyUpscalerSettings();
-    }
-
-    private static void cycleXessPreset() {
-        int preset = McrtxRuntimeSettings.getXessPreset();
-        switch (preset) {
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_BALANCED);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_BALANCED:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_QUALITY);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_QUALITY:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA);
-                break;
-            case McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA:
-            default:
-                McrtxRuntimeSettings.setXessPreset(McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE);
-                break;
-        }
-        applyUpscalerSettings();
-    }
-
-    private static void cycleTaauPreset() {
-        int preset = McrtxRuntimeSettings.getTaauPreset();
-        switch (preset) {
-            case McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE:
-                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE);
-                break;
-            case McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE:
-                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_BALANCED);
-                break;
-            case McrtxRuntimeSettings.TAAU_PRESET_BALANCED:
-                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_QUALITY);
-                break;
-            case McrtxRuntimeSettings.TAAU_PRESET_QUALITY:
-                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN);
-                break;
-            case McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN:
-            default:
-                McrtxRuntimeSettings.setTaauPreset(McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE);
-                break;
-        }
-        applyUpscalerSettings();
-    }
-
-    private static void applyRtQualitySettings() {
-        MinecraftRenderHooks.setRtQuality(McrtxRuntimeSettings.getRtQuality());
-    }
-
-    private static void applyUpscalerSettings() {
-        MinecraftRenderHooks.setUpscalerConfig(
-                McrtxRuntimeSettings.getUpscalerType(),
-                McrtxRuntimeSettings.getDlssPreset(),
-                McrtxRuntimeSettings.getXessPreset(),
-                McrtxRuntimeSettings.getTaauPreset(),
-                McrtxRuntimeSettings.isRayReconstructionEnabled());
-    }
-
-    private static String describeRtQuality(int rtQuality) {
-        switch (rtQuality) {
-            case McrtxRuntimeSettings.RT_QUALITY_POTATO:
-                return "Potato";
-            case McrtxRuntimeSettings.RT_QUALITY_LOW:
-                return "Low";
-            case McrtxRuntimeSettings.RT_QUALITY_MEDIUM:
-                return "Medium";
-            case McrtxRuntimeSettings.RT_QUALITY_ULTRA:
-                return "Ultra";
-            case McrtxRuntimeSettings.RT_QUALITY_HIGH:
-            default:
-                return "High";
-        }
-    }
-
-    private static String describeUpscalerType(int upscalerType) {
-        switch (upscalerType) {
-            case McrtxRuntimeSettings.UPSCALER_TYPE_NONE:
-                return "None";
-            case McrtxRuntimeSettings.UPSCALER_TYPE_XESS:
-                return "XeSS";
-            case McrtxRuntimeSettings.UPSCALER_TYPE_TAAU:
-                return "TAAU";
-            case McrtxRuntimeSettings.UPSCALER_TYPE_DLSS:
-            default:
-                return "DLSS";
-        }
-    }
-
-    private static String describeDlssPreset(int preset) {
-        switch (preset) {
-            case McrtxRuntimeSettings.DLSS_PRESET_QUALITY:
-                return "Quality";
-            case McrtxRuntimeSettings.DLSS_PRESET_BALANCED:
-                return "Balanced";
-            case McrtxRuntimeSettings.DLSS_PRESET_PERFORMANCE:
-                return "Performance";
-            case McrtxRuntimeSettings.DLSS_PRESET_ULTRA_PERFORMANCE:
-                return "Ultra Performance";
-            case McrtxRuntimeSettings.DLSS_PRESET_DLAA:
-                return "DLAA";
-            case McrtxRuntimeSettings.DLSS_PRESET_AUTO:
-            default:
-                return "Auto";
-        }
-    }
-
-    private static String describeXessPreset(int preset) {
-        switch (preset) {
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_PERFORMANCE:
-                return "Ultra Performance";
-            case McrtxRuntimeSettings.XESS_PRESET_PERFORMANCE:
-                return "Performance";
-            case McrtxRuntimeSettings.XESS_PRESET_QUALITY:
-                return "Quality";
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY:
-                return "Ultra Quality";
-            case McrtxRuntimeSettings.XESS_PRESET_ULTRA_QUALITY_PLUS:
-                return "Ultra Quality Plus";
-            case McrtxRuntimeSettings.XESS_PRESET_NATIVE_AA:
-                return "Native AA";
-            case McrtxRuntimeSettings.XESS_PRESET_BALANCED:
-            default:
-                return "Balanced";
-        }
-    }
-
-    private static String describeTaauPreset(int preset) {
-        switch (preset) {
-            case McrtxRuntimeSettings.TAAU_PRESET_ULTRA_PERFORMANCE:
-                return "Ultra Performance";
-            case McrtxRuntimeSettings.TAAU_PRESET_PERFORMANCE:
-                return "Performance";
-            case McrtxRuntimeSettings.TAAU_PRESET_QUALITY:
-                return "Quality";
-            case McrtxRuntimeSettings.TAAU_PRESET_FULLSCREEN:
-                return "Fullscreen";
-            case McrtxRuntimeSettings.TAAU_PRESET_BALANCED:
-            default:
-                return "Balanced";
-        }
+    private static String formatMillis(long nanos) {
+        return String.format(java.util.Locale.ROOT, "%.2f", (double) nanos / 1000000.0);
     }
 
     private static void logRemixUiHotkeyEvent(

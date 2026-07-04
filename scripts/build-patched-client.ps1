@@ -1378,6 +1378,9 @@ $nativePdb = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.pdb"
 
 $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
+    (Join-Path $repoRoot "java-src\McrtxHookScreenshotHelper.java"),
+    (Join-Path $repoRoot "java-src\McrtxHookPerfTracker.java"),
+    (Join-Path $repoRoot "java-src\McrtxHookSettingsUi.java"),
     (Join-Path $repoRoot "java-src\McrtxFovSlider.java"),
     (Join-Path $repoRoot "java-src\McrtxQuickSettingsScreen.java"),
     (Join-Path $repoRoot "java-src\cb.java"),
@@ -1399,6 +1402,8 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxCloudMode.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeConfig.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettings.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettingParser.java"),
+    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettingFormatter.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\HookProfiler.java"),
     (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformKey.java"),
