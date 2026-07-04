@@ -165,7 +165,7 @@ public final class McrtxQuickSettingsScreen extends da {
 
         if (button.f == BLOCK_OUTLINE_STYLE_BUTTON_ID) {
             MinecraftRemixHooks.cycleBlockOutlineStyle();
-            refreshButtons();
+            b();
             return;
         }
 
@@ -459,6 +459,8 @@ public final class McrtxQuickSettingsScreen extends da {
                     getControlWidth(),
                     CONTROL_HEIGHT,
                     MinecraftRemixHooks.getBlockOutlineStyleButtonLabel()));
+        }
+        if (MinecraftRemixHooks.shouldShowBlockOutlineIntensitySlider()) {
             addControl(McrtxFovSlider.createBlockOutlineIntensitySlider(
                     BLOCK_OUTLINE_INTENSITY_SLIDER_ID,
                     getControlX(),

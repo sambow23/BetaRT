@@ -859,8 +859,8 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.getBlockOutlineStyle();
     }
 
-    public static int getBlockOutlineEmissiveIntensityTenths() {
-        return McrtxRuntimeSettings.getBlockOutlineEmissiveIntensityTenths();
+    public static int getBlockOutlineEmissiveIntensityHundredths() {
+        return McrtxRuntimeSettings.getBlockOutlineEmissiveIntensityHundredths();
     }
 
     public static int getDisplacementFactorHundredths() {
@@ -1095,8 +1095,8 @@ public final class MinecraftRemixHooks {
         McrtxHookSettingsUi.setBlockOutlineEnabled(enabled);
     }
 
-    public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        McrtxHookSettingsUi.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
+    public static void setBlockOutlineEmissiveIntensityHundredths(int intensityHundredths) {
+        McrtxHookSettingsUi.setBlockOutlineEmissiveIntensityHundredths(intensityHundredths);
     }
 
     public static void setDisplacementFactorHundredths(int factorHundredths) {

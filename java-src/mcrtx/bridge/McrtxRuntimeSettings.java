@@ -56,9 +56,9 @@ public final class McrtxRuntimeSettings {
     public static final int MIN_NO_CULL_DISTANCE_BLOCKS = 0;
     public static final int MAX_NO_CULL_DISTANCE_BLOCKS = 200;
     public static final int DEFAULT_NO_CULL_DISTANCE_BLOCKS = 200;
-    public static final int MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 0;
-    public static final int MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 100;
-    public static final int DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS = 45;
+    public static final int MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS = 0;
+    public static final int MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS = 1000;
+    public static final int DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS = 450;
     public static final int MIN_DISPLACEMENT_FACTOR_HUNDREDTHS = 0;
     public static final int MAX_DISPLACEMENT_FACTOR_HUNDREDTHS = 400;
     public static final int DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS = 100;
@@ -155,7 +155,7 @@ public final class McrtxRuntimeSettings {
     private static int rtQuality = RT_QUALITY_HIGH;
     private static boolean blockOutlineEnabled = true;
     private static int blockOutlineStyle = BLOCK_OUTLINE_STYLE_BOLD;
-    private static int blockOutlineEmissiveIntensityTenths = DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+    private static int blockOutlineEmissiveIntensityHundredths = DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS;
     private static int displacementFactorHundredths = DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS;
     private static int subsurfaceMeasurementDistanceHundredths = DEFAULT_SUBSURFACE_MEASUREMENT_DISTANCE_HUNDREDTHS;
     private static int subsurfaceRadiusScaleHundredths = DEFAULT_SUBSURFACE_RADIUS_SCALE_HUNDREDTHS;
@@ -601,17 +601,17 @@ public final class McrtxRuntimeSettings {
         }
     }
 
-    public static int getBlockOutlineEmissiveIntensityTenths() {
+    public static int getBlockOutlineEmissiveIntensityHundredths() {
         synchronized (LOCK) {
             ensureLoaded();
-            return blockOutlineEmissiveIntensityTenths;
+            return blockOutlineEmissiveIntensityHundredths;
         }
     }
 
     public static float getBlockOutlineEmissiveIntensity() {
         synchronized (LOCK) {
             ensureLoaded();
-            return (float) blockOutlineEmissiveIntensityTenths / 10.0f;
+            return (float) blockOutlineEmissiveIntensityHundredths / 100.0f;
         }
     }
 
@@ -759,14 +759,14 @@ public final class McrtxRuntimeSettings {
         }
     }
 
-    public static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
+    public static void setBlockOutlineEmissiveIntensityHundredths(int intensityHundredths) {
         synchronized (LOCK) {
             ensureLoaded();
-            int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
-            if (blockOutlineEmissiveIntensityTenths == normalizedIntensityTenths) {
+            int normalizedIntensityHundredths = normalizeBlockOutlineEmissiveIntensityHundredths(intensityHundredths);
+            if (blockOutlineEmissiveIntensityHundredths == normalizedIntensityHundredths) {
                 return;
             }
-            blockOutlineEmissiveIntensityTenths = normalizedIntensityTenths;
+            blockOutlineEmissiveIntensityHundredths = normalizedIntensityHundredths;
             saveLocked();
         }
     }
@@ -905,10 +905,12 @@ public final class McrtxRuntimeSettings {
         rtQuality = readRtQualitySetting(fileValues, RT_QUALITY_KEY, RT_QUALITY_HIGH);
         blockOutlineEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, BLOCK_OUTLINE_ENABLED_KEY, true);
         blockOutlineStyle = readBlockOutlineStyleSetting(fileValues, BLOCK_OUTLINE_STYLE_KEY, BLOCK_OUTLINE_STYLE_BOLD);
-        blockOutlineEmissiveIntensityTenths = readBlockOutlineEmissiveIntensityTenthsSetting(
+        blockOutlineEmissiveIntensityHundredths = readPositiveHundredthsSetting(
             fileValues,
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
-            DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS);
+            DEFAULT_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS,
+            MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS,
+            MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS);
         displacementFactorHundredths = readDisplacementFactorHundredthsSetting(
             fileValues,
             DISPLACEMENT_FACTOR_KEY,
@@ -1231,31 +1233,6 @@ public final class McrtxRuntimeSettings {
         return defaultValue;
     }
 
-    private static int readBlockOutlineEmissiveIntensityTenthsSetting(Map<String, String> fileValues, String key, int defaultValue) {
-        String configuredValue = fileValues.get(key);
-        if (configuredValue == null || configuredValue.isEmpty()) {
-            String environmentValue = System.getenv(key);
-            if (environmentValue != null && !environmentValue.isEmpty()) {
-                configuredValue = environmentValue.trim();
-            }
-        }
-
-        if (configuredValue == null || configuredValue.isEmpty()) {
-            return normalizeBlockOutlineEmissiveIntensityTenths(defaultValue);
-        }
-
-        try {
-            double parsedValue = Double.parseDouble(configuredValue.trim());
-            if (parsedValue > (double) MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS / 10.0
-                    && parsedValue <= (double) MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
-                return normalizeBlockOutlineEmissiveIntensityTenths((int) Math.round(parsedValue));
-            }
-            return normalizeBlockOutlineEmissiveIntensityTenths((int) Math.round(parsedValue * 10.0));
-        } catch (NumberFormatException exception) {
-            return normalizeBlockOutlineEmissiveIntensityTenths(defaultValue);
-        }
-    }
-
     private static int readDisplacementFactorHundredthsSetting(Map<String, String> fileValues, String key, int defaultValue) {
         String configuredValue = fileValues.get(key);
         if (configuredValue == null || configuredValue.isEmpty()) {
@@ -1375,7 +1352,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(BLOCK_OUTLINE_STYLE_KEY, McrtxRuntimeSettingFormatter.formatBlockOutlineStyle(blockOutlineStyle));
         fileValues.put(
             BLOCK_OUTLINE_EMISSIVE_INTENSITY_KEY,
-            McrtxRuntimeSettingFormatter.formatBlockOutlineEmissiveIntensityTenths(blockOutlineEmissiveIntensityTenths));
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(blockOutlineEmissiveIntensityHundredths));
         fileValues.put(DISPLACEMENT_FACTOR_KEY, McrtxRuntimeSettingFormatter.formatDisplacementFactorHundredths(displacementFactorHundredths));
         fileValues.put(
             SUBSURFACE_MEASUREMENT_DISTANCE_KEY,
@@ -1535,14 +1512,11 @@ public final class McrtxRuntimeSettings {
         return BLOCK_OUTLINE_STYLE_BOLD;
     }
 
-    private static int normalizeBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        if (intensityTenths < MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
-            return MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
-        }
-        if (intensityTenths > MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
-            return MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
-        }
-        return intensityTenths;
+    private static int normalizeBlockOutlineEmissiveIntensityHundredths(int intensityHundredths) {
+        return normalizeHundredths(
+            intensityHundredths,
+            MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS,
+            MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS);
     }
 
     private static int normalizeDisplacementFactorHundredths(int factorHundredths) {

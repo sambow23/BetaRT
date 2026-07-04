@@ -202,8 +202,8 @@ final class McrtxHookSettingsUi {
         MinecraftRenderHooks.setBlockOutlineEnabled(enabled);
     }
 
-    static void setBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        McrtxRuntimeSettings.setBlockOutlineEmissiveIntensityTenths(intensityTenths);
+    static void setBlockOutlineEmissiveIntensityHundredths(int intensityHundredths) {
+        McrtxRuntimeSettings.setBlockOutlineEmissiveIntensityHundredths(intensityHundredths);
         MinecraftRenderHooks.setBlockOutlineEmissiveIntensity(McrtxRuntimeSettings.getBlockOutlineEmissiveIntensity());
     }
 

@@ -123,11 +123,6 @@ final class McrtxRuntimeSettingFormatter {
         }
     }
 
-    static String formatBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        int normalizedIntensityTenths = normalizeBlockOutlineEmissiveIntensityTenths(intensityTenths);
-        return Integer.toString(normalizedIntensityTenths / 10) + "." + Integer.toString(normalizedIntensityTenths % 10);
-    }
-
     static String formatDisplacementFactorHundredths(int factorHundredths) {
         int normalizedFactorHundredths = normalizeDisplacementFactorHundredths(factorHundredths);
         return formatHundredthsValue(normalizedFactorHundredths);
@@ -195,16 +190,6 @@ final class McrtxRuntimeSettingFormatter {
             return style;
         }
         return McrtxRuntimeSettings.BLOCK_OUTLINE_STYLE_BOLD;
-    }
-
-    private static int normalizeBlockOutlineEmissiveIntensityTenths(int intensityTenths) {
-        if (intensityTenths < McrtxRuntimeSettings.MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
-            return McrtxRuntimeSettings.MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
-        }
-        if (intensityTenths > McrtxRuntimeSettings.MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS) {
-            return McrtxRuntimeSettings.MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
-        }
-        return intensityTenths;
     }
 
     private static int normalizeDisplacementFactorHundredths(int factorHundredths) {

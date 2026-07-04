@@ -70,8 +70,8 @@ public final class McrtxFovSlider extends ke {
             this.minimumValue = McrtxRuntimeSettings.MIN_NO_CULL_DISTANCE_BLOCKS;
             this.maximumValue = McrtxRuntimeSettings.MAX_NO_CULL_DISTANCE_BLOCKS;
         } else if (sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
-            this.minimumValue = McrtxRuntimeSettings.MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
-            this.maximumValue = McrtxRuntimeSettings.MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_TENTHS;
+            this.minimumValue = McrtxRuntimeSettings.MIN_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS;
+            this.maximumValue = McrtxRuntimeSettings.MAX_BLOCK_OUTLINE_EMISSIVE_INTENSITY_HUNDREDTHS;
         } else if (sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             this.minimumValue = McrtxRuntimeSettings.MIN_DISPLACEMENT_FACTOR_HUNDREDTHS;
             this.maximumValue = McrtxRuntimeSettings.MAX_DISPLACEMENT_FACTOR_HUNDREDTHS;
@@ -140,7 +140,7 @@ public final class McrtxFovSlider extends ke {
         } else if (this.sliderMode == SLIDER_MODE_NO_CULL_DISTANCE) {
             sliderValue = MinecraftRemixHooks.getNoCullDistanceBlocks();
         } else if (this.sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
-            sliderValue = MinecraftRemixHooks.getBlockOutlineEmissiveIntensityTenths();
+            sliderValue = MinecraftRemixHooks.getBlockOutlineEmissiveIntensityHundredths();
         } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             sliderValue = MinecraftRemixHooks.getDisplacementFactorHundredths();
         } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
@@ -176,7 +176,7 @@ public final class McrtxFovSlider extends ke {
         } else if (this.sliderMode == SLIDER_MODE_NO_CULL_DISTANCE) {
             MinecraftRemixHooks.setNoCullDistanceBlocks(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
-            MinecraftRemixHooks.setBlockOutlineEmissiveIntensityTenths(sliderValue);
+            MinecraftRemixHooks.setBlockOutlineEmissiveIntensityHundredths(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
             MinecraftRemixHooks.setDisplacementFactorHundredths(sliderValue);
         } else if (this.sliderMode == SLIDER_MODE_SUBSURFACE_MEASUREMENT_DISTANCE) {
@@ -213,7 +213,7 @@ public final class McrtxFovSlider extends ke {
             return;
         }
         if (this.sliderMode == SLIDER_MODE_BLOCK_OUTLINE_INTENSITY) {
-            this.e = "Outline Intensity: " + formatTenthsValue(sliderValue);
+            this.e = "Outline Intensity: " + formatHundredthsValue(sliderValue);
             return;
         }
         if (this.sliderMode == SLIDER_MODE_DISPLACEMENT_FACTOR) {
@@ -241,10 +241,6 @@ public final class McrtxFovSlider extends ke {
             return;
         }
         this.e = "FOV: " + sliderValue;
-    }
-
-    private static String formatTenthsValue(int tenthsValue) {
-        return Integer.toString(tenthsValue / 10) + "." + Integer.toString(tenthsValue % 10);
     }
 
     private static String formatHundredthsValue(int hundredthsValue) {
