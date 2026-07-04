@@ -417,11 +417,23 @@ public final class MinecraftRenderHooks {
         RemixBridgeNative.nSetRtQuality(rtQuality);
     }
 
-    public static synchronized void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, boolean rayReconstructionEnabled) {
+    public static synchronized void setUpscalerConfig(
+            int upscalerType,
+            int dlssPreset,
+            int xessPreset,
+            int taauPreset,
+            boolean rayReconstructionEnabled,
+            boolean sparseRenderingEnabled) {
         if (!initialized) {
             return;
         }
-        RemixBridgeNative.nSetUpscalerConfig(upscalerType, dlssPreset, xessPreset, taauPreset, rayReconstructionEnabled);
+        RemixBridgeNative.nSetUpscalerConfig(
+                upscalerType,
+                dlssPreset,
+                xessPreset,
+                taauPreset,
+                rayReconstructionEnabled,
+                sparseRenderingEnabled);
     }
 
     public static synchronized void setDynamicEntityBoneTransform(

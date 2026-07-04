@@ -31,6 +31,7 @@ public final class McrtxRuntimeSettings {
     public static final String XESS_PRESET_KEY = "MCRTX_XESS_PRESET";
     public static final String TAAU_PRESET_KEY = "MCRTX_TAAU_PRESET";
     public static final String RAY_RECONSTRUCTION_ENABLED_KEY = "MCRTX_RAY_RECONSTRUCTION_ENABLED";
+    public static final String SPARSE_RENDERING_ENABLED_KEY = "MCRTX_SPARSE_RENDERING_ENABLED";
     public static final String RT_QUALITY_KEY = "MCRTX_RT_QUALITY";
     public static final String BLOCK_OUTLINE_ENABLED_KEY = "MCRTX_BLOCK_OUTLINE_ENABLED";
     public static final String BLOCK_OUTLINE_STYLE_KEY = "MCRTX_BLOCK_OUTLINE_STYLE";
@@ -80,6 +81,7 @@ public final class McrtxRuntimeSettings {
     public static final int QUICK_SETTINGS_CATEGORY_MATERIAL = 3;
     public static final int DEFAULT_QUICK_SETTINGS_CATEGORY = QUICK_SETTINGS_CATEGORY_GAMEPLAY;
     public static final boolean DEFAULT_GAME_RAIN_PARTICLES_ENABLED = true;
+    public static final boolean DEFAULT_SPARSE_RENDERING_ENABLED = true;
     public static final boolean DEFAULT_WATER_THIN_WALLED_ENABLED = true;
     public static final int MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
     public static final int MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 5000;
@@ -149,6 +151,7 @@ public final class McrtxRuntimeSettings {
     private static int xessPreset = XESS_PRESET_BALANCED;
     private static int taauPreset = TAAU_PRESET_BALANCED;
     private static boolean rayReconstructionEnabled = true;
+    private static boolean sparseRenderingEnabled = DEFAULT_SPARSE_RENDERING_ENABLED;
     private static int rtQuality = RT_QUALITY_HIGH;
     private static boolean blockOutlineEnabled = true;
     private static int blockOutlineStyle = BLOCK_OUTLINE_STYLE_BOLD;
@@ -491,6 +494,24 @@ public final class McrtxRuntimeSettings {
                 return;
             }
             upscalerType = normalizedType;
+            saveLocked();
+        }
+    }
+
+    public static boolean isSparseRenderingEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return sparseRenderingEnabled;
+        }
+    }
+
+    public static void setSparseRenderingEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (sparseRenderingEnabled == enabled) {
+                return;
+            }
+            sparseRenderingEnabled = enabled;
             saveLocked();
         }
     }
@@ -877,6 +898,10 @@ public final class McrtxRuntimeSettings {
         xessPreset = readXessPresetSetting(fileValues, XESS_PRESET_KEY, XESS_PRESET_BALANCED);
         taauPreset = readTaauPresetSetting(fileValues, TAAU_PRESET_KEY, TAAU_PRESET_BALANCED);
         rayReconstructionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, RAY_RECONSTRUCTION_ENABLED_KEY, true);
+        sparseRenderingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
+            fileValues,
+            SPARSE_RENDERING_ENABLED_KEY,
+            DEFAULT_SPARSE_RENDERING_ENABLED);
         rtQuality = readRtQualitySetting(fileValues, RT_QUALITY_KEY, RT_QUALITY_HIGH);
         blockOutlineEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, BLOCK_OUTLINE_ENABLED_KEY, true);
         blockOutlineStyle = readBlockOutlineStyleSetting(fileValues, BLOCK_OUTLINE_STYLE_KEY, BLOCK_OUTLINE_STYLE_BOLD);
@@ -1344,6 +1369,7 @@ public final class McrtxRuntimeSettings {
         fileValues.put(XESS_PRESET_KEY, McrtxRuntimeSettingFormatter.formatXessPreset(xessPreset));
         fileValues.put(TAAU_PRESET_KEY, McrtxRuntimeSettingFormatter.formatTaauPreset(taauPreset));
         fileValues.put(RAY_RECONSTRUCTION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(rayReconstructionEnabled));
+        fileValues.put(SPARSE_RENDERING_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(sparseRenderingEnabled));
         fileValues.put(RT_QUALITY_KEY, McrtxRuntimeSettingFormatter.formatRtQuality(rtQuality));
         fileValues.put(BLOCK_OUTLINE_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(blockOutlineEnabled));
         fileValues.put(BLOCK_OUTLINE_STYLE_KEY, McrtxRuntimeSettingFormatter.formatBlockOutlineStyle(blockOutlineStyle));

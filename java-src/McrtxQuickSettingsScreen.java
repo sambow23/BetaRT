@@ -48,6 +48,7 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int WATER_THIN_WALL_BUTTON_ID = 29;
     private static final int REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID = 30;
     private static final int GAME_RAIN_PARTICLES_BUTTON_ID = 31;
+    private static final int SPARSE_RENDERING_BUTTON_ID = 32;
     private static final int RESET_DEFAULTS_BUTTON_ID = 308;
     private static final int CLOSE_BUTTON_ID = 309;
 
@@ -128,6 +129,12 @@ public final class McrtxQuickSettingsScreen extends da {
 
         if (button.f == RAY_RECONSTRUCTION_BUTTON_ID) {
             MinecraftRemixHooks.toggleRayReconstructionEnabled();
+            refreshButtons();
+            return;
+        }
+
+        if (button.f == SPARSE_RENDERING_BUTTON_ID) {
+            MinecraftRemixHooks.toggleSparseRenderingEnabled();
             refreshButtons();
             return;
         }
@@ -291,6 +298,11 @@ public final class McrtxQuickSettingsScreen extends da {
         ke rayReconstructionButton = findButton(RAY_RECONSTRUCTION_BUTTON_ID);
         if (rayReconstructionButton != null) {
             rayReconstructionButton.e = MinecraftRemixHooks.getRayReconstructionButtonLabel();
+        }
+
+        ke sparseRenderingButton = findButton(SPARSE_RENDERING_BUTTON_ID);
+        if (sparseRenderingButton != null) {
+            sparseRenderingButton.e = MinecraftRemixHooks.getSparseRenderingButtonLabel();
         }
 
         ke rtQualityButton = findButton(RT_QUALITY_BUTTON_ID);
@@ -479,6 +491,15 @@ public final class McrtxQuickSettingsScreen extends da {
                     getControlWidth(),
                     CONTROL_HEIGHT,
                     MinecraftRemixHooks.getRayReconstructionButtonLabel()));
+        }
+        if (MinecraftRemixHooks.shouldShowSparseRenderingOption()) {
+            addControl(new ke(
+                    SPARSE_RENDERING_BUTTON_ID,
+                    getControlX(),
+                    takeNextRowY(),
+                    getControlWidth(),
+                    CONTROL_HEIGHT,
+                    MinecraftRemixHooks.getSparseRenderingButtonLabel()));
         }
         addControl(new ke(
                 RT_QUALITY_BUTTON_ID,

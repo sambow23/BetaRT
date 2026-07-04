@@ -756,18 +756,21 @@ void RemixRenderer::applyUpscalerConfigLocked() {
     case 0:
       setConfigVariableLocked("rtx.upscalerType", "0", true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
       break;
     case 4:
       setConfigVariableLocked("rtx.upscalerType", "4", true, true);
       setConfigVariableLocked("rtx.xess.preset", xessPresetConfigValue(xessPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
       break;
     case 3:
       setConfigVariableLocked("rtx.upscalerType", "3", true, true);
       setConfigVariableLocked("rtx.taauPreset", taauPresetConfigValue(taauPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
+      setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
       break;
     case 1:
@@ -775,6 +778,11 @@ void RemixRenderer::applyUpscalerConfigLocked() {
       setConfigVariableLocked("rtx.upscalerType", "1", true, true);
       setConfigVariableLocked("rtx.qualityDLSS", dlssQualityConfigValue(dlssPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", rayReconstructionEnabled_ ? "True" : "False", true, true);
+      setConfigVariableLocked(
+          "rtx.sparseRendering.enableSparseRendering",
+          sparseRenderingEnabled_ ? "True" : "False",
+          true,
+          true);
       setConfigVariableLocked("rtx.reflexMode", "1", true, true);
       break;
   }

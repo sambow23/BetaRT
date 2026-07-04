@@ -86,6 +86,10 @@ final class McrtxHookSettingsUi {
         return "Ray Reconstruction: " + formatToggleState(McrtxRuntimeSettings.isRayReconstructionEnabled());
     }
 
+    static String getSparseRenderingButtonLabel() {
+        return "Sparse Rendering: " + formatToggleState(McrtxRuntimeSettings.isSparseRenderingEnabled());
+    }
+
     static String getBlockOutlineButtonLabel() {
         return "Block Outline: " + formatToggleState(McrtxRuntimeSettings.isBlockOutlineEnabled());
     }
@@ -344,11 +348,23 @@ final class McrtxHookSettingsUi {
         return McrtxRuntimeSettings.getUpscalerType() == McrtxRuntimeSettings.UPSCALER_TYPE_DLSS;
     }
 
+    static boolean shouldShowSparseRenderingOption() {
+        return McrtxRuntimeSettings.getUpscalerType() == McrtxRuntimeSettings.UPSCALER_TYPE_DLSS;
+    }
+
     static void toggleRayReconstructionEnabled() {
         if (!shouldShowRayReconstructionOption()) {
             return;
         }
         McrtxRuntimeSettings.setRayReconstructionEnabled(!McrtxRuntimeSettings.isRayReconstructionEnabled());
+        applyUpscalerSettings();
+    }
+
+    static void toggleSparseRenderingEnabled() {
+        if (!shouldShowSparseRenderingOption()) {
+            return;
+        }
+        McrtxRuntimeSettings.setSparseRenderingEnabled(!McrtxRuntimeSettings.isSparseRenderingEnabled());
         applyUpscalerSettings();
     }
 
@@ -503,7 +519,8 @@ final class McrtxHookSettingsUi {
                 McrtxRuntimeSettings.getDlssPreset(),
                 McrtxRuntimeSettings.getXessPreset(),
                 McrtxRuntimeSettings.getTaauPreset(),
-                McrtxRuntimeSettings.isRayReconstructionEnabled());
+                McrtxRuntimeSettings.isRayReconstructionEnabled(),
+                McrtxRuntimeSettings.isSparseRenderingEnabled());
     }
 
     private static String describeRtQuality(int rtQuality) {

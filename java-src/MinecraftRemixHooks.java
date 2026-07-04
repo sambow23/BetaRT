@@ -971,6 +971,10 @@ public final class MinecraftRemixHooks {
         return McrtxHookSettingsUi.getRayReconstructionButtonLabel();
     }
 
+    public static String getSparseRenderingButtonLabel() {
+        return McrtxHookSettingsUi.getSparseRenderingButtonLabel();
+    }
+
     public static String getBlockOutlineButtonLabel() {
         return McrtxHookSettingsUi.getBlockOutlineButtonLabel();
     }
@@ -1071,6 +1075,10 @@ public final class MinecraftRemixHooks {
         McrtxHookSettingsUi.setGameRainParticlesEnabled(enabled);
     }
 
+    public static boolean isSparseRenderingEnabled() {
+        return McrtxRuntimeSettings.isSparseRenderingEnabled();
+    }
+
     public static void setGameplayFovDegrees(int fovDegrees) {
         McrtxHookSettingsUi.setGameplayFovDegrees(fovDegrees);
     }
@@ -1147,8 +1155,16 @@ public final class MinecraftRemixHooks {
         return McrtxHookSettingsUi.shouldShowRayReconstructionOption();
     }
 
+    public static boolean shouldShowSparseRenderingOption() {
+        return McrtxHookSettingsUi.shouldShowSparseRenderingOption();
+    }
+
     public static void toggleRayReconstructionEnabled() {
         McrtxHookSettingsUi.toggleRayReconstructionEnabled();
+    }
+
+    public static void toggleSparseRenderingEnabled() {
+        McrtxHookSettingsUi.toggleSparseRenderingEnabled();
     }
 
     private static void resetRemixUiTracking() {

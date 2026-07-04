@@ -80,7 +80,13 @@ public:
   void setWaterMaterialThickness(float thickness);
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
-  void setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled);
+  void setUpscalerConfig(
+      int upscalerType,
+      int dlssPreset,
+      int xessPreset,
+      int taauPreset,
+      bool rayReconstructionEnabled,
+      bool sparseRenderingEnabled);
   void setRemixAtmosphereCloudsEnabled(bool enabled);
   void setDynamicEntityBoneTransform(
       std::uint32_t boneIndex,
@@ -548,6 +554,7 @@ private:
   int xessPreset_ {2};
   int taauPreset_ {2};
   bool rayReconstructionEnabled_ {true};
+  bool sparseRenderingEnabled_ {true};
   bool remixAtmosphereCloudsEnabled_ {false};
   int rtQuality_ {kRtQualityHigh};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};

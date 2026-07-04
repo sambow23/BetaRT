@@ -849,7 +849,13 @@ void RemixRenderer::setRtQuality(int rtQuality) {
   applyRtQualityConfigLocked();
 }
 
-void RemixRenderer::setUpscalerConfig(int upscalerType, int dlssPreset, int xessPreset, int taauPreset, bool rayReconstructionEnabled) {
+void RemixRenderer::setUpscalerConfig(
+    int upscalerType,
+    int dlssPreset,
+    int xessPreset,
+    int taauPreset,
+    bool rayReconstructionEnabled,
+    bool sparseRenderingEnabled) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setUpscalerConfig");
   std::scoped_lock lock(mutex_);
 
@@ -871,6 +877,7 @@ void RemixRenderer::setUpscalerConfig(int upscalerType, int dlssPreset, int xess
   xessPreset_ = xessPreset;
   taauPreset_ = taauPreset;
   rayReconstructionEnabled_ = rayReconstructionEnabled;
+  sparseRenderingEnabled_ = sparseRenderingEnabled;
   if (!initialized_) {
     return;
   }

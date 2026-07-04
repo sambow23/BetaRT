@@ -16,6 +16,6 @@ public final class McrtxCloudMode {
     }
 
     public static String formatButtonLabel(boolean remixAtmosphereCloudsEnabled) {
-        return "Remix Clouds: " + (remixAtmosphereCloudsEnabled ? "ON" : "OFF");
+        return "Volumetric Clouds: " + (remixAtmosphereCloudsEnabled ? "ON" : "OFF");
     }
 }
