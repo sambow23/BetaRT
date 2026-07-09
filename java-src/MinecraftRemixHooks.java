@@ -887,8 +887,32 @@ public final class MinecraftRemixHooks {
         return McrtxRuntimeSettings.getWaterMaterialThicknessThousandths();
     }
 
+    public static int getWaterTransmittanceRedHundredths() {
+        return McrtxRuntimeSettings.getWaterTransmittanceRedHundredths();
+    }
+
+    public static int getWaterTransmittanceGreenHundredths() {
+        return McrtxRuntimeSettings.getWaterTransmittanceGreenHundredths();
+    }
+
+    public static int getWaterTransmittanceBlueHundredths() {
+        return McrtxRuntimeSettings.getWaterTransmittanceBlueHundredths();
+    }
+
+    public static int getWaterTransmittanceDistanceHundredths() {
+        return McrtxRuntimeSettings.getWaterTransmittanceDistanceHundredths();
+    }
+
+    public static int getWaterRefractiveIndexThousandths() {
+        return McrtxRuntimeSettings.getWaterRefractiveIndexThousandths();
+    }
+
     public static boolean isWaterThinWalledEnabled() {
         return McrtxRuntimeSettings.isWaterThinWalledEnabled();
+    }
+
+    public static boolean isWaterDiffuseLayerEnabled() {
+        return McrtxRuntimeSettings.isWaterDiffuseLayerEnabled();
     }
 
     public static boolean isSubsurfaceDiffusionProfileEnabled() {
@@ -989,6 +1013,10 @@ public final class MinecraftRemixHooks {
 
     public static String getWaterThinWallButtonLabel() {
         return McrtxHookSettingsUi.getWaterThinWallButtonLabel();
+    }
+
+    public static String getWaterDiffuseLayerButtonLabel() {
+        return McrtxHookSettingsUi.getWaterDiffuseLayerButtonLabel();
     }
 
     public static String getRemixAtmosphereCloudsButtonLabel() {
@@ -1129,6 +1157,30 @@ public final class MinecraftRemixHooks {
 
     public static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
         McrtxHookSettingsUi.setWaterMaterialThicknessThousandths(thicknessThousandths);
+    }
+
+    public static void setWaterTransmittanceRedHundredths(int redHundredths) {
+        McrtxHookSettingsUi.setWaterTransmittanceRedHundredths(redHundredths);
+    }
+
+    public static void setWaterTransmittanceGreenHundredths(int greenHundredths) {
+        McrtxHookSettingsUi.setWaterTransmittanceGreenHundredths(greenHundredths);
+    }
+
+    public static void setWaterTransmittanceBlueHundredths(int blueHundredths) {
+        McrtxHookSettingsUi.setWaterTransmittanceBlueHundredths(blueHundredths);
+    }
+
+    public static void setWaterTransmittanceDistanceHundredths(int distanceHundredths) {
+        McrtxHookSettingsUi.setWaterTransmittanceDistanceHundredths(distanceHundredths);
+    }
+
+    public static void setWaterRefractiveIndexThousandths(int refractiveIndexThousandths) {
+        McrtxHookSettingsUi.setWaterRefractiveIndexThousandths(refractiveIndexThousandths);
+    }
+
+    public static void setWaterDiffuseLayerEnabled(boolean enabled) {
+        McrtxHookSettingsUi.setWaterDiffuseLayerEnabled(enabled);
     }
 
     public static void resetSubsurfaceSettingsToDefaults() {

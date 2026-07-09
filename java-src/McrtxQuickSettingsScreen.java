@@ -49,6 +49,12 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID = 30;
     private static final int GAME_RAIN_PARTICLES_BUTTON_ID = 31;
     private static final int SPARSE_RENDERING_BUTTON_ID = 32;
+    private static final int WATER_TRANSMITTANCE_RED_SLIDER_ID = 33;
+    private static final int WATER_TRANSMITTANCE_GREEN_SLIDER_ID = 34;
+    private static final int WATER_TRANSMITTANCE_BLUE_SLIDER_ID = 35;
+    private static final int WATER_TRANSMITTANCE_DISTANCE_SLIDER_ID = 36;
+    private static final int WATER_REFRACTIVE_INDEX_SLIDER_ID = 37;
+    private static final int WATER_DIFFUSE_LAYER_BUTTON_ID = 38;
     private static final int RESET_DEFAULTS_BUTTON_ID = 308;
     private static final int CLOSE_BUTTON_ID = 309;
 
@@ -235,6 +241,12 @@ public final class McrtxQuickSettingsScreen extends da {
             return;
         }
 
+        if (button.f == WATER_DIFFUSE_LAYER_BUTTON_ID) {
+            MinecraftRemixHooks.setWaterDiffuseLayerEnabled(!MinecraftRemixHooks.isWaterDiffuseLayerEnabled());
+            refreshButtons();
+            return;
+        }
+
         if (button.f == RESET_DEFAULTS_BUTTON_ID) {
             MinecraftRemixHooks.resetSubsurfaceSettingsToDefaults();
             b();
@@ -378,6 +390,11 @@ public final class McrtxQuickSettingsScreen extends da {
         ke waterThinWallButton = findButton(WATER_THIN_WALL_BUTTON_ID);
         if (waterThinWallButton != null) {
             waterThinWallButton.e = MinecraftRemixHooks.getWaterThinWallButtonLabel();
+        }
+
+        ke waterDiffuseLayerButton = findButton(WATER_DIFFUSE_LAYER_BUTTON_ID);
+        if (waterDiffuseLayerButton != null) {
+            waterDiffuseLayerButton.e = MinecraftRemixHooks.getWaterDiffuseLayerButtonLabel();
         }
 
         ke diffusionProfileButton = findButton(SUBSURFACE_DIFFUSION_PROFILE_BUTTON_ID);
@@ -636,6 +653,43 @@ public final class McrtxQuickSettingsScreen extends da {
                 getControlWidth(),
                 CONTROL_HEIGHT,
                 MinecraftRemixHooks.getSubsurfaceDiffusionProfileButtonLabel()));
+        addControl(McrtxWaterTransmissionSlider.createTransmittanceRedSlider(
+                WATER_TRANSMITTANCE_RED_SLIDER_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT));
+        addControl(McrtxWaterTransmissionSlider.createTransmittanceGreenSlider(
+                WATER_TRANSMITTANCE_GREEN_SLIDER_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT));
+        addControl(McrtxWaterTransmissionSlider.createTransmittanceBlueSlider(
+                WATER_TRANSMITTANCE_BLUE_SLIDER_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT));
+        addControl(McrtxWaterTransmissionSlider.createTransmittanceDistanceSlider(
+                WATER_TRANSMITTANCE_DISTANCE_SLIDER_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT));
+        addControl(McrtxWaterTransmissionSlider.createRefractiveIndexSlider(
+                WATER_REFRACTIVE_INDEX_SLIDER_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT));
+        addControl(new ke(
+                WATER_DIFFUSE_LAYER_BUTTON_ID,
+                getControlX(),
+                takeNextRowY(),
+                getControlWidth(),
+                CONTROL_HEIGHT,
+                MinecraftRemixHooks.getWaterDiffuseLayerButtonLabel()));
         addControl(new ke(
                 WATER_THIN_WALL_BUTTON_ID,
                 getControlX(),
@@ -644,7 +698,7 @@ public final class McrtxQuickSettingsScreen extends da {
                 CONTROL_HEIGHT,
                 MinecraftRemixHooks.getWaterThinWallButtonLabel()));
         if (MinecraftRemixHooks.shouldShowWaterMaterialThicknessSlider()) {
-            addControl(McrtxFovSlider.createWaterMaterialThicknessSlider(
+            addControl(McrtxWaterTransmissionSlider.createThicknessSlider(
                     WATER_MATERIAL_THICKNESS_SLIDER_ID,
                     getControlX(),
                     takeNextRowY(),

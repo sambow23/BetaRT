@@ -746,40 +746,59 @@ void RemixRenderer::setSubsurfaceDiffusionProfileEnabled(bool enabled) {
   rebuildMaterialDependentMeshesLocked();
 }
 
-void RemixRenderer::setWaterThinWalledEnabled(bool enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterThinWalledEnabled");
+void RemixRenderer::setWaterTransmissionSettings(
+    float red,
+    float green,
+    float blue,
+    float measurementDistance,
+    float refractiveIndex,
+    bool diffuseLayerEnabled,
+    bool thinWalledEnabled,
+    float thickness) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterTransmissionSettings");
   std::scoped_lock lock(mutex_);
 
-  if (waterThinWalledEnabled_ == enabled) {
+  const auto normalize = [](float value, float fallback, float minimum, float maximum) {
+    return std::clamp(std::isfinite(value) ? value : fallback, minimum, maximum);
+  };
+
+  red = normalize(red, kWaterTransmittanceColor.x, kWaterMinTransmittanceColor, kWaterMaxTransmittanceColor);
+  green = normalize(green, kWaterTransmittanceColor.y, kWaterMinTransmittanceColor, kWaterMaxTransmittanceColor);
+  blue = normalize(blue, kWaterTransmittanceColor.z, kWaterMinTransmittanceColor, kWaterMaxTransmittanceColor);
+  measurementDistance = normalize(
+      measurementDistance,
+      kWaterTransmittanceDistance,
+      kWaterMinTransmittanceDistance,
+      kWaterMaxTransmittanceDistance);
+  refractiveIndex = normalize(
+      refractiveIndex,
+      kWaterRefractiveIndex,
+      kWaterMinRefractiveIndex,
+      kWaterMaxRefractiveIndex);
+  thickness = normalize(
+      thickness,
+      kWaterDefaultThinWallThickness,
+      kWaterThinWallThickness,
+      kWaterMaxThinWallThickness);
+
+  const bool unchanged =
+      std::abs(waterTransmittanceColor_.x - red) < 0.0001f
+      && std::abs(waterTransmittanceColor_.y - green) < 0.0001f
+      && std::abs(waterTransmittanceColor_.z - blue) < 0.0001f
+      && std::abs(waterTransmittanceDistance_ - measurementDistance) < 0.0001f
+      && std::abs(waterRefractiveIndex_ - refractiveIndex) < 0.0001f
+      && waterDiffuseLayerEnabled_ == diffuseLayerEnabled
+      && waterThinWalledEnabled_ == thinWalledEnabled
+      && std::abs(waterMaterialThickness_ - thickness) < 0.0001f;
+  if (unchanged) {
     return;
   }
 
-  waterThinWalledEnabled_ = enabled;
-  if (!initialized_) {
-    return;
-  }
-
-  rebuildMaterialDependentMeshesLocked();
-}
-
-void RemixRenderer::setWaterMaterialThickness(float thickness) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterMaterialThickness");
-  std::scoped_lock lock(mutex_);
-
-  if (!std::isfinite(thickness)) {
-    thickness = kWaterThinWallThickness;
-  }
-
-  if (thickness < kWaterThinWallThickness) {
-    thickness = kWaterThinWallThickness;
-  } else if (thickness > 5.0f) {
-    thickness = 5.0f;
-  }
-
-  if (std::abs(waterMaterialThickness_ - thickness) < 0.0001f) {
-    return;
-  }
-
+  waterTransmittanceColor_ = {red, green, blue};
+  waterTransmittanceDistance_ = measurementDistance;
+  waterRefractiveIndex_ = refractiveIndex;
+  waterDiffuseLayerEnabled_ = diffuseLayerEnabled;
+  waterThinWalledEnabled_ = thinWalledEnabled;
   waterMaterialThickness_ = thickness;
   if (!initialized_) {
     return;

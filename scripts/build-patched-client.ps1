@@ -1382,6 +1382,7 @@ $runtimeSourceFiles = @(
     (Join-Path $repoRoot "java-src\McrtxHookPerfTracker.java"),
     (Join-Path $repoRoot "java-src\McrtxHookSettingsUi.java"),
     (Join-Path $repoRoot "java-src\McrtxFovSlider.java"),
+    (Join-Path $repoRoot "java-src\McrtxWaterTransmissionSlider.java"),
     (Join-Path $repoRoot "java-src\McrtxQuickSettingsScreen.java"),
     (Join-Path $repoRoot "java-src\cb.java"),
     (Join-Path $repoRoot "java-src\RemixBlockOutlineCapture.java"),

@@ -76,8 +76,15 @@ public:
   void setSubsurfaceMaxSampleRadius(float radius);
   void setSubsurfaceVolumetricAnisotropy(float anisotropy);
   void setSubsurfaceDiffusionProfileEnabled(bool enabled);
-  void setWaterThinWalledEnabled(bool enabled);
-  void setWaterMaterialThickness(float thickness);
+  void setWaterTransmissionSettings(
+      float red,
+      float green,
+      float blue,
+      float measurementDistance,
+      float refractiveIndex,
+      bool diffuseLayerEnabled,
+      bool thinWalledEnabled,
+      float thickness);
   void setViewModelFovDegrees(float fovYDegrees);
   void setRtQuality(int rtQuality);
   void setUpscalerConfig(
@@ -542,6 +549,10 @@ private:
   float subsurfaceMaxSampleRadius_ {16.0f};
   float subsurfaceVolumetricAnisotropy_ {0.0f};
   bool subsurfaceDiffusionProfileEnabled_ {true};
+  remixapi_Float3D waterTransmittanceColor_ {0.74f, 0.9f, 1.0f};
+  float waterTransmittanceDistance_ {1.5f};
+  float waterRefractiveIndex_ {1.333f};
+  bool waterDiffuseLayerEnabled_ {true};
   bool waterThinWalledEnabled_ {true};
   float waterMaterialThickness_ {1.0f};
   static constexpr int kRtQualityLow = 0;

@@ -108,6 +108,10 @@ final class McrtxHookSettingsUi {
                 : "Water Mode: Refractive";
     }
 
+    static String getWaterDiffuseLayerButtonLabel() {
+        return "Water Diffuse Layer: " + formatToggleState(McrtxRuntimeSettings.isWaterDiffuseLayerEnabled());
+    }
+
     static String getRemixAtmosphereCloudsButtonLabel() {
         return McrtxCloudMode.formatButtonLabel(McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled());
     }
@@ -239,12 +243,42 @@ final class McrtxHookSettingsUi {
 
     static void setWaterThinWalledEnabled(boolean enabled) {
         McrtxRuntimeSettings.setWaterThinWalledEnabled(enabled);
-        MinecraftRenderHooks.setWaterThinWalledEnabled(enabled);
+        applyWaterTransmissionSettings();
     }
 
     static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
         McrtxRuntimeSettings.setWaterMaterialThicknessThousandths(thicknessThousandths);
-        MinecraftRenderHooks.setWaterMaterialThickness(McrtxRuntimeSettings.getWaterMaterialThickness());
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterTransmittanceRedHundredths(int redHundredths) {
+        McrtxRuntimeSettings.setWaterTransmittanceRedHundredths(redHundredths);
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterTransmittanceGreenHundredths(int greenHundredths) {
+        McrtxRuntimeSettings.setWaterTransmittanceGreenHundredths(greenHundredths);
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterTransmittanceBlueHundredths(int blueHundredths) {
+        McrtxRuntimeSettings.setWaterTransmittanceBlueHundredths(blueHundredths);
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterTransmittanceDistanceHundredths(int distanceHundredths) {
+        McrtxRuntimeSettings.setWaterTransmittanceDistanceHundredths(distanceHundredths);
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterRefractiveIndexThousandths(int refractiveIndexThousandths) {
+        McrtxRuntimeSettings.setWaterRefractiveIndexThousandths(refractiveIndexThousandths);
+        applyWaterTransmissionSettings();
+    }
+
+    static void setWaterDiffuseLayerEnabled(boolean enabled) {
+        McrtxRuntimeSettings.setWaterDiffuseLayerEnabled(enabled);
+        applyWaterTransmissionSettings();
     }
 
     static void resetSubsurfaceSettingsToDefaults() {
@@ -253,8 +287,15 @@ final class McrtxHookSettingsUi {
         setSubsurfaceMaxSampleRadiusHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS);
         setSubsurfaceVolumetricAnisotropyHundredths(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS);
         setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.DEFAULT_SUBSURFACE_DIFFUSION_PROFILE_ENABLED);
-        setWaterThinWalledEnabled(McrtxRuntimeSettings.DEFAULT_WATER_THIN_WALLED_ENABLED);
-        setWaterMaterialThicknessThousandths(McrtxRuntimeSettings.DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+        McrtxRuntimeSettings.setWaterTransmittanceRedHundredths(McrtxRuntimeSettings.DEFAULT_WATER_TRANSMITTANCE_RED_HUNDREDTHS);
+        McrtxRuntimeSettings.setWaterTransmittanceGreenHundredths(McrtxRuntimeSettings.DEFAULT_WATER_TRANSMITTANCE_GREEN_HUNDREDTHS);
+        McrtxRuntimeSettings.setWaterTransmittanceBlueHundredths(McrtxRuntimeSettings.DEFAULT_WATER_TRANSMITTANCE_BLUE_HUNDREDTHS);
+        McrtxRuntimeSettings.setWaterTransmittanceDistanceHundredths(McrtxRuntimeSettings.DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS);
+        McrtxRuntimeSettings.setWaterRefractiveIndexThousandths(McrtxRuntimeSettings.DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS);
+        McrtxRuntimeSettings.setWaterDiffuseLayerEnabled(McrtxRuntimeSettings.DEFAULT_WATER_DIFFUSE_LAYER_ENABLED);
+        McrtxRuntimeSettings.setWaterThinWalledEnabled(McrtxRuntimeSettings.DEFAULT_WATER_THIN_WALLED_ENABLED);
+        McrtxRuntimeSettings.setWaterMaterialThicknessThousandths(McrtxRuntimeSettings.DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+        applyWaterTransmissionSettings();
     }
 
     static void cycleBlockOutlineStyle() {
@@ -395,8 +436,7 @@ final class McrtxHookSettingsUi {
         MinecraftRenderHooks.setSubsurfaceMaxSampleRadius(McrtxRuntimeSettings.getSubsurfaceMaxSampleRadius());
         MinecraftRenderHooks.setSubsurfaceVolumetricAnisotropy(McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropy());
         MinecraftRenderHooks.setSubsurfaceDiffusionProfileEnabled(McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled());
-        MinecraftRenderHooks.setWaterThinWalledEnabled(McrtxRuntimeSettings.isWaterThinWalledEnabled());
-        MinecraftRenderHooks.setWaterMaterialThickness(McrtxRuntimeSettings.getWaterMaterialThickness());
+        applyWaterTransmissionSettings();
         MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled());
         RemixCameraState.setNoCullDistanceBlocks(McrtxRuntimeSettings.getNoCullDistanceBlocks());
         MinecraftRenderHooks.setViewModelFovDegrees(McrtxRuntimeSettings.getViewModelFovDegrees());
@@ -406,6 +446,18 @@ final class McrtxHookSettingsUi {
 
     static String formatToggleState(boolean enabled) {
         return enabled ? "ON" : "OFF";
+    }
+
+    private static void applyWaterTransmissionSettings() {
+        MinecraftRenderHooks.setWaterTransmissionSettings(
+                McrtxRuntimeSettings.getWaterTransmittanceRed(),
+                McrtxRuntimeSettings.getWaterTransmittanceGreen(),
+                McrtxRuntimeSettings.getWaterTransmittanceBlue(),
+                McrtxRuntimeSettings.getWaterTransmittanceDistance(),
+                McrtxRuntimeSettings.getWaterRefractiveIndex(),
+                McrtxRuntimeSettings.isWaterDiffuseLayerEnabled(),
+                McrtxRuntimeSettings.isWaterThinWalledEnabled(),
+                McrtxRuntimeSettings.getWaterMaterialThickness());
     }
 
     private static String describeBlockOutlineStyle(int style) {

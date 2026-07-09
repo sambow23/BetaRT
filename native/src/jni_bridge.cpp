@@ -527,16 +527,27 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceDiffusi
   RemixRenderer::instance().setSubsurfaceDiffusionProfileEnabled(enabled == JNI_TRUE);
 }
 
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetWaterThinWalledEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetWaterThinWalledEnabled");
-  RemixRenderer::instance().setWaterThinWalledEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetWaterMaterialThickness(
-    JNIEnv*, jclass, jfloat thickness) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetWaterMaterialThickness");
-  RemixRenderer::instance().setWaterMaterialThickness(thickness);
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetWaterTransmissionSettings(
+    JNIEnv*,
+    jclass,
+    jfloat red,
+    jfloat green,
+    jfloat blue,
+    jfloat measurementDistance,
+    jfloat refractiveIndex,
+    jboolean diffuseLayerEnabled,
+    jboolean thinWalledEnabled,
+    jfloat thickness) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetWaterTransmissionSettings");
+  RemixRenderer::instance().setWaterTransmissionSettings(
+      red,
+      green,
+      blue,
+      measurementDistance,
+      refractiveIndex,
+      diffuseLayerEnabled == JNI_TRUE,
+      thinWalledEnabled == JNI_TRUE,
+      thickness);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetViewModelFovDegrees(

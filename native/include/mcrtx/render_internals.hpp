@@ -122,10 +122,19 @@ constexpr float kTerrainEmissiveIntensity = 5.0f;
 inline constexpr remixapi_Float3D kTerrainEmissiveColor = {1.0f, 1.0f, 1.0f};
 
 // Translucent material physics parameters
-inline constexpr remixapi_Float3D kWaterTransmittanceColor = {0.2f, 0.5f, 0.8f};
+inline constexpr remixapi_Float3D kWaterTransmittanceColor = {0.74f, 0.9f, 1.0f};
+constexpr float kWaterMinTransmittanceColor = 0.01f;
+constexpr float kWaterMaxTransmittanceColor = 1.0f;
 constexpr float kWaterTransmittanceDistance = 1.5f;
+constexpr float kWaterMinTransmittanceDistance = 0.01f;
+constexpr float kWaterMaxTransmittanceDistance = 25.0f;
 constexpr float kWaterRefractiveIndex = 1.333f;
+constexpr float kWaterMinRefractiveIndex = 1.0f;
+constexpr float kWaterMaxRefractiveIndex = 3.0f;
+constexpr bool kWaterUseDiffuseLayer = true;
 constexpr float kWaterThinWallThickness = 0.001f;
+constexpr float kWaterDefaultThinWallThickness = 1.0f;
+constexpr float kWaterMaxThinWallThickness = 5.0f;
 
 inline constexpr remixapi_Float3D kPortalTransmittanceColor = {0.5f, 0.2f, 0.8f};
 constexpr float kPortalTransmittanceDistance = 0.5f;
