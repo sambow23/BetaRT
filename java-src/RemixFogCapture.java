@@ -42,10 +42,15 @@ public final class RemixFogCapture {
         float fogColorR = toLinearColor(colorR);
         float fogColorG = toLinearColor(colorG);
         float fogColorB = toLinearColor(colorB);
-        float fogBrightness = computeDayNightFogBrightness(fogColorR, fogColorG, fogColorB);
-        fogColorR *= fogBrightness;
-        fogColorG *= fogBrightness;
-        fogColorB *= fogBrightness;
+        // Skyless dimensions (Nether) have no day/night cycle and use a static
+        // dark fog color whose low luminance would be misread as "night" and
+        // crushed to near-black by the day/night heuristic.
+        if (!forceStartAtCamera) {
+            float fogBrightness = computeDayNightFogBrightness(fogColorR, fogColorG, fogColorB);
+            fogColorR *= fogBrightness;
+            fogColorG *= fogBrightness;
+            fogColorB *= fogBrightness;
+        }
 
         int fogMode = D3DFOG_NONE;
         float fogScale = 0.0f;
@@ -60,12 +65,12 @@ public final class RemixFogCapture {
         } else if (entity != null && entity.a(ln.g)) {
             fogMode = D3DFOG_LINEAR;
             fogEnd = WATER_FOG_END_BLOCKS;
-            fogScale = 1.0f / fogEnd;
+            fogScale = REMIX_LINEAR_FOG_FACTORS_SENTINEL;
             submerged = true;
         } else if (entity != null && entity.a(ln.h)) {
             fogMode = D3DFOG_LINEAR;
             fogEnd = LAVA_FOG_END_BLOCKS;
-            fogScale = 1.0f / fogEnd;
+            fogScale = REMIX_LINEAR_FOG_FACTORS_SENTINEL;
         } else if (clampedViewDistance > 0.0f) {
             fogMode = D3DFOG_LINEAR;
             float fogStart = clampedViewDistance * 0.4f;

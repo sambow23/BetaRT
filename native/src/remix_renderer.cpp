@@ -847,6 +847,10 @@ void RemixRenderer::publishCelestialTexturePathsLocked() {
 void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere) {
   publishCelestialTexturePathsLocked();
 
+  // Skyless dimensions (Nether): the runtime suppresses physical sky/star
+  // sampling and forces full fog opacity on miss pixels while this flag is set.
+  setGameValueLocked("__atmosphere.skyless", forceDarkAtmosphere ? "1" : "0", false);
+
   if (forceDarkAtmosphere) {
     setConfigFloatLocked("rtx.atmosphere.sunElevation", -30.0f, 2, false);
     setGameValueLocked("__atmosphere.moon0.enabled", "0", false);
