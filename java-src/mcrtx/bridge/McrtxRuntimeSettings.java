@@ -45,6 +45,12 @@ public final class McrtxRuntimeSettings {
     public static final String QUICK_SETTINGS_CATEGORY_KEY = "MCRTX_QUICK_SETTINGS_CATEGORY";
     public static final String WATER_THIN_WALLED_ENABLED_KEY = "MCRTX_WATER_THIN_WALLED_ENABLED";
     public static final String WATER_MATERIAL_THICKNESS_KEY = "MCRTX_WATER_MATERIAL_THICKNESS";
+    public static final String WATER_TRANSMITTANCE_RED_KEY = "MCRTX_WATER_TRANSMITTANCE_COLOR_R";
+    public static final String WATER_TRANSMITTANCE_GREEN_KEY = "MCRTX_WATER_TRANSMITTANCE_COLOR_G";
+    public static final String WATER_TRANSMITTANCE_BLUE_KEY = "MCRTX_WATER_TRANSMITTANCE_COLOR_B";
+    public static final String WATER_TRANSMITTANCE_DISTANCE_KEY = "MCRTX_WATER_TRANSMITTANCE_MEASUREMENT_DISTANCE";
+    public static final String WATER_REFRACTIVE_INDEX_KEY = "MCRTX_WATER_REFRACTIVE_INDEX";
+    public static final String WATER_DIFFUSE_LAYER_ENABLED_KEY = "MCRTX_WATER_USE_DIFFUSE_LAYER";
     private static final String WATER_MATERIAL_THICKNESS_MIGRATION_KEY = "MCRTX_WATER_MATERIAL_THICKNESS_MIGRATED";
 
     public static final int MIN_GAMEPLAY_FOV_DEGREES = 30;
@@ -86,6 +92,18 @@ public final class McrtxRuntimeSettings {
     public static final int MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
     public static final int MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 5000;
     public static final int DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1000;
+    public static final int MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS = 1;
+    public static final int MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS = 100;
+    public static final int DEFAULT_WATER_TRANSMITTANCE_RED_HUNDREDTHS = 74;
+    public static final int DEFAULT_WATER_TRANSMITTANCE_GREEN_HUNDREDTHS = 90;
+    public static final int DEFAULT_WATER_TRANSMITTANCE_BLUE_HUNDREDTHS = 100;
+    public static final int MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS = 1;
+    public static final int MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS = 2500;
+    public static final int DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS = 150;
+    public static final int MIN_WATER_REFRACTIVE_INDEX_THOUSANDTHS = 1000;
+    public static final int MAX_WATER_REFRACTIVE_INDEX_THOUSANDTHS = 3000;
+    public static final int DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS = 1333;
+    public static final boolean DEFAULT_WATER_DIFFUSE_LAYER_ENABLED = true;
     private static final int LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
 
     public static final int BLOCK_OUTLINE_STYLE_SUBTLE = 0;
@@ -165,6 +183,12 @@ public final class McrtxRuntimeSettings {
     private static int quickSettingsCategory = DEFAULT_QUICK_SETTINGS_CATEGORY;
     private static boolean waterThinWalledEnabled = DEFAULT_WATER_THIN_WALLED_ENABLED;
     private static int waterMaterialThicknessThousandths = DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
+    private static int waterTransmittanceRedHundredths = DEFAULT_WATER_TRANSMITTANCE_RED_HUNDREDTHS;
+    private static int waterTransmittanceGreenHundredths = DEFAULT_WATER_TRANSMITTANCE_GREEN_HUNDREDTHS;
+    private static int waterTransmittanceBlueHundredths = DEFAULT_WATER_TRANSMITTANCE_BLUE_HUNDREDTHS;
+    private static int waterTransmittanceDistanceHundredths = DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS;
+    private static int waterRefractiveIndexThousandths = DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS;
+    private static boolean waterDiffuseLayerEnabled = DEFAULT_WATER_DIFFUSE_LAYER_ENABLED;
 
     private McrtxRuntimeSettings() {
     }
@@ -706,6 +730,83 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static int getWaterTransmittanceRedHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterTransmittanceRedHundredths;
+        }
+    }
+
+    public static float getWaterTransmittanceRed() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterTransmittanceRedHundredths / 100.0f;
+        }
+    }
+
+    public static int getWaterTransmittanceGreenHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterTransmittanceGreenHundredths;
+        }
+    }
+
+    public static float getWaterTransmittanceGreen() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterTransmittanceGreenHundredths / 100.0f;
+        }
+    }
+
+    public static int getWaterTransmittanceBlueHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterTransmittanceBlueHundredths;
+        }
+    }
+
+    public static float getWaterTransmittanceBlue() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterTransmittanceBlueHundredths / 100.0f;
+        }
+    }
+
+    public static int getWaterTransmittanceDistanceHundredths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterTransmittanceDistanceHundredths;
+        }
+    }
+
+    public static float getWaterTransmittanceDistance() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterTransmittanceDistanceHundredths / 100.0f;
+        }
+    }
+
+    public static int getWaterRefractiveIndexThousandths() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterRefractiveIndexThousandths;
+        }
+    }
+
+    public static float getWaterRefractiveIndex() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return (float) waterRefractiveIndexThousandths / 1000.0f;
+        }
+    }
+
+    public static boolean isWaterDiffuseLayerEnabled() {
+        synchronized (LOCK) {
+            ensureLoaded();
+            return waterDiffuseLayerEnabled;
+        }
+    }
+
     public static boolean isWaterThinWalledEnabled() {
         synchronized (LOCK) {
             ensureLoaded();
@@ -853,6 +954,77 @@ public final class McrtxRuntimeSettings {
         }
     }
 
+    public static void setWaterTransmittanceRedHundredths(int redHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedRedHundredths = normalizeWaterTransmittanceColorHundredths(redHundredths);
+            if (waterTransmittanceRedHundredths == normalizedRedHundredths) {
+                return;
+            }
+            waterTransmittanceRedHundredths = normalizedRedHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterTransmittanceGreenHundredths(int greenHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedGreenHundredths = normalizeWaterTransmittanceColorHundredths(greenHundredths);
+            if (waterTransmittanceGreenHundredths == normalizedGreenHundredths) {
+                return;
+            }
+            waterTransmittanceGreenHundredths = normalizedGreenHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterTransmittanceBlueHundredths(int blueHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedBlueHundredths = normalizeWaterTransmittanceColorHundredths(blueHundredths);
+            if (waterTransmittanceBlueHundredths == normalizedBlueHundredths) {
+                return;
+            }
+            waterTransmittanceBlueHundredths = normalizedBlueHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterTransmittanceDistanceHundredths(int distanceHundredths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedDistanceHundredths = normalizeWaterTransmittanceDistanceHundredths(distanceHundredths);
+            if (waterTransmittanceDistanceHundredths == normalizedDistanceHundredths) {
+                return;
+            }
+            waterTransmittanceDistanceHundredths = normalizedDistanceHundredths;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterRefractiveIndexThousandths(int refractiveIndexThousandths) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            int normalizedRefractiveIndexThousandths = normalizeWaterRefractiveIndexThousandths(refractiveIndexThousandths);
+            if (waterRefractiveIndexThousandths == normalizedRefractiveIndexThousandths) {
+                return;
+            }
+            waterRefractiveIndexThousandths = normalizedRefractiveIndexThousandths;
+            saveLocked();
+        }
+    }
+
+    public static void setWaterDiffuseLayerEnabled(boolean enabled) {
+        synchronized (LOCK) {
+            ensureLoaded();
+            if (waterDiffuseLayerEnabled == enabled) {
+                return;
+            }
+            waterDiffuseLayerEnabled = enabled;
+            saveLocked();
+        }
+    }
+
     public static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
         synchronized (LOCK) {
             ensureLoaded();
@@ -957,6 +1129,40 @@ public final class McrtxRuntimeSettings {
             DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
             MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
             MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+        waterTransmittanceRedHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            WATER_TRANSMITTANCE_RED_KEY,
+            DEFAULT_WATER_TRANSMITTANCE_RED_HUNDREDTHS,
+            MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS);
+        waterTransmittanceGreenHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            WATER_TRANSMITTANCE_GREEN_KEY,
+            DEFAULT_WATER_TRANSMITTANCE_GREEN_HUNDREDTHS,
+            MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS);
+        waterTransmittanceBlueHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            WATER_TRANSMITTANCE_BLUE_KEY,
+            DEFAULT_WATER_TRANSMITTANCE_BLUE_HUNDREDTHS,
+            MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS);
+        waterTransmittanceDistanceHundredths = readPositiveHundredthsSetting(
+            fileValues,
+            WATER_TRANSMITTANCE_DISTANCE_KEY,
+            DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS,
+            MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS);
+        waterRefractiveIndexThousandths = readPositiveThousandthsSetting(
+            fileValues,
+            WATER_REFRACTIVE_INDEX_KEY,
+            DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS,
+            MIN_WATER_REFRACTIVE_INDEX_THOUSANDTHS,
+            MAX_WATER_REFRACTIVE_INDEX_THOUSANDTHS);
+        waterDiffuseLayerEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
+            fileValues,
+            WATER_DIFFUSE_LAYER_ENABLED_KEY,
+            DEFAULT_WATER_DIFFUSE_LAYER_ENABLED);
         final boolean migrateLegacyWaterMaterialThickness = !McrtxRuntimeSettingParser.readBooleanSetting(fileValues, WATER_MATERIAL_THICKNESS_MIGRATION_KEY, false)
                 && fileValues.containsKey(WATER_MATERIAL_THICKNESS_KEY)
                 && waterMaterialThicknessThousandths == LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS;
@@ -1378,6 +1584,24 @@ public final class McrtxRuntimeSettings {
         fileValues.put(
             WATER_MATERIAL_THICKNESS_KEY,
             McrtxRuntimeSettingFormatter.formatThousandthsValue(waterMaterialThicknessThousandths));
+        fileValues.put(
+            WATER_TRANSMITTANCE_RED_KEY,
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(waterTransmittanceRedHundredths));
+        fileValues.put(
+            WATER_TRANSMITTANCE_GREEN_KEY,
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(waterTransmittanceGreenHundredths));
+        fileValues.put(
+            WATER_TRANSMITTANCE_BLUE_KEY,
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(waterTransmittanceBlueHundredths));
+        fileValues.put(
+            WATER_TRANSMITTANCE_DISTANCE_KEY,
+            McrtxRuntimeSettingFormatter.formatHundredthsValue(waterTransmittanceDistanceHundredths));
+        fileValues.put(
+            WATER_REFRACTIVE_INDEX_KEY,
+            McrtxRuntimeSettingFormatter.formatThousandthsValue(waterRefractiveIndexThousandths));
+        fileValues.put(
+            WATER_DIFFUSE_LAYER_ENABLED_KEY,
+            McrtxRuntimeSettingFormatter.formatBoolean(waterDiffuseLayerEnabled));
         fileValues.put(WATER_MATERIAL_THICKNESS_MIGRATION_KEY, McrtxRuntimeSettingFormatter.formatBoolean(true));
         writeFileValues(fileValues);
     }
@@ -1562,6 +1786,27 @@ public final class McrtxRuntimeSettings {
             thicknessThousandths,
             MIN_WATER_MATERIAL_THICKNESS_THOUSANDTHS,
             MAX_WATER_MATERIAL_THICKNESS_THOUSANDTHS);
+    }
+
+    private static int normalizeWaterTransmittanceColorHundredths(int colorHundredths) {
+        return normalizeHundredths(
+            colorHundredths,
+            MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS);
+    }
+
+    private static int normalizeWaterTransmittanceDistanceHundredths(int distanceHundredths) {
+        return normalizeHundredths(
+            distanceHundredths,
+            MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS,
+            MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS);
+    }
+
+    private static int normalizeWaterRefractiveIndexThousandths(int refractiveIndexThousandths) {
+        return normalizeThousandths(
+            refractiveIndexThousandths,
+            MIN_WATER_REFRACTIVE_INDEX_THOUSANDTHS,
+            MAX_WATER_REFRACTIVE_INDEX_THOUSANDTHS);
     }
 
     private static int normalizeHundredths(int value, int minimumValue, int maximumValue) {
