@@ -45,9 +45,17 @@ find_package(JNI REQUIRED)
 
 add_library(mcrtx_jni SHARED
   src/jni_bridge.cpp
+  src/jni_settings_gameplay.cpp
+  src/jni_settings_graphics.cpp
+  src/jni_settings_debug.cpp
+  src/jni_settings_material.cpp
   src/celestial_textures.cpp
   src/remix_cloud_mode.cpp
   src/remix_renderer.cpp
+  src/remix_settings_gameplay.cpp
+  src/remix_settings_graphics.cpp
+  src/remix_settings_debug.cpp
+  src/remix_settings_material.cpp
   src/remix_chunk_mesh.cpp
   src/remix_materials.cpp
   src/remix_subsystem_meshes.cpp

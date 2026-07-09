@@ -2,7 +2,7 @@ import java.nio.FloatBuffer;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.MatrixMath;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGraphicsSettings;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
 import org.lwjgl.opengl.GL11;
@@ -177,7 +177,7 @@ public final class RemixParticleCapture {
 
     private static boolean shouldSubmitWeatherRainQuad() {
         return activeWeatherTextureKind != WEATHER_TEXTURE_KIND_RAIN
-                || McrtxRuntimeSettings.isGameRainParticlesEnabled();
+                || McrtxGraphicsSettings.isGameRainParticlesEnabled();
     }
 
     public static void onTessellatorDraw(

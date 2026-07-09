@@ -405,12 +405,6 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nClearCloudLayer(JNIE
   RemixRenderer::instance().clearCloudLayer();
 }
 
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetRemixAtmosphereCloudsEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRemixAtmosphereCloudsEnabled");
-  RemixRenderer::instance().setRemixAtmosphereCloudsEnabled(enabled == JNI_TRUE);
-}
-
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nBeginDynamicEntityFrame(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginDynamicEntityFrame");
   RemixRenderer::instance().beginDynamicEntityFrame();
@@ -453,125 +447,6 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetEntityHeldTorch(
     JNIEnv*, jclass, jint entityId, jdouble worldX, jdouble worldY, jdouble worldZ, jint itemId) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetEntityHeldTorch");
   RemixRenderer::instance().setEntityHeldTorch(entityId, worldX, worldY, worldZ, itemId);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetPlayerShadowsEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetPlayerShadowsEnabled");
-  RemixRenderer::instance().setPlayerShadowsEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetHeldTorchLightsEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetHeldTorchLightsEnabled");
-  RemixRenderer::instance().setHeldTorchLightsEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityRenderingEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDynamicEntityRenderingEnabled");
-  RemixRenderer::instance().setDynamicEntityRenderingEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineEnabled");
-  RemixRenderer::instance().setBlockOutlineEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineStyle(
-    JNIEnv*, jclass, jint style) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineStyle");
-  RemixRenderer::instance().setBlockOutlineStyle(static_cast<int>(style));
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetBlockOutlineEmissiveIntensity(
-    JNIEnv*, jclass, jfloat intensity) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetBlockOutlineEmissiveIntensity");
-  RemixRenderer::instance().setBlockOutlineEmissiveIntensity(intensity);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDisplacementFactor(
-    JNIEnv*, jclass, jfloat factor) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetDisplacementFactor");
-  RemixRenderer::instance().setDisplacementFactor(factor);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceMeasurementDistance(
-    JNIEnv*, jclass, jfloat distance) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceMeasurementDistance");
-  RemixRenderer::instance().setSubsurfaceMeasurementDistance(distance);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceRadiusScale(
-    JNIEnv*, jclass, jfloat scale) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceRadiusScale");
-  RemixRenderer::instance().setSubsurfaceRadiusScale(scale);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceMaxSampleRadius(
-    JNIEnv*, jclass, jfloat radius) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceMaxSampleRadius");
-  RemixRenderer::instance().setSubsurfaceMaxSampleRadius(radius);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceVolumetricAnisotropy(
-    JNIEnv*, jclass, jfloat anisotropy) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceVolumetricAnisotropy");
-  RemixRenderer::instance().setSubsurfaceVolumetricAnisotropy(anisotropy);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetSubsurfaceDiffusionProfileEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetSubsurfaceDiffusionProfileEnabled");
-  RemixRenderer::instance().setSubsurfaceDiffusionProfileEnabled(enabled == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetWaterTransmissionSettings(
-    JNIEnv*,
-    jclass,
-    jfloat red,
-    jfloat green,
-    jfloat blue,
-    jfloat measurementDistance,
-    jfloat refractiveIndex,
-    jboolean diffuseLayerEnabled,
-    jboolean thinWalledEnabled,
-    jfloat thickness) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetWaterTransmissionSettings");
-  RemixRenderer::instance().setWaterTransmissionSettings(
-      red,
-      green,
-      blue,
-      measurementDistance,
-      refractiveIndex,
-      diffuseLayerEnabled == JNI_TRUE,
-      thinWalledEnabled == JNI_TRUE,
-      thickness);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetViewModelFovDegrees(
-    JNIEnv*, jclass, jfloat fovYDegrees) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetViewModelFovDegrees");
-  RemixRenderer::instance().setViewModelFovDegrees(fovYDegrees);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetRtQuality(
-    JNIEnv*, jclass, jint rtQuality) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRtQuality");
-  RemixRenderer::instance().setRtQuality(static_cast<int>(rtQuality));
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetUpscalerConfig(
-    JNIEnv*, jclass, jint upscalerType, jint dlssPreset, jint xessPreset, jint taauPreset, jboolean rayReconstructionEnabled, jboolean sparseRenderingEnabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetUpscalerConfig");
-  RemixRenderer::instance().setUpscalerConfig(
-      static_cast<int>(upscalerType),
-      static_cast<int>(dlssPreset),
-      static_cast<int>(xessPreset),
-      static_cast<int>(taauPreset),
-      rayReconstructionEnabled == JNI_TRUE,
-      sparseRenderingEnabled == JNI_TRUE);
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixBridgeNative_nSetDynamicEntityBoneTransform(

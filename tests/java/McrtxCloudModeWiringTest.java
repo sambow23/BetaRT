@@ -5,30 +5,22 @@ import java.nio.file.Paths;
 public final class McrtxCloudModeWiringTest {
   public static void main(String[] args) throws Exception {
     String remixCloudCapture = read("java-src/RemixCloudCapture.java");
-    String hookSettingsUi = read("java-src/McrtxHookSettingsUi.java");
-    requireContains(remixCloudCapture, "McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled()", "cloud capture reads setting");
-    requireContains(remixCloudCapture, "McrtxCloudMode.shouldSubmitGameCloudLayer", "cloud capture uses mode predicate");
+    requireContains(remixCloudCapture, "McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled()", "cloud capture reads setting");
+    requireContains(remixCloudCapture, "McrtxGraphicsSettings.shouldSubmitGameCloudLayer", "cloud capture uses mode predicate");
     requireContains(remixCloudCapture, "gameCloudLayerClearedForRemixClouds", "cloud capture remembers clear state");
     requireContains(remixCloudCapture, "MinecraftRenderHooks.clearCloudLayer()", "cloud capture clears stale mesh");
 
-    String minecraftRemixHooks = read("java-src/MinecraftRemixHooks.java");
-    requireContains(minecraftRemixHooks, "isRemixAtmosphereCloudsEnabled()", "hook getter");
-    requireContains(minecraftRemixHooks, "setRemixAtmosphereCloudsEnabled(boolean enabled)", "hook setter");
-    requireContains(minecraftRemixHooks, "getRemixAtmosphereCloudsButtonLabel()", "hook label");
-    requireContains(minecraftRemixHooks, "McrtxHookSettingsUi.setRemixAtmosphereCloudsEnabled(enabled)", "hook delegates cloud setter");
-    requireContains(hookSettingsUi, "MinecraftRenderHooks.setRemixAtmosphereCloudsEnabled(enabled)", "settings helper forwards native state");
+    String graphicsUi = read("java-src/McrtxGraphicsSettingsUi.java");
+    requireContains(graphicsUi, "REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID", "button id");
+    requireContains(graphicsUi, "McrtxGraphicsSettings.setRemixAtmosphereCloudsEnabled", "button toggles setting");
+    requireContains(graphicsUi, "McrtxGraphicsSettings.formatCloudButtonLabel", "button label");
+    requireContains(graphicsUi, "McrtxGraphicsSettingsNative.setRemixAtmosphereCloudsEnabled", "settings forwards native state");
 
-    String quickSettings = read("java-src/McrtxQuickSettingsScreen.java");
-    requireContains(quickSettings, "REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID", "button id");
-    requireContains(quickSettings, "MinecraftRemixHooks.setRemixAtmosphereCloudsEnabled", "button toggles setting");
-    requireContains(quickSettings, "MinecraftRemixHooks.getRemixAtmosphereCloudsButtonLabel()", "button label");
+    String nativeEntry = read("java-src/mcrtx/bridge/McrtxGraphicsSettingsNative.java");
+    requireContains(nativeEntry, "nSetRemixAtmosphereCloudsEnabled(boolean enabled)", "native declaration");
 
-    String renderHooks = read("java-src/mcrtx/bridge/MinecraftRenderHooks.java");
-    requireContains(renderHooks, "setRemixAtmosphereCloudsEnabled(boolean enabled)", "render hook wrapper");
-    requireContains(renderHooks, "RemixBridgeNative.nSetRemixAtmosphereCloudsEnabled(enabled)", "render hook calls native");
-
-    String nativeBridge = read("java-src/mcrtx/bridge/RemixBridgeNative.java");
-    requireContains(nativeBridge, "nSetRemixAtmosphereCloudsEnabled(boolean enabled)", "native declaration");
+    String nativeJni = read("native/src/jni_settings_graphics.cpp");
+    requireContains(nativeJni, "Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nSetRemixAtmosphereCloudsEnabled", "category JNI symbol");
   }
 
   private static String read(String path) throws Exception {

@@ -3,7 +3,7 @@ import mcrtx.bridge.CameraPose;
 import mcrtx.bridge.HookProfiler;
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.McrtxRuntimeConfig;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGameplaySettings;
 import mcrtx.bridge.MinecraftRenderHooks;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
@@ -118,7 +118,7 @@ public final class RemixCameraState {
         }
 
         float aspect = height <= 0 ? 1.0f : (float) width / (float) height;
-        RemixCameraState.fovYDegrees = (float) McrtxRuntimeSettings.getGameplayFovDegrees();
+        RemixCameraState.fovYDegrees = (float) McrtxGameplaySettings.getGameplayFovDegrees();
         RemixCameraState.aspect = aspect;
         RemixCameraState.nearPlane = 0.05f;
         RemixCameraState.farPlane = farPlane * 2.0f;

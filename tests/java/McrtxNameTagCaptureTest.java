@@ -17,7 +17,7 @@ public final class McrtxNameTagCaptureTest {
     requireContains(uiCapture, "pendingNameTagVertexCount", "pending name-tag vertex count");
     requireContains(uiCapture, "pendingNameTagCmdCount", "pending name-tag command count");
     requireContains(uiCapture, "projectionForCurrentCapture(", "name-tag FOV projection helper");
-    requireContains(uiCapture, "McrtxRuntimeSettings.getGameplayFovDegrees()", "gameplay FOV source");
+    requireContains(uiCapture, "McrtxGameplaySettings.getGameplayFovDegrees()", "gameplay FOV source");
     requireContains(uiCapture, "beginProjectedLabelCapture(", "projected label rollback start");
     requireContains(uiCapture, "discardActiveNameTagCapture()", "invalid name-tag rollback");
     requireContains(uiCapture, "isNameTagAnchorVisible(", "name-tag anchor clip rejection");

@@ -1,12 +1,12 @@
 import mcrtx.bridge.MinecraftRenderHooks;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGameplaySettings;
 
 public final class RemixBlockOutlineCapture {
     private RemixBlockOutlineCapture() {
     }
 
     public static void onBlockOutlineRender(gs player, vf movingobjectposition, int renderMode, float partialTicks) {
-        if (!MinecraftRenderHooks.isInitialized() || !McrtxRuntimeSettings.isBlockOutlineEnabled() || player == null || movingobjectposition == null || renderMode != 0) {
+        if (!MinecraftRenderHooks.isInitialized() || !McrtxGameplaySettings.isBlockOutlineEnabled() || player == null || movingobjectposition == null || renderMode != 0) {
             return;
         }
 

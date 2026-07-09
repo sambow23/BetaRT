@@ -2,40 +2,34 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.file.Paths;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGraphicsSettings;
 
 public final class McrtxRainParticlesToggleTest {
   public static void main(String[] args) throws Exception {
-    require(McrtxRuntimeSettings.isGameRainParticlesEnabled(), "game rain should default on");
-
     Path tempDir = Files.createTempDirectory("mcrtx-rain-toggle");
     System.setProperty("user.dir", tempDir.toString());
-    McrtxRuntimeSettings.setGameRainParticlesEnabled(false);
-    require(!McrtxRuntimeSettings.isGameRainParticlesEnabled(), "setter should disable game rain");
+    require(McrtxGraphicsSettings.isGameRainParticlesEnabled(), "game rain should default on");
+    McrtxGraphicsSettings.setGameRainParticlesEnabled(false);
+    require(!McrtxGraphicsSettings.isGameRainParticlesEnabled(), "setter should disable game rain");
 
     String saved = new String(Files.readAllBytes(tempDir.resolve("mcrtx-runtime.env")), StandardCharsets.US_ASCII);
     require(
         saved.indexOf("MCRTX_GAME_RAIN_PARTICLES_ENABLED=0") >= 0,
         "saved config should include disabled game rain");
 
-    String runtimeSettings = read("java-src/mcrtx/bridge/McrtxRuntimeSettings.java");
-    requireContains(runtimeSettings, "GAME_RAIN_PARTICLES_ENABLED_KEY", "rain config key");
-    requireContains(runtimeSettings, "DEFAULT_GAME_RAIN_PARTICLES_ENABLED", "rain default");
-    requireContains(runtimeSettings, "isGameRainParticlesEnabled()", "rain getter");
-    requireContains(runtimeSettings, "setGameRainParticlesEnabled(boolean enabled)", "rain setter");
+    String graphicsSettings = read("java-src/mcrtx/bridge/McrtxGraphicsSettings.java");
+    requireContains(graphicsSettings, "GAME_RAIN_PARTICLES_ENABLED_KEY", "rain config key");
+    requireContains(graphicsSettings, "DEFAULT_GAME_RAIN_PARTICLES_ENABLED", "rain default");
+    requireContains(graphicsSettings, "isGameRainParticlesEnabled()", "rain getter");
+    requireContains(graphicsSettings, "setGameRainParticlesEnabled(boolean enabled)", "rain setter");
 
-    String remixHooks = read("java-src/MinecraftRemixHooks.java");
-    requireContains(remixHooks, "isGameRainParticlesEnabled()", "hook getter");
-    requireContains(remixHooks, "setGameRainParticlesEnabled(boolean enabled)", "hook setter");
-    requireContains(remixHooks, "getGameRainParticlesButtonLabel()", "hook label");
-
-    String quickSettings = read("java-src/McrtxQuickSettingsScreen.java");
-    requireContains(quickSettings, "GAME_RAIN_PARTICLES_BUTTON_ID", "button id");
-    requireContains(quickSettings, "MinecraftRemixHooks.setGameRainParticlesEnabled", "button toggles setting");
-    requireContains(quickSettings, "MinecraftRemixHooks.getGameRainParticlesButtonLabel()", "button label");
+    String graphicsUi = read("java-src/McrtxGraphicsSettingsUi.java");
+    requireContains(graphicsUi, "GAME_RAIN_PARTICLES_BUTTON_ID", "button id");
+    requireContains(graphicsUi, "McrtxGraphicsSettings.setGameRainParticlesEnabled", "button toggles setting");
+    requireContains(graphicsUi, "Game Rain: ", "button label");
 
     String particleCapture = read("java-src/RemixParticleCapture.java");
-    requireContains(particleCapture, "McrtxRuntimeSettings.isGameRainParticlesEnabled()", "particle capture reads setting");
+    requireContains(particleCapture, "McrtxGraphicsSettings.isGameRainParticlesEnabled()", "particle capture reads setting");
     requireContains(particleCapture, "shouldSubmitWeatherRainQuad()", "weather rain submission gate");
     requireContains(particleCapture, "if (!shouldSubmitWeatherRainQuad())", "rain quads skipped when disabled");
   }

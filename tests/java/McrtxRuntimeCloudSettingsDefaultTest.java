@@ -1,17 +1,17 @@
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGraphicsSettings;
 
 public final class McrtxRuntimeCloudSettingsDefaultTest {
   public static void main(String[] args) throws Exception {
     Path tempDir = Files.createTempDirectory("mcrtx-cloud-default");
     System.setProperty("user.dir", tempDir.toString());
 
-    require(!McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled(), "default should be false");
+    require(!McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled(), "default should be false");
 
-    McrtxRuntimeSettings.setRemixAtmosphereCloudsEnabled(true);
-    require(McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled(), "setter should enable mode");
+    McrtxGraphicsSettings.setRemixAtmosphereCloudsEnabled(true);
+    require(McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled(), "setter should enable mode");
 
     String saved = new String(Files.readAllBytes(tempDir.resolve("mcrtx-runtime.env")), StandardCharsets.US_ASCII);
     require(

@@ -1,6 +1,6 @@
 import mcrtx.bridge.HookProfiler;
+import mcrtx.bridge.McrtxDebugSettings;
 import mcrtx.bridge.McrtxRuntimeConfig;
-import mcrtx.bridge.McrtxRuntimeSettings;
 import mcrtx.bridge.MinecraftPlatform;
 import mcrtx.bridge.MinecraftPlatformKey;
 import mcrtx.bridge.MinecraftPlatformRuntime;
@@ -78,7 +78,7 @@ public final class MinecraftRemixHooks {
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
             MinecraftRenderHooks.initializeForCurrentDisplay(width, height);
-            McrtxHookSettingsUi.applySavedMcrtxSettings();
+            McrtxSettingsCategories.applySavedSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayCreated", __perf);
         }
@@ -115,7 +115,7 @@ public final class MinecraftRemixHooks {
             } else {
                 MinecraftRenderHooks.reinitializeForCurrentDisplay(width, height);
             }
-            McrtxHookSettingsUi.applySavedMcrtxSettings();
+            McrtxSettingsCategories.applySavedSettings();
         } finally {
             HookProfiler.endHook("hook.onDisplayReset", __perf);
         }
@@ -543,14 +543,14 @@ public final class MinecraftRemixHooks {
         long __perf = HookProfiler.begin();
         try {
             boolean captured = RemixDynamicEntityCapture.capturePaintingRender(painting);
-            return captured && McrtxRuntimeSettings.isPaintingVanillaSuppressionEnabled();
+            return captured && McrtxDebugSettings.isPaintingVanillaSuppressionEnabled();
         } finally {
             HookProfiler.endHook("hook.tryReplacePaintingRender", __perf);
         }
     }
 
     public static void drawTessellator(int mode, int first, int count) {
-        if (McrtxRuntimeSettings.isMovingPistonVanillaSuppressionEnabled()
+        if (McrtxDebugSettings.isMovingPistonVanillaSuppressionEnabled()
                 && RemixDynamicEntityCapture.shouldSuppressMovingPistonVanillaDraw()) {
             return;
         }
@@ -638,7 +638,7 @@ public final class MinecraftRemixHooks {
                 return false;
             }
             boolean captured = RemixDynamicEntityCapture.captureSignModelRender(signModel);
-            return captured && McrtxRuntimeSettings.isSignVanillaSuppressionEnabled();
+            return captured && McrtxDebugSettings.isSignVanillaSuppressionEnabled();
         } finally {
             HookProfiler.endHook("hook.tryReplaceSignModelRender", __perf);
         }
@@ -646,8 +646,8 @@ public final class MinecraftRemixHooks {
 
     public static void renderSignText(sj fontRenderer, String text, int x, int y, int colorRgba) {
         if (!RemixUiCapture.isActive()
-                && McrtxRuntimeSettings.isSignVanillaSuppressionEnabled()
-                && McrtxRuntimeSettings.isSignTextCaptureEnabled()
+                && McrtxDebugSettings.isSignVanillaSuppressionEnabled()
+                && McrtxDebugSettings.isSignTextCaptureEnabled()
                 && RemixDynamicEntityCapture.captureSignTextRender(fontRenderer, text, x, y, colorRgba)) {
             return;
         }
@@ -819,406 +819,6 @@ public final class MinecraftRemixHooks {
         }
     }
 
-    public static boolean isPlayerShadowsEnabled() {
-        return McrtxRuntimeSettings.isPlayerShadowsEnabled();
-    }
-
-    public static boolean isHeldTorchLightsEnabled() {
-        return McrtxRuntimeSettings.isHeldTorchLightsEnabled();
-    }
-
-    public static boolean isDynamicEntityRenderingEnabled() {
-        return McrtxRuntimeSettings.isDynamicEntityRenderingEnabled();
-    }
-
-    public static boolean isLivingEntityRenderingEnabled() {
-        return McrtxRuntimeSettings.isLivingEntityRenderingEnabled();
-    }
-
-    public static boolean isItemEntityRenderingEnabled() {
-        return McrtxRuntimeSettings.isItemEntityRenderingEnabled();
-    }
-
-    public static int getGameplayFovDegrees() {
-        return McrtxRuntimeSettings.getGameplayFovDegrees();
-    }
-
-    public static int getViewModelFovDegrees() {
-        return McrtxRuntimeSettings.getViewModelFovDegrees();
-    }
-
-    public static int getNoCullDistanceBlocks() {
-        return McrtxRuntimeSettings.getNoCullDistanceBlocks();
-    }
-
-    public static boolean isBlockOutlineEnabled() {
-        return McrtxRuntimeSettings.isBlockOutlineEnabled();
-    }
-
-    public static int getBlockOutlineStyle() {
-        return McrtxRuntimeSettings.getBlockOutlineStyle();
-    }
-
-    public static int getBlockOutlineEmissiveIntensityHundredths() {
-        return McrtxRuntimeSettings.getBlockOutlineEmissiveIntensityHundredths();
-    }
-
-    public static int getDisplacementFactorHundredths() {
-        return McrtxRuntimeSettings.getDisplacementFactorHundredths();
-    }
-
-    public static int getSubsurfaceMeasurementDistanceHundredths() {
-        return McrtxRuntimeSettings.getSubsurfaceMeasurementDistanceHundredths();
-    }
-
-    public static int getSubsurfaceRadiusScaleHundredths() {
-        return McrtxRuntimeSettings.getSubsurfaceRadiusScaleHundredths();
-    }
-
-    public static int getSubsurfaceMaxSampleRadiusHundredths() {
-        return McrtxRuntimeSettings.getSubsurfaceMaxSampleRadiusHundredths();
-    }
-
-    public static int getSubsurfaceVolumetricAnisotropyHundredths() {
-        return McrtxRuntimeSettings.getSubsurfaceVolumetricAnisotropyHundredths();
-    }
-
-    public static int getWaterMaterialThicknessThousandths() {
-        return McrtxRuntimeSettings.getWaterMaterialThicknessThousandths();
-    }
-
-    public static int getWaterTransmittanceRedHundredths() {
-        return McrtxRuntimeSettings.getWaterTransmittanceRedHundredths();
-    }
-
-    public static int getWaterTransmittanceGreenHundredths() {
-        return McrtxRuntimeSettings.getWaterTransmittanceGreenHundredths();
-    }
-
-    public static int getWaterTransmittanceBlueHundredths() {
-        return McrtxRuntimeSettings.getWaterTransmittanceBlueHundredths();
-    }
-
-    public static int getWaterTransmittanceDistanceHundredths() {
-        return McrtxRuntimeSettings.getWaterTransmittanceDistanceHundredths();
-    }
-
-    public static int getWaterRefractiveIndexThousandths() {
-        return McrtxRuntimeSettings.getWaterRefractiveIndexThousandths();
-    }
-
-    public static boolean isWaterThinWalledEnabled() {
-        return McrtxRuntimeSettings.isWaterThinWalledEnabled();
-    }
-
-    public static boolean isWaterDiffuseLayerEnabled() {
-        return McrtxRuntimeSettings.isWaterDiffuseLayerEnabled();
-    }
-
-    public static boolean isSubsurfaceDiffusionProfileEnabled() {
-        return McrtxRuntimeSettings.isSubsurfaceDiffusionProfileEnabled();
-    }
-
-    public static boolean isRemixAtmosphereCloudsEnabled() {
-        return McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
-    }
-
-    public static boolean isGameRainParticlesEnabled() {
-        return McrtxRuntimeSettings.isGameRainParticlesEnabled();
-    }
-
-    public static boolean shouldShowWaterMaterialThicknessSlider() {
-        return McrtxHookSettingsUi.shouldShowWaterMaterialThicknessSlider();
-    }
-
-    public static boolean shouldShowBlockOutlineIntensitySlider() {
-        return McrtxHookSettingsUi.shouldShowBlockOutlineIntensitySlider();
-    }
-
-    public static String getPlayerShadowsButtonLabel() {
-        return McrtxHookSettingsUi.getPlayerShadowsButtonLabel();
-    }
-
-    public static String getHeldTorchLightsButtonLabel() {
-        return McrtxHookSettingsUi.getHeldTorchLightsButtonLabel();
-    }
-
-    public static String getDynamicEntityRenderingButtonLabel() {
-        return McrtxHookSettingsUi.getDynamicEntityRenderingButtonLabel();
-    }
-
-    public static String getLivingEntityRenderingButtonLabel() {
-        return McrtxHookSettingsUi.getLivingEntityRenderingButtonLabel();
-    }
-
-    public static String getItemEntityRenderingButtonLabel() {
-        return McrtxHookSettingsUi.getItemEntityRenderingButtonLabel();
-    }
-
-    public static String getPaintingVanillaSuppressionButtonLabel() {
-        return McrtxHookSettingsUi.getPaintingVanillaSuppressionButtonLabel();
-    }
-
-    public static String getMovingPistonVanillaSuppressionButtonLabel() {
-        return McrtxHookSettingsUi.getMovingPistonVanillaSuppressionButtonLabel();
-    }
-
-    public static String getWorldRasterVanillaSuppressionButtonLabel() {
-        return McrtxHookSettingsUi.getWorldRasterVanillaSuppressionButtonLabel();
-    }
-
-    public static String getSignCaptureButtonLabel() {
-        return McrtxHookSettingsUi.getSignCaptureButtonLabel();
-    }
-
-    public static String getSignTextCaptureButtonLabel() {
-        return McrtxHookSettingsUi.getSignTextCaptureButtonLabel();
-    }
-
-    public static String getSignVanillaSuppressionButtonLabel() {
-        return McrtxHookSettingsUi.getSignVanillaSuppressionButtonLabel();
-    }
-
-    public static String getRtQualityButtonLabel() {
-        return McrtxHookSettingsUi.getRtQualityButtonLabel();
-    }
-
-    public static String getUpscalerButtonLabel() {
-        return McrtxHookSettingsUi.getUpscalerButtonLabel();
-    }
-
-    public static String getUpscalerPresetButtonLabel() {
-        return McrtxHookSettingsUi.getUpscalerPresetButtonLabel();
-    }
-
-    public static String getRayReconstructionButtonLabel() {
-        return McrtxHookSettingsUi.getRayReconstructionButtonLabel();
-    }
-
-    public static String getSparseRenderingButtonLabel() {
-        return McrtxHookSettingsUi.getSparseRenderingButtonLabel();
-    }
-
-    public static String getBlockOutlineButtonLabel() {
-        return McrtxHookSettingsUi.getBlockOutlineButtonLabel();
-    }
-
-    public static String getBlockOutlineStyleButtonLabel() {
-        return McrtxHookSettingsUi.getBlockOutlineStyleButtonLabel();
-    }
-
-    public static String getSubsurfaceDiffusionProfileButtonLabel() {
-        return McrtxHookSettingsUi.getSubsurfaceDiffusionProfileButtonLabel();
-    }
-
-    public static String getWaterThinWallButtonLabel() {
-        return McrtxHookSettingsUi.getWaterThinWallButtonLabel();
-    }
-
-    public static String getWaterDiffuseLayerButtonLabel() {
-        return McrtxHookSettingsUi.getWaterDiffuseLayerButtonLabel();
-    }
-
-    public static String getRemixAtmosphereCloudsButtonLabel() {
-        return McrtxHookSettingsUi.getRemixAtmosphereCloudsButtonLabel();
-    }
-
-    public static String getGameRainParticlesButtonLabel() {
-        return McrtxHookSettingsUi.getGameRainParticlesButtonLabel();
-    }
-
-    public static void setPlayerShadowsEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setPlayerShadowsEnabled(enabled);
-    }
-
-    public static void setHeldTorchLightsEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setHeldTorchLightsEnabled(enabled);
-    }
-
-    public static void setDynamicEntityRenderingEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setDynamicEntityRenderingEnabled(enabled);
-    }
-
-    public static void setLivingEntityRenderingEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setLivingEntityRenderingEnabled(enabled);
-    }
-
-    public static void setItemEntityRenderingEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setItemEntityRenderingEnabled(enabled);
-    }
-
-    public static boolean isPaintingVanillaSuppressionEnabled() {
-        return McrtxRuntimeSettings.isPaintingVanillaSuppressionEnabled();
-    }
-
-    public static boolean isMovingPistonVanillaSuppressionEnabled() {
-        return McrtxRuntimeSettings.isMovingPistonVanillaSuppressionEnabled();
-    }
-
-    public static boolean isWorldRasterVanillaSuppressionEnabled() {
-        return McrtxRuntimeSettings.isWorldRasterVanillaSuppressionEnabled();
-    }
-
-    public static boolean isSignCaptureEnabled() {
-        return McrtxRuntimeSettings.isSignCaptureEnabled();
-    }
-
-    public static boolean isSignTextCaptureEnabled() {
-        return McrtxRuntimeSettings.isSignTextCaptureEnabled();
-    }
-
-    public static boolean isSignVanillaSuppressionEnabled() {
-        return McrtxRuntimeSettings.isSignVanillaSuppressionEnabled();
-    }
-
-    public static void setPaintingVanillaSuppressionEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setPaintingVanillaSuppressionEnabled(enabled);
-    }
-
-    public static void setMovingPistonVanillaSuppressionEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setMovingPistonVanillaSuppressionEnabled(enabled);
-    }
-
-    public static void setWorldRasterVanillaSuppressionEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setWorldRasterVanillaSuppressionEnabled(enabled);
-    }
-
-    public static void setSignCaptureEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setSignCaptureEnabled(enabled);
-    }
-
-    public static void setSignTextCaptureEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setSignTextCaptureEnabled(enabled);
-    }
-
-    public static void setSignVanillaSuppressionEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setSignVanillaSuppressionEnabled(enabled);
-    }
-
-    public static void setRemixAtmosphereCloudsEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setRemixAtmosphereCloudsEnabled(enabled);
-    }
-
-    public static void setGameRainParticlesEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setGameRainParticlesEnabled(enabled);
-    }
-
-    public static boolean isSparseRenderingEnabled() {
-        return McrtxRuntimeSettings.isSparseRenderingEnabled();
-    }
-
-    public static void setGameplayFovDegrees(int fovDegrees) {
-        McrtxHookSettingsUi.setGameplayFovDegrees(fovDegrees);
-    }
-
-    public static void setViewModelFovDegrees(int fovDegrees) {
-        McrtxHookSettingsUi.setViewModelFovDegrees(fovDegrees);
-    }
-
-    public static void setNoCullDistanceBlocks(int blockDistance) {
-        McrtxHookSettingsUi.setNoCullDistanceBlocks(blockDistance);
-    }
-
-    public static void setBlockOutlineEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setBlockOutlineEnabled(enabled);
-    }
-
-    public static void setBlockOutlineEmissiveIntensityHundredths(int intensityHundredths) {
-        McrtxHookSettingsUi.setBlockOutlineEmissiveIntensityHundredths(intensityHundredths);
-    }
-
-    public static void setDisplacementFactorHundredths(int factorHundredths) {
-        McrtxHookSettingsUi.setDisplacementFactorHundredths(factorHundredths);
-    }
-
-    public static void setSubsurfaceMeasurementDistanceHundredths(int distanceHundredths) {
-        McrtxHookSettingsUi.setSubsurfaceMeasurementDistanceHundredths(distanceHundredths);
-    }
-
-    public static void setSubsurfaceRadiusScaleHundredths(int scaleHundredths) {
-        McrtxHookSettingsUi.setSubsurfaceRadiusScaleHundredths(scaleHundredths);
-    }
-
-    public static void setSubsurfaceMaxSampleRadiusHundredths(int radiusHundredths) {
-        McrtxHookSettingsUi.setSubsurfaceMaxSampleRadiusHundredths(radiusHundredths);
-    }
-
-    public static void setSubsurfaceVolumetricAnisotropyHundredths(int anisotropyHundredths) {
-        McrtxHookSettingsUi.setSubsurfaceVolumetricAnisotropyHundredths(anisotropyHundredths);
-    }
-
-    public static void setSubsurfaceDiffusionProfileEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setSubsurfaceDiffusionProfileEnabled(enabled);
-    }
-
-    public static void setWaterThinWalledEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setWaterThinWalledEnabled(enabled);
-    }
-
-    public static void setWaterMaterialThicknessThousandths(int thicknessThousandths) {
-        McrtxHookSettingsUi.setWaterMaterialThicknessThousandths(thicknessThousandths);
-    }
-
-    public static void setWaterTransmittanceRedHundredths(int redHundredths) {
-        McrtxHookSettingsUi.setWaterTransmittanceRedHundredths(redHundredths);
-    }
-
-    public static void setWaterTransmittanceGreenHundredths(int greenHundredths) {
-        McrtxHookSettingsUi.setWaterTransmittanceGreenHundredths(greenHundredths);
-    }
-
-    public static void setWaterTransmittanceBlueHundredths(int blueHundredths) {
-        McrtxHookSettingsUi.setWaterTransmittanceBlueHundredths(blueHundredths);
-    }
-
-    public static void setWaterTransmittanceDistanceHundredths(int distanceHundredths) {
-        McrtxHookSettingsUi.setWaterTransmittanceDistanceHundredths(distanceHundredths);
-    }
-
-    public static void setWaterRefractiveIndexThousandths(int refractiveIndexThousandths) {
-        McrtxHookSettingsUi.setWaterRefractiveIndexThousandths(refractiveIndexThousandths);
-    }
-
-    public static void setWaterDiffuseLayerEnabled(boolean enabled) {
-        McrtxHookSettingsUi.setWaterDiffuseLayerEnabled(enabled);
-    }
-
-    public static void resetSubsurfaceSettingsToDefaults() {
-        McrtxHookSettingsUi.resetSubsurfaceSettingsToDefaults();
-    }
-
-    public static void cycleBlockOutlineStyle() {
-        McrtxHookSettingsUi.cycleBlockOutlineStyle();
-    }
-
-    public static void cycleRtQuality() {
-        McrtxHookSettingsUi.cycleRtQuality();
-    }
-
-    public static void cycleUpscalerType() {
-        McrtxHookSettingsUi.cycleUpscalerType();
-    }
-
-    public static void cycleUpscalerPreset() {
-        McrtxHookSettingsUi.cycleUpscalerPreset();
-    }
-
-    public static boolean shouldShowRayReconstructionOption() {
-        return McrtxHookSettingsUi.shouldShowRayReconstructionOption();
-    }
-
-    public static boolean shouldShowSparseRenderingOption() {
-        return McrtxHookSettingsUi.shouldShowSparseRenderingOption();
-    }
-
-    public static void toggleRayReconstructionEnabled() {
-        McrtxHookSettingsUi.toggleRayReconstructionEnabled();
-    }
-
-    public static void toggleSparseRenderingEnabled() {
-        McrtxHookSettingsUi.toggleSparseRenderingEnabled();
-    }
-
     private static void resetRemixUiTracking() {
         remixUiOpen = false;
         remixUiHotkeyHeld = false;
@@ -1236,7 +836,7 @@ public final class MinecraftRemixHooks {
     }
 
     private static boolean shouldSuppressWorldRasterVanillaDraw() {
-        return McrtxRuntimeSettings.isWorldRasterVanillaSuppressionEnabled()
+        return McrtxDebugSettings.isWorldRasterVanillaSuppressionEnabled()
                 && worldRasterRenderActive
                 && !RemixUiCapture.isActive()
                 && !RemixDynamicEntityCapture.isFirstPersonActive()

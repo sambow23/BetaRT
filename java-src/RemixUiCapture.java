@@ -5,7 +5,7 @@ import java.util.Set;
 
 import mcrtx.bridge.MatrixMath;
 import mcrtx.bridge.MinecraftRenderHooks;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGameplaySettings;
 import mcrtx.bridge.RemixBridgeNative;
 import mcrtx.lwjglshim.OpenGlCompat;
 import org.lwjgl.BufferUtils;
@@ -745,7 +745,7 @@ public final class RemixUiCapture {
             return projection;
         }
 
-        float fovYDegrees = McrtxRuntimeSettings.getGameplayFovDegrees();
+        float fovYDegrees = McrtxGameplaySettings.getGameplayFovDegrees();
         if (fovYDegrees < 1.0f) {
             fovYDegrees = 1.0f;
         } else if (fovYDegrees > 179.0f) {

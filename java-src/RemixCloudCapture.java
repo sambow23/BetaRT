@@ -1,6 +1,5 @@
 import mcrtx.bridge.HookProfiler;
-import mcrtx.bridge.McrtxCloudMode;
-import mcrtx.bridge.McrtxRuntimeSettings;
+import mcrtx.bridge.McrtxGraphicsSettings;
 import mcrtx.bridge.MinecraftRenderHooks;
 
 public final class RemixCloudCapture {
@@ -11,8 +10,8 @@ public final class RemixCloudCapture {
 
     public static void onCloudRender(net.minecraft.client.Minecraft minecraft, fd world, int cloudTick, float partialTicks, boolean fancy) {
         boolean initialized = MinecraftRenderHooks.isInitialized();
-        boolean remixAtmosphereCloudsEnabled = McrtxRuntimeSettings.isRemixAtmosphereCloudsEnabled();
-        if (!McrtxCloudMode.shouldSubmitGameCloudLayer(initialized, remixAtmosphereCloudsEnabled)) {
+        boolean remixAtmosphereCloudsEnabled = McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled();
+        if (!McrtxGraphicsSettings.shouldSubmitGameCloudLayer(initialized, remixAtmosphereCloudsEnabled)) {
             if (initialized && remixAtmosphereCloudsEnabled && !gameCloudLayerClearedForRemixClouds) {
                 MinecraftRenderHooks.clearCloudLayer();
                 gameCloudLayerClearedForRemixClouds = true;

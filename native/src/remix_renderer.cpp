@@ -805,19 +805,6 @@ void RemixRenderer::applyRemixConfigPostStartupLocked() {
       true);
 }
 
-void RemixRenderer::setRemixAtmosphereCloudsEnabled(bool enabled) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setRemixAtmosphereCloudsEnabled");
-  std::scoped_lock lock(mutex_);
-  remixAtmosphereCloudsEnabled_ = enabled;
-  if (!initialized_) {
-    return;
-  }
-  applyRemixAtmosphereCloudConfigLocked();
-  if (enabled) {
-    destroyCloudMesh();
-  }
-}
-
 void RemixRenderer::publishCelestialTexturePathsLocked() {
   if (sunTexturePath_.empty()) {
     sunTexturePath_ = resolveSunTexturePath();

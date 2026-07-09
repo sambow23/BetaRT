@@ -167,8 +167,6 @@ public final class RemixBridgeNative {
 
         public static native void nClearCloudLayer();
 
-        public static native void nSetRemixAtmosphereCloudsEnabled(boolean enabled);
-
             public static native void nBeginDynamicEntityFrame();
 
             public static native void nBeginDynamicEntity(int entityId, int hurtStage, int creeperFuseStage);
@@ -178,52 +176,6 @@ public final class RemixBridgeNative {
             public static native void nSetFirstPersonHeldItem(int itemId);
 
             public static native void nSetEntityHeldTorch(int entityId, double worldX, double worldY, double worldZ, int itemId);
-
-            public static native void nSetPlayerShadowsEnabled(boolean enabled);
-
-            public static native void nSetHeldTorchLightsEnabled(boolean enabled);
-
-            public static native void nSetDynamicEntityRenderingEnabled(boolean enabled);
-
-            public static native void nSetBlockOutlineEnabled(boolean enabled);
-
-            public static native void nSetBlockOutlineStyle(int style);
-
-            public static native void nSetBlockOutlineEmissiveIntensity(float intensity);
-
-            public static native void nSetDisplacementFactor(float factor);
-
-            public static native void nSetSubsurfaceMeasurementDistance(float distance);
-
-            public static native void nSetSubsurfaceRadiusScale(float scale);
-
-            public static native void nSetSubsurfaceMaxSampleRadius(float radius);
-
-            public static native void nSetSubsurfaceVolumetricAnisotropy(float anisotropy);
-
-            public static native void nSetSubsurfaceDiffusionProfileEnabled(boolean enabled);
-
-            public static native void nSetWaterTransmissionSettings(
-                float red,
-                float green,
-                float blue,
-                float measurementDistance,
-                float refractiveIndex,
-                boolean diffuseLayerEnabled,
-                boolean thinWalledEnabled,
-                float thickness);
-
-            public static native void nSetViewModelFovDegrees(float fovYDegrees);
-
-            public static native void nSetRtQuality(int rtQuality);
-
-            public static native void nSetUpscalerConfig(
-                int upscalerType,
-                int dlssPreset,
-                int xessPreset,
-                int taauPreset,
-                boolean rayReconstructionEnabled,
-                boolean sparseRenderingEnabled);
 
             public static native void nSetDynamicEntityBoneTransform(
                 int boneIndex,
