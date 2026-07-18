@@ -1,5 +1,5 @@
 <p align="center">
-<img width="400" height="400" alt="betart-final" src="https://github.com/user-attachments/assets/6b59636e-6ba3-4616-ac54-23091c632633" />
+<img width="400" src="https://github.com/user-attachments/assets/6b59636e-6ba3-4616-ac54-23091c632633" />
 </p>
 
 # BetaRT
