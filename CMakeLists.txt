@@ -14,5 +14,5 @@ if(MCRTX_BUILD_TESTS)
 endif()
 
 if(MCRTX_BUILD_JNI OR MCRTX_BUILD_TESTS)
-  add_subdirectory(native)
+  add_subdirectory(src/native native)
 endif()

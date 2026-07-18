@@ -1,7 +1,10 @@
 [CmdletBinding(SupportsShouldProcess = $true)]
 param(
-    [string]$InstanceRoot = "C:\Users\cr\AppData\Roaming\PrismLauncher\instances\b1.7.3",
-    [string]$MinecraftLibraryJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar",
+    [string]$PrismRoot,
+    [string]$InstanceName = "b1.7.3",
+    [string]$InstanceRoot,
+    [string]$MinecraftLibraryJar,
+    [string]$JavaHome,
     [string]$BundleRoot,
     [string]$Configuration = "Release",
     [ValidateSet("lwjgl2", "lwjgl3", "glfw")]
@@ -20,6 +23,25 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if (-not $PrismRoot) {
+    if ($InstanceRoot) {
+        $PrismRoot = Split-Path (Split-Path $InstanceRoot -Parent) -Parent
+    } else {
+        if (-not $env:APPDATA) {
+            throw "PrismLauncher could not be located because APPDATA is not set. Pass -PrismRoot explicitly."
+        }
+        $PrismRoot = Join-Path $env:APPDATA "PrismLauncher"
+    }
+}
+$PrismRoot = [System.IO.Path]::GetFullPath($PrismRoot)
+
+if (-not $InstanceRoot) {
+    $InstanceRoot = Join-Path (Join-Path $PrismRoot "instances") $InstanceName
+}
+if (-not $MinecraftLibraryJar) {
+    $MinecraftLibraryJar = Join-Path $PrismRoot "libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar"
+}
 
 function Get-FileHashString {
     param([string]$Path)
@@ -84,14 +106,12 @@ $instanceMmcPackPath = Join-Path $InstanceRoot "mmc-pack.json"
 $instancePatchesDir = Join-Path $InstanceRoot "patches"
 $instanceMinecraftPatchPath = Join-Path $instancePatchesDir "net.minecraft.json"
 $instanceRemixConfigPath = Join-Path $instanceMinecraftDir "rtx.conf"
-$prismRoot = Split-Path (Split-Path $InstanceRoot -Parent) -Parent
 $prismMetaRoot = Join-Path $prismRoot "meta"
 $minecraftMetaPath = Join-Path $prismMetaRoot "net.minecraft\b1.7.3.json"
 $deployStateDir = Join-Path $repoRoot "out\deploy-state"
 $backupJar = Join-Path $deployStateDir "minecraft-b1.7.3-client.original.jar"
 $deploymentInfo = Join-Path $deployStateDir "last-deploy.json"
 $deployScript = Join-Path $repoRoot "scripts\build-patched-client.ps1"
-$selfScriptPath = Join-Path $repoRoot "scripts\deploy-test-build.ps1"
 $customJarTargets = @()
 $didCopyJar = $false
 $didCopyDll = $false
@@ -424,49 +444,16 @@ function Get-InstanceConfigValue {
     return ""
 }
 
-function Convert-ToPrismPath {
-    param([string]$Path)
-
-    return ($Path -replace '\\', '/')
-}
-
-function Ensure-PrismPreLaunchSync {
-    param(
-        [string]$InstanceConfig,
-        [string]$ScriptPath,
-        [string]$ConfigurationName,
-        [string]$ConfiguredWindowMode,
-        [string]$ConfiguredPlatformBackend,
-        [string]$ConfiguredInputBackend,
-        [bool]$ConfiguredUseNoApplet,
-        [double]$ConfiguredNoCullDistance,
-        [bool]$ConfiguredVerboseInputLogging
-    )
-
-    $prismScriptPath = Convert-ToPrismPath -Path $ScriptPath
-    $command = 'powershell -NoProfile -ExecutionPolicy Bypass -File {0} -Configuration {1} -WindowMode {2} -PlatformBackend {3} -InputBackend {4} -NoCullDistance {5}' -f @(
-        $prismScriptPath,
-        $ConfigurationName,
-        $ConfiguredWindowMode,
-        $ConfiguredPlatformBackend,
-        $ConfiguredInputBackend,
-        $ConfiguredNoCullDistance.ToString([System.Globalization.CultureInfo]::InvariantCulture)
-    )
-    if ($ConfiguredUseNoApplet) {
-        $command += ' -UseNoApplet'
-    }
-    if ($ConfiguredVerboseInputLogging) {
-        $command += ' -VerboseInputLogging'
-    }
-    Set-InstanceConfigValue -Path $InstanceConfig -Key "OverrideCommands" -Value "true"
-    Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value $command
-    return $command
-}
-
-function Remove-PrismPreLaunchSync {
+function Remove-McrtxPrismPreLaunchCommand {
     param([string]$InstanceConfig)
 
+    $preLaunchCommand = Get-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand"
+    if (-not $preLaunchCommand -or $preLaunchCommand -notmatch '(?i)deploy-test-build\.ps1') {
+        return $false
+    }
+
     Set-InstanceConfigValue -Path $InstanceConfig -Key "PreLaunchCommand" -Value ""
+    return $true
 }
 
 function Set-PrismRuntimeEnvironment {
@@ -635,10 +622,15 @@ function Ensure-RemixViewModelConfig {
     Set-RemixConfigValue -Path $ConfigPath -Key "rtx.volumetrics.froxelMaxDistanceMeters" -Value "256"
 }
 
-foreach ($requiredPath in @($InstanceRoot, (Split-Path $MinecraftLibraryJar -Parent), $deployScript, $instanceConfigPath, $instanceMmcPackPath, $minecraftMetaPath, $selfScriptPath)) {
+foreach ($requiredPath in @($InstanceRoot, (Split-Path $MinecraftLibraryJar -Parent), $deployScript, $instanceConfigPath, $instanceMmcPackPath, $minecraftMetaPath)) {
     if (-not (Test-Path $requiredPath)) {
         throw "Required path not found: $requiredPath"
     }
+}
+
+$removedPreLaunchCommand = $false
+if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove mc-rtx Prism pre-launch command")) {
+    $removedPreLaunchCommand = Remove-McrtxPrismPreLaunchCommand -InstanceConfig $instanceConfigPath
 }
 
 if (Test-Path $instanceLibrariesDir) {
@@ -656,7 +648,19 @@ if ($Build) {
         throw "cmake native build failed with exit code $LASTEXITCODE"
     }
 
-    & $deployScript -Configuration $Configuration -OutputRoot $BundleRoot
+    $patchedClientBuildArgs = @{
+        PrismRoot = $PrismRoot
+        InstanceName = $InstanceName
+        MinecraftJar = $MinecraftLibraryJar
+        ModdedMinecraftJar = Join-Path $InstanceRoot "libraries\customjar-1.jar"
+        Configuration = $Configuration
+        OutputRoot = $BundleRoot
+    }
+    if ($JavaHome) {
+        $patchedClientBuildArgs.JavaHome = $JavaHome
+    }
+
+    & $deployScript @patchedClientBuildArgs
     if ($LASTEXITCODE -ne 0) {
         throw "build-patched-client.ps1 failed with exit code $LASTEXITCODE"
     }
@@ -715,10 +719,6 @@ if ($Restore) {
                 Remove-Item $assetsPath -Recurse -Force
             }
         }
-    }
-
-    if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Remove Prism pre-launch sync command")) {
-        Remove-PrismPreLaunchSync -InstanceConfig $instanceConfigPath
     }
 
     if ($PSCmdlet.ShouldProcess($instanceMmcPackPath, "Reset Prism platform backend to LWJGL 2")) {
@@ -838,6 +838,8 @@ if (Test-Path $legacyInstancePdbPath) {
 
 $deploymentRecord = [ordered]@{
     deployedAt = (Get-Date).ToString("o")
+    prismRoot = $PrismRoot
+    instanceName = $InstanceName
     instanceRoot = $InstanceRoot
     minecraftLibraryJar = $MinecraftLibraryJar
     deployedDll = $deployedDllPath
@@ -868,11 +870,6 @@ $deploymentRecord = [ordered]@{
 if ($PSCmdlet.ShouldProcess($deploymentInfo, "Write deployment marker")) {
     $deploymentRecord | ConvertTo-Json | Set-Content -Path $deploymentInfo -Encoding ASCII
     $didWriteMarker = $true
-}
-
-$preLaunchCommand = ""
-if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism pre-launch sync command")) {
-    $preLaunchCommand = Ensure-PrismPreLaunchSync -InstanceConfig $instanceConfigPath -ScriptPath $selfScriptPath -ConfigurationName $Configuration -ConfiguredWindowMode $WindowMode -ConfiguredPlatformBackend $PlatformBackend -ConfiguredInputBackend $InputBackend -ConfiguredUseNoApplet:$useNoAppletEnabled -ConfiguredNoCullDistance $NoCullDistance -ConfiguredVerboseInputLogging:$verboseInputLoggingEnabled
 }
 
 if ($PSCmdlet.ShouldProcess($instanceConfigPath, "Configure Prism runtime environment")) {
@@ -922,8 +919,8 @@ if ($didWriteMarker) {
     Write-Host "Updated deployment marker at $deploymentInfo"
 }
 
-if ($preLaunchCommand) {
-    Write-Host "Configured Prism pre-launch sync command in $instanceConfigPath"
+if ($removedPreLaunchCommand) {
+    Write-Host "Removed mc-rtx Prism pre-launch command from $instanceConfigPath"
 }
 
 Write-Host "Configured Prism runtime environment windowMode='$WindowMode' platformBackend='$PlatformBackend' inputBackend='$InputBackend' in $instanceConfigPath"

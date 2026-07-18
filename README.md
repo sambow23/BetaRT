@@ -1,178 +1,32 @@
-# mc-rtx
+> This project uses AI-generated code.
 
-Minecraft Beta 1.7.3 Remix port workspace.
+# BetaRT
+A mod that brings Path Tracing to Minecraft Beta 1.7.3 using RTX Remix, aiming to keep the beta aesthetic as much as possible (with a few optional extras).
 
-This repo keeps three things together:
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/ad1d7dc5-a24b-49fb-9079-863f5cdd2b26" width="300" alt="sc1"></td>
+    <td><img src="https://github.com/user-attachments/assets/fc81b598-7ee7-4f49-89f8-aeb99eeef736" width="300" alt="sc2"></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/b66fd47c-a186-491b-b068-9412bd9201f9" width="300" alt="sc3"></td>
+    <td><img src="https://github.com/user-attachments/assets/cb08e6f7-2f31-4369-a7fa-83fb073c5ac9" width="300" alt="sc3"></td>
+  </tr>
+</table>
 
-1. A repeatable decompilation workflow for the Beta 1.7.3 client jar.
-2. Notes about the real Java-side hook points found in the decompiled client.
-3. A native x64 JNI scaffold that will host the direct RTX Remix renderer integration.
+## Additional Features
+- Volumetric Clouds
+- PBR Map support ( documentation will come soon)
+- FOV Controls
+- Held Torch Lights
+- Customizable Block Outlines
+- XeSS and DLSS upscaling (FSR via Optiscaler)
+- Ray Reconstruction
 
-## Current state
+## Installation
+Download the latest release, import the .zip file into PrismLauncher (`Add Instance > Import`), Run the game.
+<img width="1437" height="300" alt="image" src="https://github.com/user-attachments/assets/b5f9b958-a87d-4ea5-afb4-87aea1549676" />
 
-The Beta client jar has been extracted and decompiled with CFR into `work/decompiled-cfr`.
-
-The key render pipeline classes identified so far are:
-
-1. `net.minecraft.client.Minecraft` for startup, the main loop, resize, and shutdown.
-2. `px` for camera setup and the world render pass.
-3. `n` for chunk visibility, world rendering, and chunk renderer management.
-4. `dk` for chunk display-list compilation.
-5. `dn` for particles.
-6. `mk` for the loading screen.
-
-See `docs/hook-points.md` for the first mapping report.
-
-## Layout
-
-1. `scripts/` contains repeatable extraction and decompilation helpers.
-2. `docs/` contains notes and mapping reports.
-3. `java-src/` contains support classes for the future Java-side JNI seam.
-4. `native/` contains the Windows x64 Remix/JNI implementation scaffold.
-5. `work/` contains extracted and decompiled artifacts and should be treated as working data, not polished source.
-
-## Native build
-
-The native project expects a sibling checkout of `dxvk-remix-gmod` at `../dxvk-remix-gmod`.
-
-Example configure command:
-
-```powershell
-cmake -S . -B build -G "Visual Studio 17 2022" -A x64
-cmake --build build --config Debug
-```
-
-Native Tracy instrumentation in the JNI bridge is enabled by default. Pass
-`-DMCRTX_ENABLE_TRACY=OFF` at configure time to disable it. This first-pass
-integration is native C++ only.
-
-mc-rtx uses Tracy port `8087` by default so it does not collide with other
-local Tracy-enabled projects using the stock port. Override it at configure
-time with `-DMCRTX_TRACY_PORT=<port>`, or at runtime with the standard
-`TRACY_PORT` environment variable.
-
-## Decompilation workflow
-
-The helper script reruns extraction and both decompilers:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\decompile-minecraft.ps1
-```
-
-## Patched client build
-
-The patched client build script compiles the bridge/helper classes for Java 8,
-bytecode-patches the original Beta client classes that need runtime hooks, and
-stages `mcrtx_jni.dll` next to the patched jar:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\build-patched-client.ps1
-```
-
-The output bundle is written to `out/patched-client`.
-
-## SSS map helper
-
-To generate first-pass RTX Remix SSS maps for foliage or other thin materials,
-use the helper script:
-
-```powershell
-python .\scripts\generate-sss-maps.py .\path\to\grass.png
-```
-
-That writes sibling files using the names mc-rtx already resolves
-automatically:
-
-- `<stem>_transmittance.png`
-- `<stem>_single_scattering_albedo.png`
-- `<stem>_thickness.png`
-
-Useful options for quick iteration:
-
-```powershell
-python .\scripts\generate-sss-maps.py .\path\to\grass.png `
-  --albedo-tint 120,190,90 `
-  --thickness-min 0.06 `
-  --thickness-max 0.16
-```
-
-If Pillow is not installed locally, install it once with `pip install pillow`.
-
-## Runtime window mode
-
-The native bridge defaults to the current single-window presentation mode,
-where the Remix output is shown in a client-area overlay on top of the LWJGL
-game window.
-
-For development, set `MCRTX_WINDOW_MODE=dual` to create a separate Remix output
-window instead. Supported values are `single` or `overlay` for the default
-mode, and `dual`, `detached`, or `separate` for the linked development mode.
-Use `MCRTX_WINDOW_MODE=standalone` for a detached window that skips Remix UI
-overlay capture and no longer mirrors the LWJGL client window on each present.
-
-The old `MCRTX_USE_SOURCE_WINDOW=1` escape hatch is now treated as a deprecated
-alias for `MCRTX_WINDOW_MODE=dual` so older local launch scripts do not try the
-broken same-HWND presentation path.
-
-## Profiling
-
-Opt-in profiling instruments every Java hook, the JNI boundary, every
-`RemixRenderer::X` native method, and every `remix_.X` call the bridge issues.
-It is **off by default** (zero overhead in the hot path). Enable it with:
-
-```powershell
-$env:MCRTX_PERF = "1"
-```
-
-Aggregated stats are written to `mcrtx-perf.log` next to `mcrtx_jni.dll` (or
-to the path in `MCRTX_PERF_LOG`). One line is emitted per `(side, site)` tuple
-every 60 presented frames; the interval is configurable via
-`MCRTX_PERF_INTERVAL`. Each line reports sample count, average µs, and max µs
-since the last flush.
-
-Sides are:
-
-- `Hook` — Java hook entry points in `MinecraftRemixHooks` (wall time spent in
-  the hook, including all work it dispatches).
-- `Jni` — time spent inside each `Java_mcrtx_bridge_RemixBridgeNative_nX` C
-  function (marshalling + native work).
-- `Native` — `RemixRenderer::method` wall time.
-- `Remix` — individual `remix_.X` calls (labelled with subsystem suffixes such
-  as `DrawInstance.chunk`, `CreateMesh.cloud`, `SetupCamera.world`).
-- `Call` — reserved for Java-side wrappers around individual JNI sites.
-
-Set `MCRTX_PERF_TRACE=1` in addition to `MCRTX_PERF=1` to emit a per-call JSONL
-trace to `mcrtx-perf-trace.jsonl` (or `MCRTX_PERF_TRACE_LOG`). This is
-high-volume; use it only for targeted investigations.
-
-## Quick deployment for testing
-
-For the local PrismLauncher `b1.7.3` instance, deploy the latest patched jar and
-JNI DLL with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-test-build.ps1 -Build
-```
-
-That command builds the native JNI bridge in `Release`, rebuilds the patched
-client bundle, replaces PrismLauncher's shared `minecraft-b1.7.3-client.jar`,
-and copies `mcrtx_jni.dll` next to that shared jar. The bridge loads the DLL
-from the jar directory because PrismLauncher recreates the instance `natives`
-directory on each launch.
-
-The deploy script also configures the PrismLauncher `b1.7.3` instance with a
-pre-launch command that re-runs the deploy script without `-Build`. That keeps
-the patched jar and JNI DLL synced immediately before the JVM starts, which is
-necessary because Prism may refresh the shared Beta client jar during launch.
-The command is written with forward slashes because Prism stores instance
-commands in an INI format that strips raw backslashes from Windows paths.
-
-Restore the vanilla jar with:
-
-```powershell
-powershell -ExecutionPolicy Bypass -File .\scripts\deploy-test-build.ps1 -Restore
-```
-
-The script keeps a one-time backup under `out/deploy-state`. Because PrismLauncher
-uses a shared Beta 1.7.3 library jar, deployment affects any instance that points
-at the same `com.mojang:minecraft:b1.7.3:client` artifact.
+## Credits
+- [sparkles](https://github.com/Kim2091) for their remix branch [Remix Plus](https://github.com/RemixProjGroup/dxvk-remix)
+- jacob on the RTX Remix Showcase Discord for guidance and the PBR pack. 

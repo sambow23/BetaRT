@@ -1,16 +1,19 @@
 [CmdletBinding()]
 param(
-    [string]$MinecraftJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar",
+    [string]$PrismRoot,
+    [string]$InstanceName = "b1.7.3",
+    [string]$MinecraftJar,
     [string]$PatchSourceJar,
-    [string]$ModdedMinecraftJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\instances\b1.7.3\libraries\customjar-1.jar",
+    [string]$ModdedMinecraftJar,
     [switch]$DisableModdedPatchSource,
-    [string]$LwjglJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\lwjgl\lwjgl\lwjgl\2.9.4-nightly-20150209\lwjgl-2.9.4-nightly-20150209.jar",
-    [string]$LwjglUtilJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\lwjgl\lwjgl\lwjgl_util\2.9.4-nightly-20150209\lwjgl_util-2.9.4-nightly-20150209.jar",
-    [string]$AsmJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\ow2\asm\asm\9.9\asm-9.9.jar",
-    [string]$AsmTreeJar = "C:\Users\cr\AppData\Roaming\PrismLauncher\libraries\org\ow2\asm\asm-tree\9.9\asm-tree-9.9.jar",
-    [string]$JavacPath = "C:\Program Files\Eclipse Adoptium\jdk-21.0.7.6-hotspot\bin\javac.exe",
-    [string]$JavaPath = "C:\Program Files\Eclipse Adoptium\jdk-21.0.7.6-hotspot\bin\java.exe",
-    [string]$JarPath = "C:\Program Files\Eclipse Adoptium\jdk-21.0.7.6-hotspot\bin\jar.exe",
+    [string]$LwjglJar,
+    [string]$LwjglUtilJar,
+    [string]$AsmJar,
+    [string]$AsmTreeJar,
+    [string]$JavaHome,
+    [string]$JavacPath,
+    [string]$JavaPath,
+    [string]$JarPath,
     [string]$Configuration = "Release",
     [string]$OutputRoot
 )
@@ -19,6 +22,78 @@ $ErrorActionPreference = "Stop"
 
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 Add-Type -AssemblyName System.Drawing
+
+function Resolve-JavaToolchain {
+    param(
+        [string]$RequestedJavaHome,
+        [string]$RequestedJavacPath,
+        [string]$RequestedJavaPath,
+        [string]$RequestedJarPath
+    )
+
+    $resolvedJavacPath = $RequestedJavacPath
+    $resolvedJavaPath = $RequestedJavaPath
+    $resolvedJarPath = $RequestedJarPath
+    $candidateHomes = [System.Collections.Generic.List[string]]::new()
+
+    if ($RequestedJavaHome) {
+        $candidateHomes.Add($RequestedJavaHome)
+    } elseif ($resolvedJavacPath -or $resolvedJavaPath -or $resolvedJarPath) {
+        $seedPath = @($resolvedJavacPath, $resolvedJavaPath, $resolvedJarPath) |
+            Where-Object { $_ } |
+            Select-Object -First 1
+        $candidateHomes.Add((Split-Path (Split-Path $seedPath -Parent) -Parent))
+    } else {
+        if ($env:JAVA_HOME) {
+            $candidateHomes.Add($env:JAVA_HOME)
+        }
+
+        Get-Command javac.exe -All -ErrorAction SilentlyContinue |
+            ForEach-Object {
+                $candidateHomes.Add((Split-Path (Split-Path $_.Source -Parent) -Parent))
+            }
+    }
+
+    foreach ($candidateHome in $candidateHomes) {
+        $candidateBin = Join-Path $candidateHome "bin"
+        $candidateJavac = if ($resolvedJavacPath) { $resolvedJavacPath } else { Join-Path $candidateBin "javac.exe" }
+        $candidateJava = if ($resolvedJavaPath) { $resolvedJavaPath } else { Join-Path $candidateBin "java.exe" }
+        $candidateJar = if ($resolvedJarPath) { $resolvedJarPath } else { Join-Path $candidateBin "jar.exe" }
+
+        if ((Test-Path $candidateJavac -PathType Leaf) -and
+            (Test-Path $candidateJava -PathType Leaf) -and
+            (Test-Path $candidateJar -PathType Leaf)) {
+            $resolvedJavacPath = (Resolve-Path $candidateJavac).Path
+            $resolvedJavaPath = (Resolve-Path $candidateJava).Path
+            $resolvedJarPath = (Resolve-Path $candidateJar).Path
+            break
+        }
+    }
+
+    if (-not $resolvedJavacPath -or -not (Test-Path $resolvedJavacPath -PathType Leaf) -or
+        -not $resolvedJavaPath -or -not (Test-Path $resolvedJavaPath -PathType Leaf) -or
+        -not $resolvedJarPath -or -not (Test-Path $resolvedJarPath -PathType Leaf)) {
+        throw "A complete JDK was not found. Pass -JavaHome, set JAVA_HOME, or add a JDK bin directory containing java.exe, javac.exe, and jar.exe to PATH."
+    }
+
+    $javacVersionText = (& $resolvedJavacPath -version 2>&1 | Out-String).Trim()
+    if ($LASTEXITCODE -ne 0 -or $javacVersionText -notmatch 'javac\s+(?:1\.)?(\d+)') {
+        throw "Unable to determine javac version from '$resolvedJavacPath': $javacVersionText"
+    }
+
+    $javacMajorVersion = [int]$Matches[1]
+    if ($javacMajorVersion -lt 9) {
+        throw "JDK 9 or newer is required because the patched client is compiled with javac --release 8. Found: $javacVersionText"
+    }
+
+    return [pscustomobject]@{
+        JavaHome = Split-Path (Split-Path $resolvedJavacPath -Parent) -Parent
+        JavacPath = $resolvedJavacPath
+        JavaPath = $resolvedJavaPath
+        JarPath = $resolvedJarPath
+        Version = $javacVersionText
+    }
+}
 
 function Convert-PngToDds {
     param(
@@ -1351,6 +1426,50 @@ function Export-ZipEntriesByPrefix {
 }
 
 $repoRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
+$javaSourceRoot = Join-Path $repoRoot "src\java-src"
+$toolSourceRoot = Join-Path $repoRoot "src\tools-src"
+
+if (-not $PrismRoot) {
+    if (-not $env:APPDATA) {
+        throw "PrismLauncher could not be located because APPDATA is not set. Pass -PrismRoot explicitly."
+    }
+    $PrismRoot = Join-Path $env:APPDATA "PrismLauncher"
+}
+$PrismRoot = [System.IO.Path]::GetFullPath($PrismRoot)
+
+$prismLibrariesRoot = Join-Path $PrismRoot "libraries"
+$instanceRoot = Join-Path (Join-Path $PrismRoot "instances") $InstanceName
+$lwjglVersion = "2.9.4-nightly-20150209"
+
+if (-not $MinecraftJar) {
+    $MinecraftJar = Join-Path $prismLibrariesRoot "com\mojang\minecraft\b1.7.3\minecraft-b1.7.3-client.jar"
+}
+if (-not $ModdedMinecraftJar) {
+    $ModdedMinecraftJar = Join-Path $instanceRoot "libraries\customjar-1.jar"
+}
+if (-not $LwjglJar) {
+    $LwjglJar = Join-Path $prismLibrariesRoot "org\lwjgl\lwjgl\lwjgl\$lwjglVersion\lwjgl-$lwjglVersion.jar"
+}
+if (-not $LwjglUtilJar) {
+    $LwjglUtilJar = Join-Path $prismLibrariesRoot "org\lwjgl\lwjgl\lwjgl_util\$lwjglVersion\lwjgl_util-$lwjglVersion.jar"
+}
+if (-not $AsmJar) {
+    $AsmJar = Join-Path $prismLibrariesRoot "org\ow2\asm\asm\9.9\asm-9.9.jar"
+}
+if (-not $AsmTreeJar) {
+    $AsmTreeJar = Join-Path $prismLibrariesRoot "org\ow2\asm\asm-tree\9.9\asm-tree-9.9.jar"
+}
+
+$javaToolchain = Resolve-JavaToolchain `
+    -RequestedJavaHome $JavaHome `
+    -RequestedJavacPath $JavacPath `
+    -RequestedJavaPath $JavaPath `
+    -RequestedJarPath $JarPath
+$JavaHome = $javaToolchain.JavaHome
+$JavacPath = $javaToolchain.JavacPath
+$JavaPath = $javaToolchain.JavaPath
+$JarPath = $javaToolchain.JarPath
+
 $backupMinecraftJar = Join-Path $repoRoot "out\deploy-state\minecraft-b1.7.3-client.original.jar"
 
 if (Test-Path $backupMinecraftJar) {
@@ -1377,80 +1496,114 @@ $nativeDll = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.dll"
 $nativePdb = Join-Path $repoRoot "build\native\$Configuration\mcrtx_jni.pdb"
 
 $runtimeSourceFiles = @(
-    (Join-Path $repoRoot "java-src\MinecraftRemixHooks.java"),
-    (Join-Path $repoRoot "java-src\McrtxHookScreenshotHelper.java"),
-    (Join-Path $repoRoot "java-src\McrtxHookPerfTracker.java"),
-    (Join-Path $repoRoot "java-src\McrtxQuickSettingsScreen.java"),
-    (Join-Path $repoRoot "java-src\McrtxSettingsCategoryUi.java"),
-    (Join-Path $repoRoot "java-src\McrtxSettingsCategories.java"),
-    (Join-Path $repoRoot "java-src\McrtxGameplaySettingsUi.java"),
-    (Join-Path $repoRoot "java-src\McrtxGraphicsSettingsUi.java"),
-    (Join-Path $repoRoot "java-src\McrtxDebugSettingsUi.java"),
-    (Join-Path $repoRoot "java-src\McrtxMaterialSettingsUi.java"),
-    (Join-Path $repoRoot "java-src\cb.java"),
-    (Join-Path $repoRoot "java-src\RemixBlockOutlineCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixCameraState.java"),
-    (Join-Path $repoRoot "java-src\RemixCaveCulling.java"),
-    (Join-Path $repoRoot "java-src\RemixChunkCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixCloudCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixFogCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixDestroyOverlayCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixDynamicEntityCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixParticleCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixUiCapture.java"),
-    (Join-Path $repoRoot "java-src\RemixWorldListener.java"),
-    (Join-Path $repoRoot "java-src\DirtyChunkSection.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\CameraPose.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\ColorMath.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\MatrixMath.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeConfig.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettingParser.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxRuntimeSettingFormatter.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxSettingsStore.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxGameplaySettings.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxGraphicsSettings.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxDebugSettings.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxMaterialSettings.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxGameplaySettingsNative.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxGraphicsSettingsNative.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxDebugSettingsNative.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\McrtxMaterialSettingsNative.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\RemixBridgeNative.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\HookProfiler.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformKey.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatform.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftPlatformRuntime.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\Lwjgl2MinecraftPlatform.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\Lwjgl3MinecraftPlatform.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\LwjglWindowHandleResolver.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyAL10.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\OpenAlCompat.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\OpenGlCompat.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\MinecraftRenderHooks.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\bridge\UiOverlayCapture.java"),
-    (Join-Path $repoRoot "java-src\paulscode\sound\libraries\LibraryLWJGLOpenAL.java")
+    (Join-Path $javaSourceRoot "lifecycle\MinecraftRemixLifecycleHooks.java"),
+    (Join-Path $javaSourceRoot "scene\MinecraftRemixSceneHooks.java"),
+    (Join-Path $javaSourceRoot "ui\MinecraftRemixUiHooks.java"),
+    (Join-Path $javaSourceRoot "entities\MinecraftRemixEntityHooks.java"),
+    (Join-Path $javaSourceRoot "particles\MinecraftRemixParticleHooks.java"),
+    (Join-Path $javaSourceRoot "chunks\MinecraftRemixChunkHooks.java"),
+    (Join-Path $javaSourceRoot "lifecycle\McrtxHookScreenshotHelper.java"),
+    (Join-Path $javaSourceRoot "lifecycle\McrtxHookPerfTracker.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxQuickSettingsScreen.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxSettingsCategoryUi.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxSettingsCategories.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxGameplaySettingsUi.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxGraphicsSettingsUi.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxDebugSettingsUi.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxMaterialSettingsUi.java"),
+    (Join-Path $javaSourceRoot "platform\cb.java"),
+    (Join-Path $javaSourceRoot "particles\RemixBlockOutlineCapture.java"),
+    (Join-Path $javaSourceRoot "scene\RemixCameraState.java"),
+    (Join-Path $javaSourceRoot "scene\RemixCaveCulling.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkCapture.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkBuildSession.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkBlockCapture.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkWorldState.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkSectionKey.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkRecapturePass.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkRecaptureQueue.java"),
+    (Join-Path $javaSourceRoot "chunks\RemixChunkNeighborRefresh.java"),
+    (Join-Path $javaSourceRoot "scene\RemixCloudCapture.java"),
+    (Join-Path $javaSourceRoot "scene\RemixFogCapture.java"),
+    (Join-Path $javaSourceRoot "particles\RemixDestroyOverlayCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixDynamicEntityCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixDynamicEntitySession.java"),
+    (Join-Path $javaSourceRoot "entities\RemixDynamicModelCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixLivingEntityCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixItemEntityCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixHeldItemCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixFirstPersonCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixSignCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixPaintingCapture.java"),
+    (Join-Path $javaSourceRoot "entities\RemixEntityFireCapture.java"),
+    (Join-Path $javaSourceRoot "particles\RemixParticleCapture.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiCapture.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiCaptureSession.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiDrawList.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiTextureRegistry.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiProjection.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiFontCapture.java"),
+    (Join-Path $javaSourceRoot "ui\RemixUiModelCapture.java"),
+    (Join-Path $javaSourceRoot "ui\RemixNameTagCapture.java"),
+    (Join-Path $javaSourceRoot "scene\RemixWorldListener.java"),
+    (Join-Path $javaSourceRoot "chunks\DirtyChunkSection.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\CameraPose.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\ColorMath.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\MatrixMath.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\McrtxRuntimeConfig.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxRuntimeSettingParser.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxRuntimeSettingFormatter.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxSettingsStore.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxGameplaySettings.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxGraphicsSettings.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxDebugSettings.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxMaterialSettings.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxGameplaySettingsNative.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxGraphicsSettingsNative.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxDebugSettingsNative.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxMaterialSettingsNative.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\RemixBridgeNative.java"),
+    (Join-Path $javaSourceRoot "lifecycle\mcrtx\bridge\RemixLifecycleBridge.java"),
+    (Join-Path $javaSourceRoot "lifecycle\mcrtx\bridge\McrtxPerfNative.java"),
+    (Join-Path $javaSourceRoot "scene\mcrtx\bridge\RemixSceneBridge.java"),
+    (Join-Path $javaSourceRoot "ui\mcrtx\bridge\RemixUiBridge.java"),
+    (Join-Path $javaSourceRoot "entities\mcrtx\bridge\RemixDynamicEntityBridge.java"),
+    (Join-Path $javaSourceRoot "particles\mcrtx\bridge\RemixParticleOverlayBridge.java"),
+    (Join-Path $javaSourceRoot "chunks\mcrtx\bridge\RemixChunkBridge.java"),
+    (Join-Path $javaSourceRoot "core\mcrtx\bridge\HookProfiler.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\MinecraftPlatformKey.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\MinecraftPlatform.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\MinecraftPlatformRuntime.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\Lwjgl2MinecraftPlatform.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\Lwjgl3MinecraftPlatform.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\bridge\LwjglWindowHandleResolver.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\LegacyAL10.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\OpenAlCompat.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\OpenGlCompat.java"),
+    (Join-Path $javaSourceRoot "ui\mcrtx\bridge\UiOverlayCapture.java"),
+    (Join-Path $javaSourceRoot "platform\paulscode\sound\libraries\LibraryLWJGLOpenAL.java")
 )
 
 $compatSourceFiles = @(
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\GlfwBindings.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyARBOcclusionQuery.java"),
-    (Join-Path $repoRoot "java-src\mcrtx\lwjglshim\LegacyGL11.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\LWJGLException.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\Sys.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\DisplayMode.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\Display.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\ContextCapabilities.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\GL11.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\opengl\GLContext.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\input\Controllers.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\input\Cursor.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\input\Keyboard.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\input\Mouse.java"),
-    (Join-Path $repoRoot "java-src\org\lwjgl\util\glu\GLU.java")
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\GlfwBindings.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\LegacyARBOcclusionQuery.java"),
+    (Join-Path $javaSourceRoot "platform\mcrtx\lwjglshim\LegacyGL11.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\LWJGLException.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\Sys.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\opengl\DisplayMode.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\opengl\Display.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\opengl\ContextCapabilities.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\opengl\GL11.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\opengl\GLContext.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\input\Controllers.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\input\Cursor.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\input\Keyboard.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\input\Mouse.java"),
+    (Join-Path $javaSourceRoot "platform\org\lwjgl\util\glu\GLU.java")
 )
 
 $toolSourceFiles = @(
-    (Join-Path $repoRoot "tools-src\mcrtx\tools\ClientPatchTool.java")
+    (Join-Path $toolSourceRoot "patcher\mcrtx\tools\ClientPatchTool.java")
 )
 
 $requiredPaths = @($MinecraftJar, $PatchSourceJar, $LwjglJar, $LwjglUtilJar, $AsmJar, $AsmTreeJar, $JavacPath, $JavaPath, $JarPath) + $runtimeSourceFiles + $compatSourceFiles + $toolSourceFiles
@@ -1459,6 +1612,10 @@ foreach ($path in $requiredPaths) {
         throw "Required path not found: $path"
     }
 }
+
+Write-Host "Using PrismLauncher root: $PrismRoot"
+Write-Host "Using PrismLauncher instance: $InstanceName"
+Write-Host "Using Java toolchain: $($javaToolchain.Version) at $JavaHome"
 
 New-Item -ItemType Directory -Force -Path $OutputRoot | Out-Null
 foreach ($dir in @($classesDir, $toolClassesDir, $assetsDir)) {
