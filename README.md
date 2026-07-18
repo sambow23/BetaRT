@@ -2,7 +2,7 @@
 <img width="400" src="https://github.com/user-attachments/assets/6b59636e-6ba3-4616-ac54-23091c632633" />
 </p>
 
-# BetaRT
+##
 A mod that brings Path Tracing to Minecraft Beta 1.7.3 using RTX Remix, aiming to keep the beta aesthetic as much as possible (with a few optional extras).
 > This project uses AI-generated code.
 
