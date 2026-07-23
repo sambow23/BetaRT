@@ -72,7 +72,7 @@ void appendCrossedQuadSheet(
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices);
 
-void appendDoubleSidedTexturedQuad(
+void appendTexturedQuad(
     float x0, float y0, float z0, float u0, float v0,
     float x1, float y1, float z1, float u1, float v1,
     float x2, float y2, float z2, float u2, float v2,

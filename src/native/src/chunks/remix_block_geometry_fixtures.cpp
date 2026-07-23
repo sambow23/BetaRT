@@ -264,7 +264,7 @@ void appendTorchGeometry(
   const float bodyTopY = anchorY + 1.0f;
   const float bodyBottomY = anchorY;
 
-  appendDoubleSidedTexturedQuad(
+  appendTexturedQuad(
       topCenterX - halfWidth,
       capY,
       topCenterZ - halfWidth,
@@ -288,7 +288,7 @@ void appendTorchGeometry(
       vertices,
       indices);
 
-  appendDoubleSidedTexturedQuad(
+  appendTexturedQuad(
       centerX - halfWidth,
       bodyTopY,
       minZ,
@@ -312,7 +312,7 @@ void appendTorchGeometry(
       vertices,
       indices);
 
-  appendDoubleSidedTexturedQuad(
+  appendTexturedQuad(
 
       centerX + halfWidth,
       bodyTopY,
@@ -337,7 +337,7 @@ void appendTorchGeometry(
       vertices,
       indices);
 
-  appendDoubleSidedTexturedQuad(
+  appendTexturedQuad(
       minX,
       bodyTopY,
       centerZ + halfWidth,
@@ -361,7 +361,7 @@ void appendTorchGeometry(
       vertices,
       indices);
 
-  appendDoubleSidedTexturedQuad(
+  appendTexturedQuad(
       maxX,
       bodyTopY,
       centerZ - halfWidth,

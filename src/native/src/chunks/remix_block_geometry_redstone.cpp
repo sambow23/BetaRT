@@ -61,7 +61,7 @@ void appendRepeaterGeometry(
     const float minZ = centerZ - halfWidth;
     const float maxZ = centerZ + halfWidth;
 
-    appendDoubleSidedTexturedQuad(
+    appendTexturedQuad(
         minX, capY, minZ, capMinU, capMinV,
         minX, capY, maxZ, capMinU, capMaxV,
         maxX, capY, maxZ, capMaxU, capMaxV,
@@ -69,7 +69,7 @@ void appendRepeaterGeometry(
         vertices,
         indices);
 
-    appendDoubleSidedTexturedQuad(
+    appendTexturedQuad(
         minX, bodyTopY, minZ, bodyMinU, bodyMinV,
         minX, bodyBottomY, minZ, bodyMinU, bodyMaxV,
         minX, bodyBottomY, maxZ, bodyMaxU, bodyMaxV,
@@ -77,7 +77,7 @@ void appendRepeaterGeometry(
         vertices,
         indices);
 
-    appendDoubleSidedTexturedQuad(
+    appendTexturedQuad(
         maxX, bodyTopY, maxZ, bodyMinU, bodyMinV,
         maxX, bodyBottomY, maxZ, bodyMinU, bodyMaxV,
         maxX, bodyBottomY, minZ, bodyMaxU, bodyMaxV,
@@ -85,7 +85,7 @@ void appendRepeaterGeometry(
         vertices,
         indices);
 
-    appendDoubleSidedTexturedQuad(
+    appendTexturedQuad(
         minX, bodyTopY, maxZ, bodyMinU, bodyMinV,
         minX, bodyBottomY, maxZ, bodyMinU, bodyMaxV,
         maxX, bodyBottomY, maxZ, bodyMaxU, bodyMaxV,
@@ -94,7 +94,7 @@ void appendRepeaterGeometry(
         indices);
 
 
-    appendDoubleSidedTexturedQuad(
+    appendTexturedQuad(
         maxX, bodyTopY, minZ, bodyMinU, bodyMinV,
         maxX, bodyBottomY, minZ, bodyMinU, bodyMaxV,
         minX, bodyBottomY, minZ, bodyMaxU, bodyMaxV,

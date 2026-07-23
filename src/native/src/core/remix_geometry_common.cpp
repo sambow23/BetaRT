@@ -91,6 +91,7 @@ void appendCrossedQuadSheet(
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
+  // Remix uses the reverse winding while the caller order defines the outward normal.
   appendCloudQuad(
       x0,
       y0,
@@ -216,7 +217,7 @@ void appendBoundsFaceGeometry(
   }
 }
 
-void appendDoubleSidedTexturedQuad(
+void appendTexturedQuad(
     float x0,
     float y0,
     float z0,
@@ -239,7 +240,7 @@ void appendDoubleSidedTexturedQuad(
     float v3,
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
-  const auto normal = computeQuadNormal(x3, y3, z3, x2, y2, z2, x1, y1, z1);
+  const auto normal = computeQuadNormal(x0, y0, z0, x1, y1, z1, x2, y2, z2);
   appendCloudQuad(
       x3,
       y3,
@@ -264,33 +265,6 @@ void appendDoubleSidedTexturedQuad(
       normal[0],
       normal[1],
       normal[2],
-      kDefaultVertexColor,
-      vertices,
-      indices);
-  appendCloudQuad(
-      x0,
-      y0,
-      z0,
-      u0,
-      v0,
-      x1,
-      y1,
-      z1,
-      u1,
-      v1,
-      x2,
-      y2,
-      z2,
-      u2,
-      v2,
-      x3,
-      y3,
-      z3,
-      u3,
-      v3,
-      -normal[0],
-      -normal[1],
-      -normal[2],
       kDefaultVertexColor,
       vertices,
       indices);
