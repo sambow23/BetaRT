@@ -1,6 +1,10 @@
 > This project uses AI-generated code.
 
-# BetaRT
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/62f9868d-cc27-4613-a55d-efabc3fa2182" width="400" />
+</p>
+
+#
 A mod that brings Path Tracing to Minecraft Beta 1.7.3 using RTX Remix, aiming to keep the beta aesthetic as much as possible (with a few optional extras).
 
 <table>
@@ -29,4 +33,4 @@ Download the latest release, import the .zip file into PrismLauncher (`Add Insta
 
 ## Credits
 - [sparkles](https://github.com/Kim2091) for their remix branch [Remix Plus](https://github.com/RemixProjGroup/dxvk-remix)
-- jacob on the RTX Remix Showcase Discord for guidance and the PBR pack. 
+- jacob on the RTX Remix Showcase Discord for guidance, project logo, and the PBR pack. 
