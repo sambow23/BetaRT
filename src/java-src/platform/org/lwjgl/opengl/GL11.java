@@ -234,6 +234,10 @@ public final class GL11 {
                 pixels);
     }
 
+    public static void glScissor(int x, int y, int width, int height) {
+        BINDINGS.invokeVoid(BINDINGS.glScissor, Integer.valueOf(x), Integer.valueOf(y), Integer.valueOf(width), Integer.valueOf(height));
+    }
+
     public static void glRotatef(float angle, float x, float y, float z) {
         BINDINGS.invokeVoid(BINDINGS.glRotatef, Float.valueOf(angle), Float.valueOf(x), Float.valueOf(y), Float.valueOf(z));
     }
@@ -360,6 +364,7 @@ public final class GL11 {
         private final Method glPopMatrix;
         private final Method glPushMatrix;
         private final Method glReadPixels;
+        private final Method glScissor;
         private final Method glRotatef;
         private final Method glScaled;
         private final Method glScalef;
@@ -418,6 +423,7 @@ public final class GL11 {
             glPopMatrix = gl11Class.getMethod("glPopMatrix");
             glPushMatrix = gl11Class.getMethod("glPushMatrix");
             glReadPixels = gl11Class.getMethod("glReadPixels", Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE, ByteBuffer.class);
+            glScissor = gl11Class.getMethod("glScissor", Integer.TYPE, Integer.TYPE, Integer.TYPE, Integer.TYPE);
             glRotatef = gl11Class.getMethod("glRotatef", Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE);
             glScaled = gl11Class.getMethod("glScaled", Double.TYPE, Double.TYPE, Double.TYPE);
             glScalef = gl11Class.getMethod("glScalef", Float.TYPE, Float.TYPE, Float.TYPE);
