@@ -1529,6 +1529,7 @@ $runtimeSourceFiles = @(
     (Join-Path $javaSourceRoot "entities\RemixDynamicEntityCapture.java"),
     (Join-Path $javaSourceRoot "entities\RemixDynamicEntitySession.java"),
     (Join-Path $javaSourceRoot "entities\RemixDynamicModelCapture.java"),
+    (Join-Path $javaSourceRoot "entities\CreeperFuseTracker.java"),
     (Join-Path $javaSourceRoot "entities\RemixLivingEntityCapture.java"),
     (Join-Path $javaSourceRoot "entities\RemixItemEntityCapture.java"),
     (Join-Path $javaSourceRoot "entities\RemixHeldItemCapture.java"),

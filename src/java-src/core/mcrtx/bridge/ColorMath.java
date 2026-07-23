@@ -2,6 +2,7 @@ package mcrtx.bridge;
 
 public final class ColorMath {
     private static final int MAX_HURT_STAGE = 10;
+    private static final int MAX_CREEPER_FUSE_STAGE = 10;
     private static final float MAX_CREEPER_FUSE_PROGRESS = 1.0f;
 
     private ColorMath() {
@@ -70,11 +71,7 @@ public final class ColorMath {
 
     public static float[] applyCreeperFuseIndicator(float red, float green, float blue, float alpha, float fuseProgress) {
         float clampedProgress = clampUnit(fuseProgress);
-        if (clampedProgress <= 0.0f) {
-            return new float[]{red, green, blue, alpha};
-        }
-
-        if (((int) (clampedProgress * 10.0f)) % 2 == 0) {
+        if ((creeperFuseStage(clampedProgress) & 1) == 0) {
             return new float[]{red, green, blue, alpha};
         }
 
@@ -84,6 +81,10 @@ public final class ColorMath {
         float flashedBlue = blue + ((1.0f - blue) * whiteBlend);
         float flashedAlpha = alpha + ((1.0f - alpha) * whiteBlend);
         return new float[]{flashedRed, flashedGreen, flashedBlue, flashedAlpha};
+    }
+
+    public static int creeperFuseStage(float fuseProgress) {
+        return (int) (clampUnit(fuseProgress) * MAX_CREEPER_FUSE_STAGE);
     }
 
     private static float clampUnit(float value) {

@@ -1,6 +1,7 @@
 // Dynamic-entity material policy and cache acquisition.
 
 #include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/entities/remix_material_dynamic_policy.hpp"
 #include "mcrtx/materials/remix_material_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
@@ -21,7 +22,6 @@ constexpr std::uint64_t kDynamicEntityCreeperFuseMaterialHashMask = 0x4655534500
 
 
 constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 0.1f;
-constexpr float kDynamicEntityCreeperFuseMaxEmissiveIntensity = 0.06f;
 inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
 inline constexpr remixapi_Float3D kDynamicEntityCreeperFuseEmissiveColor = {1.0f, 0.98f, 0.95f};
 
@@ -32,10 +32,6 @@ std::size_t dynamicEntityMaterialClassIndex(DynamicEntityMaterialClass materialC
 
 std::uint32_t clampDynamicEntityHurtStage(std::uint32_t hurtStage) {
   return std::min(hurtStage, kDynamicEntityMaxHurtStage);
-}
-
-std::uint32_t clampDynamicEntityCreeperFuseStage(std::uint32_t creeperFuseStage) {
-  return std::min(creeperFuseStage, kDynamicEntityMaxCreeperFuseStage);
 }
 
 std::size_t dynamicEntityMaterialVariantIndex(
@@ -56,16 +52,6 @@ float dynamicEntityHurtEmissiveIntensity(std::uint32_t hurtStage) {
 
   return kDynamicEntityHurtMaxEmissiveIntensity
       * (static_cast<float>(clampedHurtStage) / static_cast<float>(kDynamicEntityMaxHurtStage));
-}
-
-float dynamicEntityCreeperFuseEmissiveIntensity(std::uint32_t creeperFuseStage) {
-  const std::uint32_t clampedCreeperFuseStage = clampDynamicEntityCreeperFuseStage(creeperFuseStage);
-  if (clampedCreeperFuseStage == 0) {
-    return 0.0f;
-  }
-
-  return kDynamicEntityCreeperFuseMaxEmissiveIntensity
-      * (static_cast<float>(clampedCreeperFuseStage) / static_cast<float>(kDynamicEntityMaxCreeperFuseStage));
 }
 
 }  // namespace
@@ -134,7 +120,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     emissiveTexture = nullptr;
     emissiveIntensity = dynamicEntityHurtEmissiveIntensity(clampedHurtStage);
     emissiveColor = kDynamicEntityHurtEmissiveColor;
-  } else if (clampedCreeperFuseStage != 0) {
+  } else if (isDynamicEntityCreeperFuseFlashStage(clampedCreeperFuseStage)) {
     emissiveTexture = nullptr;
     emissiveIntensity = dynamicEntityCreeperFuseEmissiveIntensity(clampedCreeperFuseStage);
     emissiveColor = kDynamicEntityCreeperFuseEmissiveColor;
@@ -174,6 +160,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     translucentInfo.transmittanceMeasurementDistance = 1.0f;
     translucentInfo.thinWallThickness_hasvalue = FALSE;
     translucentInfo.useDiffuseLayer = TRUE;
+    translucentInfo.diffuseLayerOpacity = 1.0f;
     translucentInfo.transmittanceTexture = materialTexturePath->c_str();
     materialInfo.pNext = &translucentInfo;
   } else {

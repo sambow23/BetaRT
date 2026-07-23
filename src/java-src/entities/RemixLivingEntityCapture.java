@@ -1,15 +1,19 @@
 import java.lang.reflect.Field;
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Method;
+import mcrtx.bridge.ColorMath;
 import mcrtx.bridge.HookProfiler;
 
 final class RemixLivingEntityCapture {
     private static final int MAX_HURT_STAGE = 10;
-    private static final int MAX_CREEPER_FUSE_STAGE = 10;
+    private static final CreeperFuseTracker CREEPER_FUSE_TRACKER = new CreeperFuseTracker();
 
     private static Class<?> livingEntityBaseClass;
     private static Class<?> creeperEntityClass;
     private static Field livingEntityHurtTimeField;
     private static Field creeperFuseTimeField;
     private static Field creeperPreviousFuseTimeField;
+    private static Method creeperFuseStateMethod;
     private static volatile boolean enabled = true;
 
     private RemixLivingEntityCapture() {
@@ -31,7 +35,7 @@ final class RemixLivingEntityCapture {
         }
         int hurtStage = isTrackedLivingEntity(entity) ? resolveHurtStage(entity) : 0;
         float fuseProgress = isTrackedCreeper(entity) ? resolveFuseProgress(entity, partialTicks) : 0.0f;
-        int fuseStage = fuseStageForProgress(fuseProgress);
+        int fuseStage = ColorMath.creeperFuseStage(fuseProgress);
         RemixDynamicEntitySession.beginEntity(entity.aD, hurtStage, fuseStage, fuseProgress, "");
     }
 
@@ -66,10 +70,6 @@ final class RemixLivingEntityCapture {
 
     private static int clampHurtStage(int hurtStage) {
         return Math.max(0, Math.min(MAX_HURT_STAGE, hurtStage));
-    }
-
-    private static int clampCreeperFuseStage(int fuseStage) {
-        return Math.max(0, Math.min(MAX_CREEPER_FUSE_STAGE, fuseStage));
     }
 
     private static Class<?> resolveLivingEntityBaseClass(sn entity) {
@@ -199,13 +199,16 @@ final class RemixLivingEntityCapture {
                 return 0.0f;
             }
 
-            float previousFuse = previousFuseField.getInt(entity);
-            float currentFuse = currentFuseField.getInt(entity);
-            float progress = (previousFuse + ((currentFuse - previousFuse) * partialTicks)) / 28.0f;
-            if (progress <= 0.0f) {
-                return 0.0f;
-            }
-            return progress >= 1.0f ? 1.0f : progress;
+            int previousFuse = previousFuseField.getInt(entity);
+            int currentFuse = currentFuseField.getInt(entity);
+            int fuseState = resolveFuseState(entity);
+            return CREEPER_FUSE_TRACKER.resolveProgress(
+                    entity.aD,
+                    entity.bt,
+                    fuseState,
+                    previousFuse,
+                    currentFuse,
+                    partialTicks);
         } catch (IllegalAccessException exception) {
             return 0.0f;
         } catch (IllegalArgumentException exception) {
@@ -213,7 +216,23 @@ final class RemixLivingEntityCapture {
         }
     }
 
-    private static int fuseStageForProgress(float progress) {
-        return clampCreeperFuseStage(Math.round(progress * MAX_CREEPER_FUSE_STAGE));
+    private static int resolveFuseState(sn entity) {
+        try {
+            Method method = creeperFuseStateMethod;
+            if (method == null || !method.getDeclaringClass().isInstance(entity)) {
+                method = entity.getClass().getDeclaredMethod("v");
+                method.setAccessible(true);
+                creeperFuseStateMethod = method;
+            }
+            Object result = method.invoke(entity);
+            return result instanceof Integer ? ((Integer) result).intValue() : 0;
+        } catch (NoSuchMethodException exception) {
+            return 0;
+        } catch (IllegalAccessException exception) {
+            return 0;
+        } catch (InvocationTargetException exception) {
+            return 0;
+        }
     }
+
 }

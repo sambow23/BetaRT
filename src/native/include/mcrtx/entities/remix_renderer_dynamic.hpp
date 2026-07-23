@@ -1,5 +1,7 @@
 #pragma once
 
+#include "mcrtx/entities/remix_material_dynamic_policy.hpp"
+
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -28,7 +30,6 @@ struct DynamicEntityBoneTransform {
 };
 
 constexpr std::uint32_t kDynamicEntityMaxHurtStage = 10;
-constexpr std::uint32_t kDynamicEntityMaxCreeperFuseStage = 10;
 constexpr std::size_t kDynamicEntityMaxQuadCount = 2048;
 constexpr std::uint64_t kDynamicEntityMaterialHashSeed = 0x4D43525458454E54ull;
 constexpr int kFirstPersonDynamicEntityId = 0x7FFFFFFE;
