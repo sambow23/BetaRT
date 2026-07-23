@@ -15,6 +15,8 @@ final class RemixDynamicModelCapture {
     private static final int GL_CURRENT_COLOR = 0x0B00;
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final String SHEEP_FUR_TEXTURE_PATH = "/mob/sheep_fur.png";
+    private static final String SPIDER_BODY_TEXTURE_PATH = "/mob/spider.png";
+    private static final String SPIDER_EYES_TEXTURE_PATH = "/mob/spider_eyes.png";
     private static final FloatBuffer MODEL_VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final FloatBuffer COLOR_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final Map<Integer, TextureAlpha> TEXTURE_ALPHA_CACHE = new HashMap<Integer, TextureAlpha>();
@@ -184,13 +186,24 @@ final class RemixDynamicModelCapture {
         if (SHEEP_FUR_TEXTURE_PATH.equals(texturePath)) {
             return new float[] { red, green, blue, alpha };
         }
-        return ColorMath.sanitizeDynamicEntityColor(red, green, blue, alpha);
+        float capturedAlpha = isSpiderTexture(texturePath)
+                ? 1.0f
+                : alpha;
+        return ColorMath.sanitizeDynamicEntityColor(red, green, blue, capturedAlpha);
+    }
+
+    private static boolean isSpiderTexture(String texturePath) {
+        return SPIDER_BODY_TEXTURE_PATH.equals(texturePath)
+                || SPIDER_EYES_TEXTURE_PATH.equals(texturePath);
     }
 
     static boolean captureModelPart(tz[] polygons, float scale) {
         String activeTexture = RemixDynamicEntitySession.activeCaptureTexture();
         if (activeTexture.isEmpty() || polygons == null || polygons.length == 0) {
             return false;
+        }
+        if (SPIDER_EYES_TEXTURE_PATH.equals(activeTexture)) {
+            return true;
         }
         if (!GL11.glIsEnabled(GL11.GL_TEXTURE_2D)) {
             return false;
@@ -210,6 +223,8 @@ final class RemixDynamicModelCapture {
 
             RemixCameraState.PreciseTransform modelToWorld =
                     RemixFirstPersonCapture.modelToWorldTransform(modelView);
+            boolean blendEnabled = GL11.glIsEnabled(GL11.GL_BLEND);
+            boolean capturedBlendEnabled = blendEnabled && !isSpiderTexture(activeTexture);
             float[] capturedColor = sanitizeModelPartColor(
                     activeTexture, color[0], color[1], color[2], color[3]);
             capturedColor = ColorMath.applyHurtIndicator(
@@ -230,7 +245,7 @@ final class RemixDynamicModelCapture {
             int quadCount = packModelPartQuads(polygons, scale);
             if (quadCount > 0) {
                 RemixDynamicEntityBridge.captureDynamicEntityQuadBatch(
-                        modelPartQuadScratch, quadCount, colorRgba, boneIndex);
+                        modelPartQuadScratch, quadCount, colorRgba, capturedBlendEnabled, boneIndex);
             }
             long quadEmitEndNanos = System.nanoTime();
 

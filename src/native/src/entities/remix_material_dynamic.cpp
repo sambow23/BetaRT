@@ -22,6 +22,7 @@ constexpr std::uint64_t kDynamicEntityCreeperFuseMaterialHashMask = 0x4655534500
 
 
 constexpr float kDynamicEntityHurtMaxEmissiveIntensity = 0.1f;
+constexpr float kDynamicEntitySpiderEyesEmissiveIntensity = 0.5f;
 inline constexpr remixapi_Float3D kDynamicEntityHurtEmissiveColor = {1.0f, 0.15f, 0.15f};
 inline constexpr remixapi_Float3D kDynamicEntityCreeperFuseEmissiveColor = {1.0f, 0.98f, 0.95f};
 
@@ -89,10 +90,12 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
   const bool isEntityFireOverlay = stripDynamicEntityTextureAliasPrefix(
       normalizedTexturePath,
       kEntityFireOverlayTextureAliasPrefix);
-    const bool isSignText = stripDynamicEntityTextureAliasPrefix(
+  const bool isSignText = stripDynamicEntityTextureAliasPrefix(
       normalizedTexturePath,
       kSignTextTextureAliasPrefix);
+  const bool isSpiderBody = normalizedTexturePath == "mob/spider.png";
 
+  std::filesystem::path spiderEyesTexturePath;
   const std::filesystem::path* emissiveTexturePath = nullptr;
   const std::filesystem::path* materialTexturePath = &resolvedTexturePath;
   if (normalizedTexturePath == "terrain.png") {
@@ -115,6 +118,14 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     emissiveTexture = materialTexturePath->c_str();
     emissiveIntensity = kFireEmissiveIntensity;
     emissiveColor = kFireEmissiveColor;
+  }
+  if (isSpiderBody) {
+    spiderEyesTexturePath = resolveDynamicEntityTexturePath("/mob/spider_eyes.png");
+    if (!spiderEyesTexturePath.empty()) {
+      emissiveTexture = spiderEyesTexturePath.c_str();
+      emissiveIntensity = kDynamicEntitySpiderEyesEmissiveIntensity;
+      emissiveColor = {1.0f, 1.0f, 1.0f};
+    }
   }
   if (clampedHurtStage != 0) {
     emissiveTexture = nullptr;

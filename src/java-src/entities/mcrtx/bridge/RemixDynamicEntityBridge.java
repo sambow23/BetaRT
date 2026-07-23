@@ -110,6 +110,20 @@ public final class RemixDynamicEntityBridge {
             int quadCount,
             int colorRgba,
             int boneIndex) {
+        captureDynamicEntityQuadBatch(
+                vertices,
+                quadCount,
+                colorRgba,
+                GL11.glIsEnabled(GL11.GL_BLEND),
+                boneIndex);
+    }
+
+    public static synchronized void captureDynamicEntityQuadBatch(
+            float[] vertices,
+            int quadCount,
+            int colorRgba,
+            boolean blendEnabled,
+            int boneIndex) {
         if (!RemixLifecycleBridge.isInitialized() || vertices == null || quadCount <= 0) {
             return;
         }
@@ -117,7 +131,7 @@ public final class RemixDynamicEntityBridge {
                 vertices,
                 quadCount,
                 colorRgba,
-                GL11.glIsEnabled(GL11.GL_BLEND),
+                blendEnabled,
                 boneIndex);
     }
 
