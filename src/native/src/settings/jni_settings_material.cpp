@@ -53,6 +53,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_McrtxMaterialSettingsNative_nSetWaterTr
     jfloat measurementDistance,
     jfloat refractiveIndex,
     jboolean diffuseLayerEnabled,
+    jfloat diffuseLayerScale,
     jboolean thinWalledEnabled,
     jfloat thickness) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetWaterTransmissionSettings");
@@ -63,6 +64,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_McrtxMaterialSettingsNative_nSetWaterTr
       measurementDistance,
       refractiveIndex,
       diffuseLayerEnabled == JNI_TRUE,
+      diffuseLayerScale,
       thinWalledEnabled == JNI_TRUE,
       thickness);
 }

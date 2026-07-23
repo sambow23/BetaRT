@@ -85,6 +85,7 @@ public:
       float measurementDistance,
       float refractiveIndex,
       bool diffuseLayerEnabled,
+      float diffuseLayerScale,
       bool thinWalledEnabled,
       float thickness);
   void setViewModelFovDegrees(float fovYDegrees);
@@ -556,6 +557,7 @@ private:
   float waterTransmittanceDistance_ {1.5f};
   float waterRefractiveIndex_ {1.333f};
   bool waterDiffuseLayerEnabled_ {true};
+  float waterDiffuseLayerScale_ {1.0f};
   bool waterThinWalledEnabled_ {true};
   float waterMaterialThickness_ {1.0f};
   static constexpr int kRtQualityLow = 0;

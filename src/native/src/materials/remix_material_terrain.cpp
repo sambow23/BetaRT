@@ -80,6 +80,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
       translucentInfo.thinWallThickness_hasvalue = useThinWalledTranslucency ? TRUE : FALSE;
       translucentInfo.thinWallThickness_value = useThinWalledTranslucency ? waterMaterialThickness_ : kWaterThinWallThickness;
       translucentInfo.useDiffuseLayer = isWaterMaterial ? waterDiffuseLayerEnabled_ : TRUE;
+      translucentInfo.diffuseLayerOpacity = isWaterMaterial ? waterDiffuseLayerScale_ : 1.0f;
       translucentInfo.transmittanceTexture = texturePath.c_str();
       pNext = &translucentInfo;
     } else {

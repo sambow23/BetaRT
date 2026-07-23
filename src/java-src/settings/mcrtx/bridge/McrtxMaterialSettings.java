@@ -17,6 +17,7 @@ public final class McrtxMaterialSettings {
     public static final String WATER_TRANSMITTANCE_DISTANCE_KEY = "MCRTX_WATER_TRANSMITTANCE_MEASUREMENT_DISTANCE";
     public static final String WATER_REFRACTIVE_INDEX_KEY = "MCRTX_WATER_REFRACTIVE_INDEX";
     public static final String WATER_DIFFUSE_LAYER_ENABLED_KEY = "MCRTX_WATER_USE_DIFFUSE_LAYER";
+    public static final String WATER_DIFFUSE_LAYER_SCALE_KEY = "MCRTX_WATER_DIFFUSE_LAYER_SCALE";
     private static final String WATER_MATERIAL_THICKNESS_MIGRATION_KEY = "MCRTX_WATER_MATERIAL_THICKNESS_MIGRATED";
 
     public static final int MIN_DISPLACEMENT_FACTOR_HUNDREDTHS = 0;
@@ -51,6 +52,9 @@ public final class McrtxMaterialSettings {
     public static final int MAX_WATER_REFRACTIVE_INDEX_THOUSANDTHS = 3000;
     public static final int DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS = 1333;
     public static final boolean DEFAULT_WATER_DIFFUSE_LAYER_ENABLED = true;
+    public static final int MIN_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS = 0;
+    public static final int MAX_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS = 100;
+    public static final int DEFAULT_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS = 100;
     private static final int LEGACY_DEFAULT_WATER_MATERIAL_THICKNESS_THOUSANDTHS = 1;
 
     private static int displacementFactorHundredths = DEFAULT_DISPLACEMENT_FACTOR_HUNDREDTHS;
@@ -67,6 +71,7 @@ public final class McrtxMaterialSettings {
     private static int waterTransmittanceDistanceHundredths = DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS;
     private static int waterRefractiveIndexThousandths = DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS;
     private static boolean waterDiffuseLayerEnabled = DEFAULT_WATER_DIFFUSE_LAYER_ENABLED;
+    private static int waterDiffuseLayerScaleHundredths = DEFAULT_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS;
 
     private McrtxMaterialSettings() {
     }
@@ -96,6 +101,8 @@ public final class McrtxMaterialSettings {
     public static int getWaterRefractiveIndexThousandths() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return waterRefractiveIndexThousandths; } }
     public static float getWaterRefractiveIndex() { return (float) getWaterRefractiveIndexThousandths() / 1000.0f; }
     public static boolean isWaterDiffuseLayerEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return waterDiffuseLayerEnabled; } }
+    public static int getWaterDiffuseLayerScaleHundredths() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return waterDiffuseLayerScaleHundredths; } }
+    public static float getWaterDiffuseLayerScale() { return (float) getWaterDiffuseLayerScaleHundredths() / 100.0f; }
 
     public static void setDisplacementFactorHundredths(int value) { setHundredths(0, value); }
     public static void setSubsurfaceMeasurementDistanceHundredths(int value) { setHundredths(1, value); }
@@ -106,6 +113,7 @@ public final class McrtxMaterialSettings {
     public static void setWaterTransmittanceGreenHundredths(int value) { setHundredths(6, value); }
     public static void setWaterTransmittanceBlueHundredths(int value) { setHundredths(7, value); }
     public static void setWaterTransmittanceDistanceHundredths(int value) { setHundredths(8, value); }
+    public static void setWaterDiffuseLayerScaleHundredths(int value) { setHundredths(9, value); }
 
     public static void setSubsurfaceDiffusionProfileEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (subsurfaceDiffusionProfileEnabled == enabled) return; subsurfaceDiffusionProfileEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
     public static void setWaterThinWalledEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (waterThinWalledEnabled == enabled) return; waterThinWalledEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
@@ -146,6 +154,7 @@ public final class McrtxMaterialSettings {
         waterTransmittanceDistanceHundredths = readHundredths(values, WATER_TRANSMITTANCE_DISTANCE_KEY, DEFAULT_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS, MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS, MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS);
         waterRefractiveIndexThousandths = McrtxRuntimeSettingParser.readScaledIntSetting(values, WATER_REFRACTIVE_INDEX_KEY, DEFAULT_WATER_REFRACTIVE_INDEX_THOUSANDTHS, MIN_WATER_REFRACTIVE_INDEX_THOUSANDTHS, MAX_WATER_REFRACTIVE_INDEX_THOUSANDTHS, 1000);
         waterDiffuseLayerEnabled = McrtxRuntimeSettingParser.readBooleanSetting(values, WATER_DIFFUSE_LAYER_ENABLED_KEY, DEFAULT_WATER_DIFFUSE_LAYER_ENABLED);
+        waterDiffuseLayerScaleHundredths = readHundredths(values, WATER_DIFFUSE_LAYER_SCALE_KEY, DEFAULT_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS, MIN_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS, MAX_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS);
 
         boolean migrationNeeded = !McrtxRuntimeSettingParser.readBooleanSetting(values, WATER_MATERIAL_THICKNESS_MIGRATION_KEY, false)
                 && values.containsKey(WATER_MATERIAL_THICKNESS_KEY)
@@ -171,6 +180,7 @@ public final class McrtxMaterialSettings {
         values.put(WATER_TRANSMITTANCE_DISTANCE_KEY, McrtxRuntimeSettingFormatter.formatHundredthsValue(waterTransmittanceDistanceHundredths));
         values.put(WATER_REFRACTIVE_INDEX_KEY, McrtxRuntimeSettingFormatter.formatThousandthsValue(waterRefractiveIndexThousandths));
         values.put(WATER_DIFFUSE_LAYER_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(waterDiffuseLayerEnabled));
+        values.put(WATER_DIFFUSE_LAYER_SCALE_KEY, McrtxRuntimeSettingFormatter.formatHundredthsValue(waterDiffuseLayerScaleHundredths));
         values.put(WATER_MATERIAL_THICKNESS_MIGRATION_KEY, McrtxRuntimeSettingFormatter.formatBoolean(true));
     }
 
@@ -207,7 +217,8 @@ public final class McrtxMaterialSettings {
             else if (setting == 3) { minimum = MIN_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS; maximum = MAX_SUBSURFACE_MAX_SAMPLE_RADIUS_HUNDREDTHS; current = subsurfaceMaxSampleRadiusHundredths; }
             else if (setting == 4) { minimum = MIN_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS; maximum = MAX_SUBSURFACE_VOLUMETRIC_ANISOTROPY_HUNDREDTHS; current = subsurfaceVolumetricAnisotropyHundredths; }
             else if (setting >= 5 && setting <= 7) { minimum = MIN_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS; maximum = MAX_WATER_TRANSMITTANCE_COLOR_HUNDREDTHS; current = setting == 5 ? waterTransmittanceRedHundredths : setting == 6 ? waterTransmittanceGreenHundredths : waterTransmittanceBlueHundredths; }
-            else { minimum = MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS; maximum = MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS; current = waterTransmittanceDistanceHundredths; }
+            else if (setting == 8) { minimum = MIN_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS; maximum = MAX_WATER_TRANSMITTANCE_DISTANCE_HUNDREDTHS; current = waterTransmittanceDistanceHundredths; }
+            else { minimum = MIN_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS; maximum = MAX_WATER_DIFFUSE_LAYER_SCALE_HUNDREDTHS; current = waterDiffuseLayerScaleHundredths; }
             int normalized = McrtxRuntimeSettingParser.clamp(value, minimum, maximum);
             if (current == normalized) return;
             if (setting == 0) displacementFactorHundredths = normalized;
@@ -218,7 +229,8 @@ public final class McrtxMaterialSettings {
             else if (setting == 5) waterTransmittanceRedHundredths = normalized;
             else if (setting == 6) waterTransmittanceGreenHundredths = normalized;
             else if (setting == 7) waterTransmittanceBlueHundredths = normalized;
-            else waterTransmittanceDistanceHundredths = normalized;
+            else if (setting == 8) waterTransmittanceDistanceHundredths = normalized;
+            else waterDiffuseLayerScaleHundredths = normalized;
             McrtxSettingsStore.saveLocked();
         }
     }

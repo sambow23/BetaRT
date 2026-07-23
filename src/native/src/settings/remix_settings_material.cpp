@@ -162,6 +162,7 @@ void RemixRenderer::setWaterTransmissionSettings(
     float measurementDistance,
     float refractiveIndex,
     bool diffuseLayerEnabled,
+    float diffuseLayerScale,
     bool thinWalledEnabled,
     float thickness) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setWaterTransmissionSettings");
@@ -184,6 +185,11 @@ void RemixRenderer::setWaterTransmissionSettings(
       kWaterRefractiveIndex,
       kWaterMinRefractiveIndex,
       kWaterMaxRefractiveIndex);
+  diffuseLayerScale = normalize(
+      diffuseLayerScale,
+      kWaterDiffuseLayerScale,
+      kWaterMinDiffuseLayerScale,
+      kWaterMaxDiffuseLayerScale);
   thickness = normalize(
       thickness,
       kWaterDefaultThinWallThickness,
@@ -197,6 +203,7 @@ void RemixRenderer::setWaterTransmissionSettings(
       && std::abs(waterTransmittanceDistance_ - measurementDistance) < 0.0001f
       && std::abs(waterRefractiveIndex_ - refractiveIndex) < 0.0001f
       && waterDiffuseLayerEnabled_ == diffuseLayerEnabled
+      && std::abs(waterDiffuseLayerScale_ - diffuseLayerScale) < 0.0001f
       && waterThinWalledEnabled_ == thinWalledEnabled
       && std::abs(waterMaterialThickness_ - thickness) < 0.0001f;
   if (unchanged) {
@@ -207,6 +214,7 @@ void RemixRenderer::setWaterTransmissionSettings(
   waterTransmittanceDistance_ = measurementDistance;
   waterRefractiveIndex_ = refractiveIndex;
   waterDiffuseLayerEnabled_ = diffuseLayerEnabled;
+  waterDiffuseLayerScale_ = diffuseLayerScale;
   waterThinWalledEnabled_ = thinWalledEnabled;
   waterMaterialThickness_ = thickness;
   if (!initialized_) {

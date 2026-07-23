@@ -18,6 +18,7 @@ public final class McrtxMaterialSettingsNative {
             float measurementDistance,
             float refractiveIndex,
             boolean diffuseLayerEnabled,
+            float diffuseLayerScale,
             boolean thinWalledEnabled,
             float thickness) {
         if (ready()) {
@@ -28,6 +29,7 @@ public final class McrtxMaterialSettingsNative {
                     measurementDistance,
                     refractiveIndex,
                     diffuseLayerEnabled,
+                    diffuseLayerScale,
                     thinWalledEnabled,
                     thickness);
         }
@@ -50,6 +52,7 @@ public final class McrtxMaterialSettingsNative {
             float measurementDistance,
             float refractiveIndex,
             boolean diffuseLayerEnabled,
+            float diffuseLayerScale,
             boolean thinWalledEnabled,
             float thickness);
 }
