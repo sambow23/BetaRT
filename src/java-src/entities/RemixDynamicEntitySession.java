@@ -166,10 +166,64 @@ final class RemixDynamicEntitySession {
         setEntityTexture(resolvedTexture);
     }
 
+    private static final java.util.Set<String> downloadedThisSession = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
+    private static final java.util.Set<String> downloadingSkins = java.util.Collections.newSetFromMap(new java.util.concurrent.ConcurrentHashMap<String, Boolean>());
+
     static String normalizeTexturePath(String primaryTexture, String fallbackTexture) {
         String normalizedPrimary = stripTexturePrefix(primaryTexture);
         if (!normalizedPrimary.isEmpty() && normalizedPrimary.charAt(0) == '/') {
             return normalizedPrimary;
+        }
+
+        if (!normalizedPrimary.isEmpty() && (normalizedPrimary.startsWith("http://") || normalizedPrimary.startsWith("https://"))) {
+            try {
+                java.net.URL url = new java.net.URL(normalizedPrimary);
+                String path = url.getPath();
+                String fileName = path.substring(path.lastIndexOf('/') + 1);
+                if (fileName.endsWith(".png")) {
+                    String ddsFileName = fileName.substring(0, fileName.length() - 4) + ".dds";
+                    java.io.File skinsDir = new java.io.File("../libraries/mcrtx_assets/skins");
+                    if (!skinsDir.exists()) {
+                        skinsDir.mkdirs();
+                    }
+                    java.io.File ddsFile = new java.io.File(skinsDir, ddsFileName);
+                    boolean fileExists = ddsFile.exists() && ddsFile.length() > 0;
+                    boolean shouldDownload = !fileExists || !downloadedThisSession.contains(normalizedPrimary);
+
+                    if (shouldDownload && downloadingSkins.add(normalizedPrimary)) {
+                        downloadedThisSession.add(normalizedPrimary);
+                        new Thread(new Runnable() {
+                            @Override
+                            public void run() {
+                                try {
+                                    java.net.URLConnection conn = url.openConnection();
+                                    conn.setConnectTimeout(5000);
+                                    conn.setReadTimeout(5000);
+                                    java.io.InputStream in = conn.getInputStream();
+                                    java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(in);
+                                    in.close();
+                                    if (image != null) {
+                                        java.io.File tempFile = new java.io.File(ddsFile.getAbsolutePath() + ".tmp");
+                                        saveAsDDS(image, tempFile);
+                                        tempFile.renameTo(ddsFile);
+                                        ddsFile.setLastModified(System.currentTimeMillis());
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                } finally {
+                                    downloadingSkins.remove(normalizedPrimary);
+                                }
+                            }
+                        }, "BetaRT-Skin-Downloader").start();
+                    }
+
+                    if (fileExists) {
+                        return "/skins/" + ddsFileName;
+                    }
+                }
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
         }
 
         String normalizedFallback = stripTexturePrefix(fallbackTexture);
@@ -234,5 +288,44 @@ final class RemixDynamicEntitySession {
         RemixEntityFireCapture.resetActiveCapture();
         RemixSignCapture.resetActiveCapture();
         RemixFirstPersonCapture.resetActiveCapture();
+    }
+
+    private static void saveAsDDS(java.awt.image.BufferedImage image, java.io.File file) throws Exception {
+        int width = image.getWidth();
+        int height = image.getHeight();
+        byte[] header = new byte[128];
+        header[0] = 'D'; header[1] = 'D'; header[2] = 'S'; header[3] = ' ';
+        header[4] = 124;
+        header[8] = 0x0F; header[9] = 0x10; header[10] = 0x08; header[11] = 0x00;
+        header[12] = (byte) (height & 0xFF); header[13] = (byte) ((height >> 8) & 0xFF);
+        header[16] = (byte) (width & 0xFF); header[17] = (byte) ((width >> 8) & 0xFF);
+        int pitch = width * 4;
+        header[20] = (byte) (pitch & 0xFF); header[21] = (byte) ((pitch >> 8) & 0xFF);
+        header[76] = 32;
+        header[80] = 0x41;
+        header[88] = 32;
+        header[94] = (byte) 0xFF; // R
+        header[97] = (byte) 0xFF; // G
+        header[100] = (byte) 0xFF; // B
+        header[107] = (byte) 0xFF; // A
+        header[109] = 0x10;
+        int[] pixels = image.getRGB(0, 0, width, height, null, 0, width);
+        java.io.FileOutputStream fos = new java.io.FileOutputStream(file);
+        try {
+            fos.write(header);
+            
+            byte[] pixelData = new byte[width * height * 4];
+            int offset = 0;
+            for (int i = 0; i < pixels.length; i++) {
+                int argb = pixels[i];
+                pixelData[offset++] = (byte) (argb & 0xFF);         // B
+                pixelData[offset++] = (byte) ((argb >> 8) & 0xFF);  // G
+                pixelData[offset++] = (byte) ((argb >> 16) & 0xFF); // R
+                pixelData[offset++] = (byte) ((argb >> 24) & 0xFF); // A
+            }
+            fos.write(pixelData);
+        } finally {
+            fos.close();
+        }
     }
 }

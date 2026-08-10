@@ -171,7 +171,6 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     translucentInfo.transmittanceMeasurementDistance = 1.0f;
     translucentInfo.thinWallThickness_hasvalue = FALSE;
     translucentInfo.useDiffuseLayer = TRUE;
-    translucentInfo.diffuseLayerOpacity = 1.0f;
     translucentInfo.transmittanceTexture = materialTexturePath->c_str();
     materialInfo.pNext = &translucentInfo;
   } else {

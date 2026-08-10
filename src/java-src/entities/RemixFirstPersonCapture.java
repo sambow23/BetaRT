@@ -26,6 +26,44 @@ final class RemixFirstPersonCapture {
     private static boolean loggedShadowCaptureFailure;
     private static boolean voxelsGeneratedForCurrentItem;
 
+    private static String lastExtractedSkinUrl = PLAYER_TEXTURE_PATH;
+    private static java.lang.reflect.Field skinUrlField = null;
+    private static boolean skinUrlFieldSearched = false;
+
+    private static void updateExtractedSkinUrl(Object player) {
+        if (player == null) return;
+        try {
+            if (!skinUrlFieldSearched) {
+                skinUrlFieldSearched = true;
+                Class<?> clazz = player.getClass();
+                while (clazz != null && !clazz.getName().equals("java.lang.Object")) {
+                    for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                        if (f.getType() == String.class) {
+                            f.setAccessible(true);
+                            String val = (String) f.get(player);
+                            if (val != null && (val.startsWith("http://") || val.startsWith("https://")) && val.endsWith(".png") && val.contains("MinecraftSkins")) {
+                                skinUrlField = f;
+                                break;
+                            }
+                        }
+                    }
+                    if (skinUrlField != null) break;
+                    clazz = clazz.getSuperclass();
+                }
+            }
+
+            if (skinUrlField != null) {
+                String val = (String) skinUrlField.get(player);
+                if (val != null) {
+                    lastExtractedSkinUrl = val;
+                    return;
+                }
+            }
+        } catch (Exception e) {}
+        // Fallback to char.png if no skin is set
+        lastExtractedSkinUrl = PLAYER_TEXTURE_PATH;
+    }
+
     private RemixFirstPersonCapture() {
     }
 
@@ -41,7 +79,7 @@ final class RemixFirstPersonCapture {
         }
 
         active = true;
-        activeTexture = PLAYER_TEXTURE_PATH;
+        activeTexture = RemixDynamicEntitySession.normalizeTexturePath(lastExtractedSkinUrl, null);
         RemixDynamicEntitySession.prepareAuxiliaryEntity(0, 0, 0.0f);
         RemixDynamicEntityBridge.beginDynamicEntity(FIRST_PERSON_ENTITY_ID, 0, 0);
         RemixDynamicEntityBridge.setDynamicEntityTexture(activeTexture);
@@ -49,11 +87,15 @@ final class RemixFirstPersonCapture {
 
     static void onShadowPlayerRender(Minecraft minecraft, float partialTicks) {
         if (!RemixDynamicEntitySession.isRenderingEnabled()
-                || !playerShadowsEnabled
-                || !shadowCaptureAvailable
                 || !RemixLifecycleBridge.isInitialized()
                 || minecraft == null
                 || !(minecraft.h instanceof gs)) {
+            return;
+        }
+
+        updateExtractedSkinUrl(minecraft.h);
+
+        if (!playerShadowsEnabled || !shadowCaptureAvailable) {
             return;
         }
 
@@ -65,8 +107,9 @@ final class RemixFirstPersonCapture {
         long lookupRendererEndNanos = System.nanoTime();
 
         RemixDynamicEntitySession.ensureFrame();
+        String normalizedSkinUrl = RemixDynamicEntitySession.normalizeTexturePath(lastExtractedSkinUrl, null);
         RemixDynamicEntitySession.beginEntity(
-                FIRST_PERSON_SHADOW_ENTITY_ID, 0, 0, 0.0f, shadowTextureAlias(PLAYER_TEXTURE_PATH));
+                FIRST_PERSON_SHADOW_ENTITY_ID, 0, 0, 0.0f, shadowTextureAlias(normalizedSkinUrl));
         shadowCaptureActive = true;
 
         try {

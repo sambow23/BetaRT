@@ -139,6 +139,10 @@ public final class ClientPatchTool {
                     content = remapLegacyBindings(content);
                 }
 
+                if (entryName.startsWith("META-INF/") && (entryName.endsWith(".SF") || entryName.endsWith(".RSA") || entryName.endsWith(".DSA"))) {
+                    continue;
+                }
+
                 JarEntry newEntry = new JarEntry(entryName);
                 jarOutputStream.putNextEntry(newEntry);
                 jarOutputStream.write(content);
