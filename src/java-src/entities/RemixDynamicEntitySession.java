@@ -182,7 +182,8 @@ final class RemixDynamicEntitySession {
                 String path = url.getPath();
                 String fileName = path.substring(path.lastIndexOf('/') + 1);
                 if (fileName.endsWith(".png")) {
-                    String ddsFileName = fileName.substring(0, fileName.length() - 4) + ".dds";
+                    String prefix = path.toLowerCase().contains("cloak") ? "cloak_" : "skin_";
+                    String ddsFileName = prefix + fileName.substring(0, fileName.length() - 4) + ".dds";
                     
                     boolean fileExists = existingSkinsCache.contains(ddsFileName);
                     if (!fileExists) {
@@ -211,26 +212,24 @@ final class RemixDynamicEntitySession {
                                     conn.setReadTimeout(5000);
                                     conn.setRequestProperty("User-Agent", "Mozilla/5.0");
                                     
-                                    int responseCode = conn.getResponseCode();
-                                    if (responseCode != 200) {
-                                        System.out.println("[BetaRT] Failed to download skin (HTTP " + responseCode + "): " + url.toString());
-                                        return;
-                                    }
-
-                                    java.io.InputStream in = conn.getInputStream();
-                                    java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(in);
-                                    in.close();
-                                    if (image != null) {
-                                        java.io.File skinsDir = new java.io.File("../libraries/mcrtx_assets/skins");
-                                        java.io.File ddsFile = new java.io.File(skinsDir, ddsFileName);
-                                        java.io.File tempFile = new java.io.File(ddsFile.getAbsolutePath() + ".tmp");
-                                        saveAsDDS(image, tempFile);
-                                        tempFile.renameTo(ddsFile);
-                                        ddsFile.setLastModified(System.currentTimeMillis());
-                                        existingSkinsCache.add(ddsFileName);
-                                        System.out.println("[BetaRT] Successfully downloaded and converted skin: " + ddsFileName);
+                                    if (conn.getResponseCode() == 200) {
+                                        java.io.InputStream in = conn.getInputStream();
+                                        java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(in);
+                                        in.close();
+                                        if (image != null) {
+                                            java.io.File skinsDir = new java.io.File("../libraries/mcrtx_assets/skins");
+                                            java.io.File ddsFile = new java.io.File(skinsDir, ddsFileName);
+                                            java.io.File tempFile = new java.io.File(ddsFile.getAbsolutePath() + ".tmp");
+                                            saveAsDDS(image, tempFile);
+                                            tempFile.renameTo(ddsFile);
+                                            ddsFile.setLastModified(System.currentTimeMillis());
+                                            existingSkinsCache.add(ddsFileName);
+                                            System.out.println("[BetaRT] Successfully downloaded and converted skin: " + ddsFileName);
+                                        } else {
+                                            System.out.println("[BetaRT] Failed to parse skin image data from: " + url.toString());
+                                        }
                                     } else {
-                                        System.out.println("[BetaRT] Failed to parse skin image data from: " + url.toString());
+                                        System.out.println("[BetaRT] Failed to download skin from: " + url.toString() + " (HTTP " + conn.getResponseCode() + ")");
                                     }
                                 } catch (Exception e) {
                                     System.out.println("[BetaRT] Exception downloading skin from: " + url.toString());
