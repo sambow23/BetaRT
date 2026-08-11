@@ -315,6 +315,17 @@ final class RemixDynamicEntitySession {
         RemixFirstPersonCapture.resetActiveCapture();
     }
 
+    private static boolean isOverlayPixel(int x, int y) {
+        if (y < 16) {
+            return x >= 32 && x < 64; // Hat overlay
+        } else if (y >= 32 && y < 48) {
+            return true; // Modern Body/Right Arm/Right Leg overlays
+        } else if (y >= 48 && y < 64) {
+            return (x >= 16 && x < 32) || (x >= 48 && x < 64); // Modern Left Leg/Left Arm overlays
+        }
+        return false;
+    }
+
     private static void saveAsDDS(java.awt.image.BufferedImage image, java.io.File file) throws Exception {
         int width = image.getWidth();
         int height = image.getHeight();
@@ -343,6 +354,13 @@ final class RemixDynamicEntitySession {
             int offset = 0;
             for (int i = 0; i < pixels.length; i++) {
                 int argb = pixels[i];
+                int x = i % width;
+                int y = i / width;
+                
+                if (!isOverlayPixel(x, y)) {
+                    argb |= 0xFF000000;
+                }
+                
                 pixelData[offset++] = (byte) (argb & 0xFF);         // B
                 pixelData[offset++] = (byte) ((argb >> 8) & 0xFF);  // G
                 pixelData[offset++] = (byte) ((argb >> 16) & 0xFF); // R
