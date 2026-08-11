@@ -355,7 +355,7 @@ void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forc
   setGameValueLocked("__atmosphere.skyless", forceDarkAtmosphere ? "1" : "0", false);
 
   if (forceDarkAtmosphere) {
-    setConfigFloatLocked("rtx.atmosphere.sunElevation", -30.0f, 2, false);
+    setGameValueFloatLocked("__atmosphere.sun.elevation", -30.0f, 2, false);
     setGameValueLocked("__atmosphere.moon0.enabled", "0", false);
     return;
   }
@@ -365,8 +365,8 @@ void RemixRenderer::updateAtmosphereConfigLocked(float celestialAngle, bool forc
   const double elevationRadians = std::asin(std::clamp(std::cos(rotationRadians), -1.0, 1.0));
   const float elevationDegrees = static_cast<float>(elevationRadians * 180.0 / kPi);
   const float sunRotationDegrees = std::sin(rotationRadians) < 0.0 ? 180.0f : 0.0f;
-  setConfigFloatLocked("rtx.atmosphere.sunElevation", elevationDegrees, 2, false);
-  setConfigFloatLocked("rtx.atmosphere.sunRotation", sunRotationDegrees, 2, false);
+  setGameValueFloatLocked("__atmosphere.sun.elevation", elevationDegrees, 2, false);
+  setGameValueFloatLocked("__atmosphere.sun.rotation", sunRotationDegrees, 2, false);
 
   // Minecraft's moon sits directly opposite the sun on the celestial wheel:
   // mirrored elevation and a 180-degree-flipped rotation. Beta 1.7.3 has a
