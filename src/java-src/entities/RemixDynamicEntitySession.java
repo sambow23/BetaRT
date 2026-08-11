@@ -197,17 +197,26 @@ final class RemixDynamicEntitySession {
                         }
                     }
 
-                    boolean shouldDownload = !fileExists || !downloadedThisSession.contains(normalizedPrimary);
+                    boolean shouldDownload = !downloadedThisSession.contains(normalizedPrimary);
 
                     if (shouldDownload && downloadingSkins.add(normalizedPrimary)) {
                         downloadedThisSession.add(normalizedPrimary);
                         new Thread(new Runnable() {
                             @Override
                             public void run() {
+                                System.out.println("[BetaRT] Attempting to download skin from: " + url.toString());
                                 try {
-                                    java.net.URLConnection conn = url.openConnection();
+                                    java.net.HttpURLConnection conn = (java.net.HttpURLConnection) url.openConnection();
                                     conn.setConnectTimeout(5000);
                                     conn.setReadTimeout(5000);
+                                    conn.setRequestProperty("User-Agent", "Mozilla/5.0");
+                                    
+                                    int responseCode = conn.getResponseCode();
+                                    if (responseCode != 200) {
+                                        System.out.println("[BetaRT] Failed to download skin (HTTP " + responseCode + "): " + url.toString());
+                                        return;
+                                    }
+
                                     java.io.InputStream in = conn.getInputStream();
                                     java.awt.image.BufferedImage image = javax.imageio.ImageIO.read(in);
                                     in.close();
@@ -219,8 +228,12 @@ final class RemixDynamicEntitySession {
                                         tempFile.renameTo(ddsFile);
                                         ddsFile.setLastModified(System.currentTimeMillis());
                                         existingSkinsCache.add(ddsFileName);
+                                        System.out.println("[BetaRT] Successfully downloaded and converted skin: " + ddsFileName);
+                                    } else {
+                                        System.out.println("[BetaRT] Failed to parse skin image data from: " + url.toString());
                                     }
                                 } catch (Exception e) {
+                                    System.out.println("[BetaRT] Exception downloading skin from: " + url.toString());
                                     e.printStackTrace();
                                 } finally {
                                     downloadingSkins.remove(normalizedPrimary);
