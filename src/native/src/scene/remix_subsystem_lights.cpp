@@ -157,14 +157,20 @@ std::string describeTorchLightHashSubmission(
   return stream.str();
 }
 bool isTorchLightItemId(int itemId) {
-  return itemId == kTorchBlockId || itemId == kRedstoneTorchOnBlockId;
+  return itemId == kTorchBlockId || itemId == kRedstoneTorchOnBlockId || itemId == kLavaBucketItemId;
 }
 std::uint64_t makeEntityHeldTorchLightHash(int entityId) {
   return kEntityHeldTorchLightHashSeed ^ static_cast<std::uint64_t>(static_cast<std::uint32_t>(entityId));
 }
 
 remixapi_Float3D entityHeldTorchRadiance(int itemId) {
-  return itemId == kRedstoneTorchOnBlockId ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
+  if (itemId == kRedstoneTorchOnBlockId) {
+    return kRedstoneTorchLightRadiance;
+  }
+  if (itemId == kLavaBucketItemId) {
+    return kLavaBucketLightRadiance;
+  }
+  return kTorchLightRadiance;
 }
 }  // namespace
 void RemixRenderer::setFirstPersonHeldItem(int itemId) {
@@ -466,9 +472,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   MCRTX_TRACY_SCOPE("RemixRenderer::reconcileHeldItemTorchLight");
 
   const bool supportsLightCreation = remix_.CreateLight != nullptr;
-  const bool isTorch = heldItemId_ == kTorchBlockId;
-  const bool isRedstoneTorch = heldItemId_ == kRedstoneTorchOnBlockId;
-  if (!supportsLightCreation || (!isTorch && !isRedstoneTorch)) {
+  if (!supportsLightCreation || !isTorchLightItemId(heldItemId_)) {
     destroyHeldItemTorchLight();
     return true;
   }
@@ -497,7 +501,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(kHeldTorchLightHash, renderOrigin);
-  lightInfo.radiance = isRedstoneTorch ? kRedstoneTorchLightRadiance : kTorchLightRadiance;
+  lightInfo.radiance = entityHeldTorchRadiance(heldItemId_);
   lightInfo.isDynamic = TRUE;
   lightInfo.ignoreViewModel = TRUE;
   lightInfo.ignoreFirstPersonPlayerShadow = TRUE;

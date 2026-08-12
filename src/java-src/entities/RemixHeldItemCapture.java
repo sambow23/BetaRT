@@ -9,6 +9,7 @@ final class RemixHeldItemCapture {
     private static final int TORCH_BLOCK_ID = 50;
     private static final int REDSTONE_TORCH_OFF_BLOCK_ID = 75;
     private static final int REDSTONE_TORCH_ON_BLOCK_ID = 76;
+    private static final int LAVA_BUCKET_ITEM_ID = 327;
     private static final float ENTITY_HELD_TORCH_RIGHT_NUDGE = 0.18f;
 
     private static volatile boolean heldTorchLightsEnabled = true;
@@ -65,7 +66,8 @@ final class RemixHeldItemCapture {
     private static boolean isTorchLikeHeldItem(int itemId) {
         return itemId == TORCH_BLOCK_ID
                 || itemId == REDSTONE_TORCH_ON_BLOCK_ID
-                || itemId == REDSTONE_TORCH_OFF_BLOCK_ID;
+                || itemId == REDSTONE_TORCH_OFF_BLOCK_ID
+                || itemId == LAVA_BUCKET_ITEM_ID;
     }
 
     private static String texturePathForItem(iz itemStack) {
