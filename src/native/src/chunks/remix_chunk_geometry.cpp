@@ -36,6 +36,7 @@ void RemixRenderer::emitChunkGeometry(
     ChunkGeometryBuild& build) {
   auto& surfacesToBuild = build.surfacesToBuild;
   auto& desiredTorchLights = build.desiredTorchLights;
+  auto& desiredPortalLights = build.desiredPortalLights;
   surfacesToBuild.reserve(8);
   std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
 
@@ -478,6 +479,11 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (cell.blockId == kNetherPortalBlockId) {
+          desiredPortalLights.push_back(makePortalLightPlacement(
+              cell,
+              chunkKey.originX + localX,
+              chunkKey.originY + localY,
+              chunkKey.originZ + localZ));
           SurfaceBuildBuffers& portalSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendPortalGeometry(
               cell,

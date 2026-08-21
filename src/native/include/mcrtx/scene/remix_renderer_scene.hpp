@@ -104,6 +104,24 @@ struct TorchLightState {
   WorldRenderPosition submittedPosition {};
 };
 
+struct PortalLightPlacement {
+  WorldBlockPosition blockPosition {};
+  float lightX {0.0f};
+  float lightY {0.0f};
+  float lightZ {0.0f};
+  bool isZAxis {false};
+  remixapi_Float3D radiance {0.0f, 0.0f, 0.0f};
+};
+
+struct PortalLightState {
+  remixapi_LightHandle handleFront {nullptr};
+  remixapi_LightHandle handleBack {nullptr};
+  WorldRenderOrigin renderOrigin {};
+  std::uint64_t apiHashFront {0};
+  std::uint64_t apiHashBack {0};
+  WorldRenderPosition submittedPosition {};
+};
+
 struct ChunkMeshData {
   remixapi_MeshHandle meshHandle {nullptr};
   std::uint64_t meshHash {0};
@@ -114,6 +132,7 @@ struct ChunkMeshData {
   std::array<ChunkBlockCell, 4096> cells {};
   std::vector<std::uint16_t> fireCellIndices {};
   std::vector<TorchLightPlacement> torchLights {};
+  std::vector<PortalLightPlacement> portalLights {};
   bool hasOccupancy {false};
   bool hidden {false};
   std::array<bool, 6> faceCovered {};

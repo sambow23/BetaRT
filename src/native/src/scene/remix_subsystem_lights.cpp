@@ -387,6 +387,19 @@ bool RemixRenderer::refreshTorchLightDefinitions(const WorldRenderOrigin& render
     }
   }
 
+  std::vector<PortalLightPlacement> portalPlacements;
+  portalPlacements.reserve(portalLightPlacements_.size());
+  for (const auto& [position, placement] : portalLightPlacements_) {
+    (void)position;
+    portalPlacements.push_back(placement);
+  }
+
+  for (const PortalLightPlacement& placement : portalPlacements) {
+    if (!updatePortalLight(placement, renderOrigin)) {
+      return false;
+    }
+  }
+
   for (auto& [entityId, state] : entityHeldTorchLights_) {
     if (!updateEntityLight(entityId, state, renderOrigin)) {
       return false;
@@ -616,4 +629,240 @@ void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
   meshData.torchLights.clear();
 }
 
+
+
+
+bool RemixRenderer::createPortalLight(const PortalLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::createPortalLight");
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
+      placement.lightX,
+      placement.lightY,
+      placement.lightZ,
+      renderOrigin);
+
+  remixapi_LightInfoRectEXT rectInfoFront {};
+  rectInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_RECT_EXT;
+  rectInfoFront.position = {lightPosition.x, lightPosition.y, lightPosition.z};
+  rectInfoFront.shaping_hasvalue = TRUE;
+  rectInfoFront.shaping_value.coneAngleDegrees = 333.0f;
+  rectInfoFront.shaping_value.coneSoftness = 0.0f;
+  rectInfoFront.shaping_value.focusExponent = 0.0f;
+  rectInfoFront.volumetricRadianceScale = 3.0f;
+  
+  remixapi_LightInfoRectEXT rectInfoBack = rectInfoFront;
+  
+  const float nudge = 0.05f;
+  if (placement.isZAxis) {
+    rectInfoFront.position.x += nudge;
+    rectInfoFront.xAxis = {0.0f, 0.0f, 1.0f};
+    rectInfoFront.xSize = 1.0f;
+    rectInfoFront.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoFront.ySize = 1.0f;
+    rectInfoFront.direction = {1.0f, 0.0f, 0.0f};
+    rectInfoFront.shaping_value.direction = rectInfoFront.direction;
+    
+    rectInfoBack.position.x -= nudge;
+    rectInfoBack.xAxis = {0.0f, 0.0f, -1.0f};
+    rectInfoBack.xSize = 1.0f;
+    rectInfoBack.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoBack.ySize = 1.0f;
+    rectInfoBack.direction = {-1.0f, 0.0f, 0.0f};
+    rectInfoBack.shaping_value.direction = rectInfoBack.direction;
+  } else {
+    rectInfoFront.position.z += nudge;
+    rectInfoFront.xAxis = {1.0f, 0.0f, 0.0f};
+    rectInfoFront.xSize = 1.0f;
+    rectInfoFront.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoFront.ySize = 1.0f;
+    rectInfoFront.direction = {0.0f, 0.0f, 1.0f};
+    rectInfoFront.shaping_value.direction = rectInfoFront.direction;
+    
+    rectInfoBack.position.z -= nudge;
+    rectInfoBack.xAxis = {-1.0f, 0.0f, 0.0f};
+    rectInfoBack.xSize = 1.0f;
+    rectInfoBack.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoBack.ySize = 1.0f;
+    rectInfoBack.direction = {0.0f, 0.0f, -1.0f};
+    rectInfoBack.shaping_value.direction = rectInfoBack.direction;
+  }
+
+  remixapi_LightInfoLocalOriginEXT originInfoFront = makeLightLocalOriginInfo(renderOrigin, &rectInfoFront);
+  remixapi_LightInfo lightInfoFront {};
+  lightInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfoFront.pNext = &originInfoFront;
+  lightInfoFront.hash = persistentLightHashForRenderOrigin(makePortalLightHash(placement.blockPosition), renderOrigin);
+  lightInfoFront.radiance = placement.radiance;
+  lightInfoFront.isDynamic = FALSE;
+  lightInfoFront.ignoreViewModel = FALSE;
+  lightInfoFront.ignoreFirstPersonPlayerShadow = FALSE;
+
+  remixapi_LightInfoLocalOriginEXT originInfoBack = makeLightLocalOriginInfo(renderOrigin, &rectInfoBack);
+  remixapi_LightInfo lightInfoBack = lightInfoFront;
+  lightInfoBack.pNext = &originInfoBack;
+  lightInfoBack.hash = lightInfoFront.hash ^ 0x123456789ABCDEF0ull;
+
+  remixapi_LightHandle lightHandleFront = nullptr;
+  remixapi_LightHandle lightHandleBack = nullptr;
+  
+  if (remix_.CreateLight(&lightInfoFront, &lightHandleFront) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
+  if (remix_.CreateLight(&lightInfoBack, &lightHandleBack) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
+
+  portalLights_[placement.blockPosition] = {lightHandleFront, lightHandleBack, renderOrigin, lightInfoFront.hash, lightInfoBack.hash, lightPosition};
+  portalLightPlacements_[placement.blockPosition] = placement;
+  return true;
+}
+
+bool RemixRenderer::updatePortalLight(const PortalLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
+  const auto lightIt = portalLights_.find(placement.blockPosition);
+  if (lightIt == portalLights_.end() || lightIt->second.handleFront == nullptr) {
+    return createPortalLight(placement, renderOrigin);
+  }
+
+  if (remix_.UpdateLightDefinition == nullptr) {
+    destroyPortalLight(placement.blockPosition);
+    return createPortalLight(placement, renderOrigin);
+  }
+
+  const WorldRenderPosition lightPosition = rebaseWorldPosition(
+      placement.lightX,
+      placement.lightY,
+      placement.lightZ,
+      renderOrigin);
+
+  remixapi_LightInfoRectEXT rectInfoFront {};
+  rectInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_RECT_EXT;
+  rectInfoFront.position = {lightPosition.x, lightPosition.y, lightPosition.z};
+  rectInfoFront.shaping_hasvalue = TRUE;
+  rectInfoFront.shaping_value.coneAngleDegrees = 333.0f;
+  rectInfoFront.shaping_value.coneSoftness = 0.0f;
+  rectInfoFront.shaping_value.focusExponent = 0.0f;
+  rectInfoFront.volumetricRadianceScale = 3.0f;
+  
+  remixapi_LightInfoRectEXT rectInfoBack = rectInfoFront;
+  
+  const float nudge = 0.05f;
+  if (placement.isZAxis) {
+    rectInfoFront.position.x += nudge;
+    rectInfoFront.xAxis = {0.0f, 0.0f, 1.0f};
+    rectInfoFront.xSize = 1.0f;
+    rectInfoFront.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoFront.ySize = 1.0f;
+    rectInfoFront.direction = {1.0f, 0.0f, 0.0f};
+    rectInfoFront.shaping_value.direction = rectInfoFront.direction;
+    
+    rectInfoBack.position.x -= nudge;
+    rectInfoBack.xAxis = {0.0f, 0.0f, -1.0f};
+    rectInfoBack.xSize = 1.0f;
+    rectInfoBack.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoBack.ySize = 1.0f;
+    rectInfoBack.direction = {-1.0f, 0.0f, 0.0f};
+    rectInfoBack.shaping_value.direction = rectInfoBack.direction;
+  } else {
+    rectInfoFront.position.z += nudge;
+    rectInfoFront.xAxis = {1.0f, 0.0f, 0.0f};
+    rectInfoFront.xSize = 1.0f;
+    rectInfoFront.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoFront.ySize = 1.0f;
+    rectInfoFront.direction = {0.0f, 0.0f, 1.0f};
+    rectInfoFront.shaping_value.direction = rectInfoFront.direction;
+    
+    rectInfoBack.position.z -= nudge;
+    rectInfoBack.xAxis = {-1.0f, 0.0f, 0.0f};
+    rectInfoBack.xSize = 1.0f;
+    rectInfoBack.yAxis = {0.0f, 1.0f, 0.0f};
+    rectInfoBack.ySize = 1.0f;
+    rectInfoBack.direction = {0.0f, 0.0f, -1.0f};
+    rectInfoBack.shaping_value.direction = rectInfoBack.direction;
+  }
+
+  remixapi_LightInfoLocalOriginEXT originInfoFront = makeLightLocalOriginInfo(renderOrigin, &rectInfoFront);
+  remixapi_LightInfo lightInfoFront {};
+  lightInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+  lightInfoFront.pNext = &originInfoFront;
+  lightInfoFront.hash = persistentLightHashForRenderOrigin(makePortalLightHash(placement.blockPosition), renderOrigin);
+  lightInfoFront.radiance = placement.radiance;
+  lightInfoFront.isDynamic = FALSE;
+  lightInfoFront.ignoreViewModel = FALSE;
+  lightInfoFront.ignoreFirstPersonPlayerShadow = FALSE;
+
+  remixapi_LightInfoLocalOriginEXT originInfoBack = makeLightLocalOriginInfo(renderOrigin, &rectInfoBack);
+  remixapi_LightInfo lightInfoBack = lightInfoFront;
+  lightInfoBack.pNext = &originInfoBack;
+  lightInfoBack.hash = lightInfoFront.hash ^ 0x123456789ABCDEF0ull;
+
+  const remixapi_ErrorCode resultFront = remix_.UpdateLightDefinition(lightIt->second.handleFront, &lightInfoFront);
+  const remixapi_ErrorCode resultBack = remix_.UpdateLightDefinition(lightIt->second.handleBack, &lightInfoBack);
+
+  if (resultFront != REMIXAPI_ERROR_CODE_SUCCESS || resultBack != REMIXAPI_ERROR_CODE_SUCCESS) {
+    return true; // Transient failure
+  }
+
+  lightIt->second.renderOrigin = renderOrigin;
+  lightIt->second.apiHashFront = lightInfoFront.hash;
+  lightIt->second.apiHashBack = lightInfoBack.hash;
+  lightIt->second.submittedPosition = lightPosition;
+  return true;
+}
+
+bool RemixRenderer::reconcileChunkPortalLights(
+    ChunkMeshData& meshData,
+    const std::vector<PortalLightPlacement>& desiredPortalLights) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileChunkPortalLights");
+  if (remix_.CreateLight == nullptr) {
+    destroyChunkPortalLights(meshData);
+    return true;
+  }
+
+  std::vector<WorldBlockPosition> createdLights;
+  createdLights.reserve(desiredPortalLights.size());
+  const WorldRenderOrigin renderOrigin = currentRenderOriginLocked();
+  for (const PortalLightPlacement& placement : desiredPortalLights) {
+    const bool existed = portalLights_.find(placement.blockPosition) != portalLights_.end();
+
+    if (!updatePortalLight(placement, renderOrigin)) {
+      for (const WorldBlockPosition& createdPosition : createdLights) {
+        destroyPortalLight(createdPosition);
+      }
+      return false;
+    }
+    if (!existed) {
+      createdLights.push_back(placement.blockPosition);
+    }
+  }
+
+  for (const PortalLightPlacement& placement : meshData.portalLights) {
+    if (findPortalLightPlacement(desiredPortalLights, placement.blockPosition) == nullptr) {
+      destroyPortalLight(placement.blockPosition);
+    }
+  }
+
+  meshData.portalLights = desiredPortalLights;
+  return true;
+}
+
+void RemixRenderer::destroyPortalLight(const WorldBlockPosition& position) {
+  const auto it = portalLights_.find(position);
+  if (it != portalLights_.end()) {
+    if (it->second.handleFront != nullptr) {
+      destroyLightHandle(it->second.handleFront);
+    }
+    if (it->second.handleBack != nullptr) {
+      destroyLightHandle(it->second.handleBack);
+    }
+    portalLights_.erase(it);
+  }
+  portalLightPlacements_.erase(position);
+}
+
+void RemixRenderer::destroyChunkPortalLights(ChunkMeshData& meshData) {
+  for (const PortalLightPlacement& placement : meshData.portalLights) {
+    destroyPortalLight(placement.blockPosition);
+  }
+  meshData.portalLights.clear();
+}
+
 }  // namespace mcrtx
+
+
+
+

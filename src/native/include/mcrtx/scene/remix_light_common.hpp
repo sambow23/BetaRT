@@ -25,14 +25,27 @@ inline constexpr remixapi_Float3D kTorchLightRadiance = {540.0f, 331.5f, 121.5f}
 inline constexpr remixapi_Float3D kRedstoneTorchLightRadiance = {220.0f, 36.0f, 24.0f};
 inline constexpr remixapi_Float3D kLavaBucketLightRadiance = {35.0f, 7.0f, 1.5f};
 
+constexpr std::uint64_t kPortalLightHashSeed = 0x4D43525458505254ull;
+inline constexpr remixapi_Float3D kPortalLightRadiance = {300.0f, 100.0f, 800.0f}; // Much brighter
+
 std::uint64_t makeTorchLightHash(const WorldBlockPosition& position);
+std::uint64_t makePortalLightHash(const WorldBlockPosition& position);
+
 bool containsWorldBlockPosition(
     const std::vector<WorldBlockPosition>& positions,
     const WorldBlockPosition& position);
 const TorchLightPlacement* findTorchLightPlacement(
     const std::vector<TorchLightPlacement>& placements,
     const WorldBlockPosition& position);
+const PortalLightPlacement* findPortalLightPlacement(
+    const std::vector<PortalLightPlacement>& placements,
+    const WorldBlockPosition& position);
 TorchLightPlacement makeTorchLightPlacement(
+    const ChunkBlockCell& cell,
+    int worldX,
+    int worldY,
+    int worldZ);
+PortalLightPlacement makePortalLightPlacement(
     const ChunkBlockCell& cell,
     int worldX,
     int worldY,

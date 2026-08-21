@@ -78,4 +78,47 @@ TorchLightPlacement makeTorchLightPlacement(
   return placement;
 }
 
+
+
+std::uint64_t makePortalLightHash(const WorldBlockPosition& position) {
+  std::uint64_t hash = kPortalLightHashSeed;
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.x));
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.y));
+  hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(position.z));
+  return hash;
+}
+
+const PortalLightPlacement* findPortalLightPlacement(
+    const std::vector<PortalLightPlacement>& placements,
+    const WorldBlockPosition& position) {
+  const auto it = std::find_if(
+      placements.begin(),
+      placements.end(),
+      [&position](const PortalLightPlacement& placement) {
+        return placement.blockPosition == position;
+      });
+  return it == placements.end() ? nullptr : &(*it);
+}
+
+PortalLightPlacement makePortalLightPlacement(
+    const ChunkBlockCell& cell,
+    int worldX,
+    int worldY,
+    int worldZ) {
+  PortalLightPlacement placement;
+  placement.blockPosition = WorldBlockPosition {
+      .x = worldX,
+      .y = worldY,
+      .z = worldZ,
+  };
+  placement.lightX = static_cast<float>(worldX) + 0.5f;
+  placement.lightY = static_cast<float>(worldY) + 0.5f;
+  placement.lightZ = static_cast<float>(worldZ) + 0.5f;
+  placement.radiance = kPortalLightRadiance;
+  
+  const float xThickness = cell.bounds[3] - cell.bounds[0];
+  const float zThickness = cell.bounds[5] - cell.bounds[2];
+  placement.isZAxis = (xThickness <= zThickness);
+  return placement;
+}
 }  // namespace mcrtx::light

@@ -10,6 +10,7 @@ namespace mcrtx {
 struct ChunkGeometryBuild {
   std::vector<geometry::SurfaceBuildBuffers> surfacesToBuild;
   std::vector<TorchLightPlacement> desiredTorchLights;
+  std::vector<PortalLightPlacement> desiredPortalLights;
 };
 
 }  // namespace mcrtx

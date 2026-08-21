@@ -170,6 +170,7 @@ void RemixRenderer::destroyChunkMesh(ChunkMeshData& meshData) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkMesh");
   destroyChunkMeshHandle(meshData);
   destroyChunkTorchLights(meshData);
+  destroyChunkPortalLights(meshData);
   meshData.meshFingerprint = 0;
   meshData.fireCellIndices.clear();
 }
