@@ -7,6 +7,7 @@
 
 #include <sstream>
 #include <vector>
+#include <fstream>
 
 namespace mcrtx {
 
@@ -19,6 +20,10 @@ void pushAssetCandidates(
     std::vector<std::filesystem::path>& attemptedPaths,
     const std::filesystem::path& moduleDirectory,
     const std::filesystem::path& relativePath) {
+  std::filesystem::path cacheDir = getCurrentTexturePackCacheDir();
+  if (!cacheDir.empty()) {
+    attemptedPaths.push_back(cacheDir / relativePath);
+  }
   attemptedPaths.push_back(std::filesystem::current_path() / L"mcrtx_texturepack_cache" / relativePath);
   if (!moduleDirectory.empty()) {
     attemptedPaths.push_back(moduleDirectory / L"mcrtx_assets" / relativePath);
@@ -47,6 +52,27 @@ void appendAtlasCandidates(
     attemptedPaths.push_back(pngPath);
     attemptedPaths.push_back(ddsPath);
   }
+}
+
+void appendAtlasCandidatesWithCache(
+    std::vector<std::filesystem::path>& attemptedPaths,
+    const std::filesystem::path& baseDirectory,
+    const wchar_t* stem,
+    bool preferDds) {
+  std::filesystem::path cacheDir = getCurrentTexturePackCacheDir();
+  if (!cacheDir.empty()) {
+    const std::filesystem::path ddsPath = cacheDir / (std::wstring(stem) + L".dds");
+    const std::filesystem::path pngPath = cacheDir / (std::wstring(stem) + L".png");
+    if (preferDds) {
+      attemptedPaths.push_back(ddsPath);
+      attemptedPaths.push_back(pngPath);
+    } else {
+      attemptedPaths.push_back(pngPath);
+      attemptedPaths.push_back(ddsPath);
+    }
+  }
+  
+  appendAtlasCandidates(attemptedPaths, baseDirectory, stem, preferDds);
 }
 
 }  // namespace
@@ -96,13 +122,13 @@ std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
 
   const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
   if (!moduleDirectory.empty()) {
-    appendAtlasCandidates(attemptedPaths, moduleDirectory / L"mcrtx_assets", L"terrain", preferDds);
-    appendAtlasCandidates(attemptedPaths, moduleDirectory, L"terrain", preferDds);
+    appendAtlasCandidatesWithCache(attemptedPaths, moduleDirectory / L"mcrtx_assets", L"terrain", preferDds);
+    appendAtlasCandidatesWithCache(attemptedPaths, moduleDirectory, L"terrain", preferDds);
   }
 
-  appendAtlasCandidates(attemptedPaths, std::filesystem::current_path() / L"mcrtx_assets", L"terrain", preferDds);
-  appendAtlasCandidates(attemptedPaths, std::filesystem::current_path() / L".." / L"libraries" / L"mcrtx_assets", L"terrain", preferDds);
-  appendAtlasCandidates(attemptedPaths, std::filesystem::current_path(), L"terrain", preferDds);
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L"mcrtx_assets", L"terrain", preferDds);
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L".." / L"libraries" / L"mcrtx_assets", L"terrain", preferDds);
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path(), L"terrain", preferDds);
 
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {

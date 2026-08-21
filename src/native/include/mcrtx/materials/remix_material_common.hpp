@@ -43,6 +43,7 @@ struct OpaqueSubsurfaceSettings {
 
 bool stripDynamicEntityTextureAliasPrefix(std::string& texturePath, std::string_view prefix);
 bool prefersDdsTerrainAtlas();
+std::filesystem::path getCurrentTexturePackCacheDir();
 const wchar_t* optionalTexturePath(const std::filesystem::path& path);
 std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& texturePath, const wchar_t* suffix);
 OptionalPbrTextures resolveOptionalPbrTextures(const std::filesystem::path& texturePath);

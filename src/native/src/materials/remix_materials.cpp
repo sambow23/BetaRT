@@ -16,6 +16,19 @@ constexpr float kDefaultHeightMapDisplaceIn = 0.05f;
 constexpr float kDefaultHeightMapDisplaceOut = 0.0f;
 }  // namespace
 
+std::filesystem::path getCurrentTexturePackCacheDir() {
+  std::filesystem::path cacheBase = std::filesystem::current_path() / L"mcrtx_texturepack_cache";
+  std::filesystem::path currentTxt = cacheBase / L"current.txt";
+  if (std::filesystem::exists(currentTxt)) {
+    std::ifstream file(currentTxt);
+    std::string currentId;
+    if (std::getline(file, currentId) && !currentId.empty()) {
+      return cacheBase / currentId;
+    }
+  }
+  return {};
+}
+
 std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& texturePath, const wchar_t* suffix) {
   if (texturePath.empty()) {
     return {};
@@ -34,17 +47,7 @@ std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& tex
     }
   }
 
-  std::filesystem::path cacheBase = std::filesystem::current_path() / L"mcrtx_texturepack_cache";
-  std::filesystem::path currentCacheDir;
-  
-  std::filesystem::path currentTxt = cacheBase / L"current.txt";
-  if (std::filesystem::exists(currentTxt)) {
-    std::ifstream file(currentTxt);
-    std::string currentId;
-    if (std::getline(file, currentId) && !currentId.empty()) {
-      currentCacheDir = cacheBase / currentId;
-    }
-  }
+  std::filesystem::path currentCacheDir = getCurrentTexturePackCacheDir();
 
   for (const wchar_t* extension : {L".dds", L".png"}) {
     std::filesystem::path filename = std::filesystem::path(stemWithSuffix).replace_extension(extension);
