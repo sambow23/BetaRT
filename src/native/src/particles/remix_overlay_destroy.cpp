@@ -150,6 +150,18 @@ bool RemixRenderer::rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOri
   {
     MCRTX_TRACY_SCOPE("rebuildDestroyOverlayMesh.buildGeometry");
   for (const DestroyOverlayInstance& overlay : destroyOverlayInstances_) {
+    struct OverlayBiasNudger {
+      std::vector<remixapi_HardcodedVertex>& vertices;
+      std::size_t startIdx;
+      ~OverlayBiasNudger() {
+        for (std::size_t i = startIdx; i < vertices.size(); ++i) {
+          vertices[i].position[0] += vertices[i].normal[0] * kFaceOverlayBias;
+          vertices[i].position[1] += vertices[i].normal[1] * kFaceOverlayBias;
+          vertices[i].position[2] += vertices[i].normal[2] * kFaceOverlayBias;
+        }
+      }
+    } nudger{vertices, vertices.size()};
+
     const int destroyTile = 240 + std::clamp(overlay.destroyStage, 0, 9);
     ChunkBlockCell resolvedCell {};
     if (const ChunkBlockCell* worldCell = findWorldCell(overlay.blockX, overlay.blockY, overlay.blockZ); worldCell != nullptr) {
@@ -483,3 +495,4 @@ bool RemixRenderer::rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOri
 
 
 }  // namespace mcrtx
+
