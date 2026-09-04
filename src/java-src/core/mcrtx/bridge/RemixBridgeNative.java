@@ -3,6 +3,7 @@ package mcrtx.bridge;
 import java.io.File;
 import java.net.URISyntaxException;
 import java.net.URL;
+import java.util.Locale;
 
 public final class RemixBridgeNative {
     public static final int REMIX_UI_STATE_NONE = 0;
@@ -13,6 +14,9 @@ public final class RemixBridgeNative {
 
     private static final boolean AVAILABLE;
     private static final String LOAD_ERROR;
+    private static final boolean NATIVE_LINUX_WINDOW = System.getProperty("os.name", "")
+            .toLowerCase(Locale.ROOT)
+            .contains("linux");
 
     static {
         boolean available = false;
@@ -38,6 +42,14 @@ public final class RemixBridgeNative {
         return LOAD_ERROR;
     }
 
+    public static boolean usesNativeLinuxWindow() {
+        return NATIVE_LINUX_WINDOW && AVAILABLE;
+    }
+
+    public static boolean isLinuxPlatform() {
+        return NATIVE_LINUX_WINDOW;
+    }
+
     private static void loadNativeLibrary() {
         StringBuilder attempts = new StringBuilder();
 
@@ -46,12 +58,13 @@ public final class RemixBridgeNative {
             return;
         }
 
-        String jarAdjacentPath = resolveJarAdjacentDllPath();
+        String jarAdjacentPath = resolveJarAdjacentLibraryPath();
         if (tryLoadAbsolute(jarAdjacentPath, attempts)) {
             return;
         }
 
-        String workingDirectoryPath = new File(System.getProperty("user.dir"), "mcrtx_jni.dll").getAbsolutePath();
+        String libraryFileName = System.mapLibraryName("mcrtx_jni");
+        String workingDirectoryPath = new File(System.getProperty("user.dir"), libraryFileName).getAbsolutePath();
         if (tryLoadAbsolute(workingDirectoryPath, attempts)) {
             return;
         }
@@ -95,7 +108,7 @@ public final class RemixBridgeNative {
         }
     }
 
-    private static String resolveJarAdjacentDllPath() {
+    private static String resolveJarAdjacentLibraryPath() {
         try {
             URL location = RemixBridgeNative.class.getProtectionDomain().getCodeSource().getLocation();
             if (location == null) {
@@ -108,7 +121,7 @@ public final class RemixBridgeNative {
                 return "";
             }
 
-            return new File(directory, "mcrtx_jni.dll").getAbsolutePath();
+            return new File(directory, System.mapLibraryName("mcrtx_jni")).getAbsolutePath();
         } catch (URISyntaxException exception) {
             return "";
         }

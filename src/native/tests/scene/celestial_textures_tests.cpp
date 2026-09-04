@@ -45,6 +45,7 @@ int main() {
 
   touchFile(currentDir / L"mcrtx_assets" / L"sun.png");
   touchFile(currentDir / L"mcrtx_assets" / L"moon.png");
+#if defined(_WIN32)
   require(
       mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Sun, moduleDir, currentDir)
           == currentDir / L"mcrtx_assets" / L"sun.png",
@@ -53,6 +54,14 @@ int main() {
       mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Moon0, moduleDir, currentDir)
           == currentDir / L"mcrtx_assets" / L"moon.png",
       "moon png fallback in current mcrtx_assets");
+#else
+  require(
+      mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Sun, moduleDir, currentDir).empty(),
+      "sun ignores unsupported png fallback");
+  require(
+      mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Moon0, moduleDir, currentDir).empty(),
+      "moon ignores unsupported png fallback");
+#endif
 
   touchFile(currentDir / L"mcrtx_assets" / L"sun.dds");
   touchFile(currentDir / L"mcrtx_assets" / L"moon.dds");
@@ -65,11 +74,37 @@ int main() {
           == currentDir / L"mcrtx_assets" / L"moon.dds",
       "moon prefers dds over png");
 
+  touchFile(moduleDir / L"mcrtx_assets" / L"sun.png");
+#if !defined(_WIN32)
+  require(
+      mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Sun, moduleDir, currentDir)
+          == currentDir / L"mcrtx_assets" / L"sun.dds",
+      "unsupported module png does not shadow current dds");
+#endif
+
   touchFile(moduleDir / L"mcrtx_assets" / L"sun.dds");
   require(
       mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Sun, moduleDir, currentDir)
           == moduleDir / L"mcrtx_assets" / L"sun.dds",
       "module mcrtx_assets has highest priority");
+
+  const auto instanceLibrariesDir = currentDir / L".." / L"libraries" / L"mcrtx_assets";
+  std::filesystem::remove(currentDir / L"mcrtx_assets" / L"moon.dds");
+  touchFile(instanceLibrariesDir / L"moon.dds");
+  require(
+      mcrtx::resolveCelestialTexturePath(mcrtx::CelestialTextureKind::Moon0, moduleDir, currentDir)
+          == instanceLibrariesDir / L"moon.dds",
+      "moon resolves from instance libraries");
+
+  const auto texturePackCacheDir = root / L"texture_pack_cache";
+  touchFile(texturePackCacheDir / L"moon.dds");
+  require(
+      mcrtx::resolveCelestialTexturePath(
+          mcrtx::CelestialTextureKind::Moon0,
+          moduleDir,
+          currentDir,
+          texturePackCacheDir) == texturePackCacheDir / L"moon.dds",
+      "texture pack cache has highest priority");
 
   const auto values = mcrtx::makeCelestialTextureGameValues({
       moduleDir / L"mcrtx_assets" / L"sun.dds",

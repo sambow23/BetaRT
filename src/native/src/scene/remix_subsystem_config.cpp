@@ -78,6 +78,22 @@ const char* taauPresetConfigValue(int preset) {
   }
 }
 
+const char* taauResolutionScaleConfigValue(int preset) {
+  switch (preset) {
+    case 0:
+      return "0.33";
+    case 1:
+      return "0.5";
+    case 3:
+      return "0.75";
+    case 4:
+      return "1.0";
+    case 2:
+    default:
+      return "0.66";
+  }
+}
+
 }  // namespace
 
 bool RemixRenderer::setConfigVariableLocked(
@@ -281,6 +297,8 @@ void RemixRenderer::applyUpscalerConfigLocked() {
     case 3:
       setConfigVariableLocked("rtx.upscalerType", "3", true, true);
       setConfigVariableLocked("rtx.taauPreset", taauPresetConfigValue(taauPreset_), true, true);
+      setConfigVariableLocked(
+          "rtx.resolutionScale", taauResolutionScaleConfigValue(taauPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
       setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
@@ -322,6 +340,7 @@ void RemixRenderer::applyAerialPerspectiveConfigLocked() {
 }
 
 void RemixRenderer::applyRemixConfigPostStartupLocked() {
+  setConfigVariableLocked("rtx.sceneScale", "0.01", true);
   applyRemixAtmosphereCloudConfigLocked();
   applyAerialPerspectiveConfigLocked();
   applyRtQualityConfigLocked();

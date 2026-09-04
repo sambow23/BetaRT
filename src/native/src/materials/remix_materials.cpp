@@ -143,7 +143,7 @@ bool prefersDdsTerrainAtlas() {
   return normalizedPreference == "dds";
 }
 
-const wchar_t* optionalTexturePath(const std::filesystem::path& path) {
+remixapi_Path optionalTexturePath(const std::filesystem::path& path) {
   return path.empty() ? nullptr : path.c_str();
 }
 

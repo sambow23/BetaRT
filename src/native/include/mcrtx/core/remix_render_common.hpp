@@ -5,8 +5,6 @@
 #include <cstdint>
 #include <string>
 
-#include <windows.h>
-
 #include <remix/remix_c.h>
 
 #include <mcrtx/core/remix_geometry_common.hpp>
@@ -102,7 +100,7 @@ constexpr float kAtlasUvInsetPixels = 0.01f;
 constexpr float kFireAtlasWidthPixels = 256.0f;
 constexpr float kFireAtlasHeightPixels = 32.0f;
 constexpr std::uint32_t kFireAnimationFrameCount = 16;
-constexpr ULONGLONG kFireAnimationFrameIntervalMilliseconds = 50;
+constexpr std::uint64_t kFireAnimationFrameIntervalMilliseconds = 50;
 constexpr std::uint8_t kLiquidAnimationFrameCount = 32;
 constexpr std::uint8_t kLiquidAnimationFramesPerSecond = 20;
 constexpr std::uint8_t kPortalAnimationFrameCount = 32;

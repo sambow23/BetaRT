@@ -491,6 +491,9 @@ public final class Display {
     }
 
     private static boolean detectSingleNativeWindowMode() {
+        if (RemixBridgeNative.usesNativeLinuxWindow()) {
+            return true;
+        }
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
         return configuredMode != null && configuredMode.equalsIgnoreCase("single-native");
     }

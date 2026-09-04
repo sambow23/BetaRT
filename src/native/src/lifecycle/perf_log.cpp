@@ -1,6 +1,7 @@
 #include "mcrtx/lifecycle/perf_log.hpp"
 
 #include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/core/runtime_config.hpp"
 
 #include <algorithm>
 #include <atomic>
@@ -12,6 +13,7 @@
 #include <deque>
 #include <filesystem>
 #include <fstream>
+#include <functional>
 #include <iomanip>
 #include <mutex>
 #include <sstream>
@@ -20,8 +22,6 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-
-#include <windows.h>
 
 namespace mcrtx::perf {
 namespace {
@@ -119,14 +119,8 @@ const char* sideName(Side side) noexcept {
 }
 
 std::string readEnv(const char* name) {
-  char* value = nullptr;
-  std::size_t length = 0;
-  if (_dupenv_s(&value, &length, name) != 0 || value == nullptr) {
-    return {};
-  }
-  std::string result(value);
-  std::free(value);
-  return result;
+  const char* value = std::getenv(name);
+  return value == nullptr ? std::string() : std::string(value);
 }
 
 bool envTruthy(const std::string& v) {
@@ -138,19 +132,11 @@ bool envTruthy(const std::string& v) {
 }
 
 std::filesystem::path resolveDllDirectory() {
-  HMODULE module = nullptr;
-  if (!GetModuleHandleExW(
-          GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
-          reinterpret_cast<LPCWSTR>(&resolveDllDirectory),
-          &module)) {
-    return {};
-  }
-  wchar_t buffer[MAX_PATH] = {0};
-  const DWORD length = GetModuleFileNameW(module, buffer, MAX_PATH);
-  if (length == 0 || length == MAX_PATH) {
-    return {};
-  }
-  return std::filesystem::path(buffer).parent_path();
+  return ::mcrtx::detail::getCurrentModuleDirectory();
+}
+
+std::uint32_t currentThreadId() noexcept {
+  return static_cast<std::uint32_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
 }
 
 std::filesystem::path resolveLogPath(const char* envName, const char* defaultName) {
@@ -411,7 +397,7 @@ void recordDuration(Side side, std::string_view site, std::uint64_t nanoseconds)
     if (traceOn) {
       ensureTraceThreadStarted();
       enqueueTraceRecord(TraceRecord{unixMillisNow(), side, -1, std::string(site),
-                                     nanoseconds, ::GetCurrentThreadId()});
+                                     nanoseconds, currentThreadId()});
     }
   } catch (...) {
     // swallow; profiler must never throw
@@ -460,7 +446,7 @@ void recordDurationById(int siteId, std::uint64_t nanoseconds) noexcept {
     if (traceOn) {
       ensureTraceThreadStarted();
       enqueueTraceRecord(TraceRecord{unixMillisNow(), Side::Hook, siteId, {},
-                                     nanoseconds, ::GetCurrentThreadId()});
+                                     nanoseconds, currentThreadId()});
     }
   } catch (...) {
     // swallow
@@ -491,7 +477,7 @@ void recordDurationsBatch(const int* siteIds,
     if (traceOn) {
       ensureTraceThreadStarted();
       const std::uint64_t traceTimestamp = unixMillisNow();
-      const DWORD traceThreadId = ::GetCurrentThreadId();
+      const std::uint32_t traceThreadId = currentThreadId();
       // Single lock acquisition for the whole batch keeps producer contention
       // with the writer thread short even when count is large.
       std::scoped_lock lock(g_traceMutex);

@@ -365,6 +365,8 @@ public final class McrtxSourceOrganizationTest {
     requireContains(configSubsystem, "dlssQualityConfigValue", "config subsystem owns DLSS preset conversion");
     requireContains(configSubsystem, "xessPresetConfigValue", "config subsystem owns XeSS preset conversion");
     requireContains(configSubsystem, "taauPresetConfigValue", "config subsystem owns TAA-U preset conversion");
+    requireContains(configSubsystem, "taauResolutionScaleConfigValue", "config subsystem owns TAA-U resolution scale conversion");
+    requireContains(configSubsystem, "\"rtx.resolutionScale\", taauResolutionScaleConfigValue(taauPreset_)", "TAA-U preset applies its resolution scale");
     requireNotContains(rendererCore, "RemixRenderer::setConfigVariableLocked", "config writes removed from renderer core");
     requireNotContains(rendererCore, "RemixRenderer::applyUpscalerConfigLocked", "upscaler config removed from renderer core");
     requireNotContains(rendererCore, "RemixRenderer::publishWorldRenderOriginLocked", "origin publication removed from renderer core");

@@ -4,6 +4,7 @@
 #include "mcrtx/platform/remix_window_internals.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 
+#include <algorithm>
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -418,6 +419,20 @@ void RemixRenderer::syncOutputWindowInteractivity(remixapi_UIState uiState) {
   SetActiveWindow(sourceHwnd_);
   SetFocus(sourceHwnd_);
   log("Remix overlay window input released");
+}
+
+bool RemixRenderer::isOutputCloseRequested() const {
+  return g_outputWindowCloseRequested.load(std::memory_order_relaxed);
+}
+
+std::uint32_t RemixRenderer::getOutputWindowWidth() const {
+  return static_cast<std::uint32_t>(
+      std::max(0, g_outputWindowClientWidth.load(std::memory_order_relaxed)));
+}
+
+std::uint32_t RemixRenderer::getOutputWindowHeight() const {
+  return static_cast<std::uint32_t>(
+      std::max(0, g_outputWindowClientHeight.load(std::memory_order_relaxed)));
 }
 
 

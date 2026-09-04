@@ -86,6 +86,11 @@ public final class MinecraftRemixLifecycleHooks {
             McrtxHookPerfTracker.reset();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
+            if (mcrtx.bridge.RemixBridgeNative.isLinuxPlatform()) {
+                RemixLifecycleBridge.shutdown();
+                HookProfiler.flushAll();
+                return;
+            }
             // BetaRT: RTX Remix often crashes or hangs when tearing down the Vulkan device.
             // Since the game has already saved all state by the time this hook runs,
             // there is no reason to risk a crash/hang during native teardown.
@@ -281,6 +286,9 @@ public final class MinecraftRemixLifecycleHooks {
     }
 
     private static boolean detectSingleNativeWindowMode() {
+        if (mcrtx.bridge.RemixBridgeNative.usesNativeLinuxWindow()) {
+            return true;
+        }
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
         return configuredMode != null && configuredMode.equalsIgnoreCase("single-native");
     }
@@ -298,6 +306,9 @@ public final class MinecraftRemixLifecycleHooks {
     }
 
     private static boolean detectNativeInputBackend() {
+        if (mcrtx.bridge.RemixBridgeNative.usesNativeLinuxWindow()) {
+            return true;
+        }
         String configuredBackend = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_INPUT_BACKEND");
         return configuredBackend != null && configuredBackend.equalsIgnoreCase("native");
     }

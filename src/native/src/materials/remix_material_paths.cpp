@@ -15,6 +15,13 @@ void pushAssetCandidates(
     std::vector<std::filesystem::path>& attemptedPaths,
     const std::filesystem::path& moduleDirectory,
     const std::filesystem::path& relativePath) {
+#if !defined(_WIN32)
+  // The native Remix asset loader accepts DDS files; PNGs resolve but produce an empty TextureRef.
+  if (relativePath.extension() != L".dds") {
+    return;
+  }
+#endif
+
   std::filesystem::path cacheDir = getCurrentTexturePackCacheDir();
   if (!cacheDir.empty()) {
     attemptedPaths.push_back((cacheDir / relativePath).lexically_normal());
@@ -42,12 +49,13 @@ void appendAtlasCandidates(
     std::vector<std::filesystem::path>& attemptedPaths,
     const std::filesystem::path& baseDirectory,
     const wchar_t* stem,
-    bool preferDds) {
+    [[maybe_unused]] bool preferDds) {
   if (baseDirectory.empty()) {
     return;
   }
 
   const std::filesystem::path ddsPath = baseDirectory / (std::wstring(stem) + L".dds");
+#if defined(_WIN32)
   const std::filesystem::path pngPath = baseDirectory / (std::wstring(stem) + L".png");
   if (preferDds) {
     attemptedPaths.push_back(ddsPath);
@@ -56,6 +64,9 @@ void appendAtlasCandidates(
     attemptedPaths.push_back(pngPath);
     attemptedPaths.push_back(ddsPath);
   }
+#else
+  attemptedPaths.push_back(ddsPath);
+#endif
 }
 
 void appendAtlasCandidatesWithCache(
@@ -66,6 +77,7 @@ void appendAtlasCandidatesWithCache(
   std::filesystem::path cacheDir = getCurrentTexturePackCacheDir();
   if (!cacheDir.empty()) {
     const std::filesystem::path ddsPath = cacheDir / (std::wstring(stem) + L".dds");
+#if defined(_WIN32)
     const std::filesystem::path pngPath = cacheDir / (std::wstring(stem) + L".png");
     if (preferDds) {
       attemptedPaths.push_back(ddsPath);
@@ -74,6 +86,9 @@ void appendAtlasCandidatesWithCache(
       attemptedPaths.push_back(pngPath);
       attemptedPaths.push_back(ddsPath);
     }
+#else
+    attemptedPaths.push_back(ddsPath);
+#endif
   }
   
   appendAtlasCandidates(attemptedPaths, baseDirectory, stem, preferDds);
@@ -96,28 +111,43 @@ std::filesystem::path RemixRenderer::resolveRemixDllPath() {
 
   const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
   if (!moduleDirectory.empty()) {
+#if defined(_WIN32)
     attemptedPaths.push_back(moduleDirectory / "d3d9.dll");
     attemptedPaths.push_back(moduleDirectory / "bin" / "d3d9.dll");
+#else
+    attemptedPaths.push_back(moduleDirectory / "libremix.so.0");
+    attemptedPaths.push_back(moduleDirectory / "libremix.so");
+    attemptedPaths.push_back(moduleDirectory / "lib" / "libremix.so.0");
+#endif
   }
 
+#if defined(_WIN32)
   attemptedPaths.push_back(std::filesystem::path(L"d3d9.dll"));
   attemptedPaths.push_back(std::filesystem::path(L"bin") / "d3d9.dll");
+#else
+  attemptedPaths.push_back(std::filesystem::path("libremix.so.0"));
+  attemptedPaths.push_back(std::filesystem::path("libremix.so"));
+#endif
 
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {
-      log("Using Remix runtime DLL: " + path.string());
+      log("Using Remix runtime: " + path.string());
       return path;
     }
   }
 
   std::ostringstream stream;
-  stream << "Could not find Remix runtime d3d9.dll. Tried:";
+  stream << "Could not find Remix runtime. Tried:";
   for (const auto& path : attemptedPaths) {
     stream << " " << path.string();
   }
   log(stream.str());
 
+#if defined(_WIN32)
   return std::filesystem::path(L"d3d9.dll");
+#else
+  return std::filesystem::path("libremix.so.0");
+#endif
 }
 
 std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
@@ -191,14 +221,16 @@ std::filesystem::path RemixRenderer::resolveSunTexturePath() {
   return resolveCelestialTexturePath(
       CelestialTextureKind::Sun,
       getCurrentModuleDirectory(),
-      std::filesystem::current_path());
+      std::filesystem::current_path(),
+      getCurrentTexturePackCacheDir());
 }
 
 std::filesystem::path RemixRenderer::resolveMoonTexturePath() {
   return resolveCelestialTexturePath(
       CelestialTextureKind::Moon0,
       getCurrentModuleDirectory(),
-      std::filesystem::current_path());
+      std::filesystem::current_path(),
+      getCurrentTexturePackCacheDir());
 }
 
 std::filesystem::path RemixRenderer::resolveFireTexturePath() {

@@ -2,13 +2,16 @@
 
 #include "mcrtx/core/remix_renderer.hpp"
 #include "mcrtx/lifecycle/remix_renderer_timing.hpp"
+#if defined(_WIN32)
 #include "mcrtx/platform/remix_window_internals.hpp"
+#endif
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/core/runtime_config.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 
 #include <chrono>
 #include <cstdlib>
+#include <functional>
 #include <iostream>
 #include <string_view>
 #include <utility>
@@ -17,11 +20,18 @@ namespace mcrtx {
 
 using namespace mcrtx::detail;
 using namespace mcrtx::renderer_detail;
+#if defined(_WIN32)
 using namespace mcrtx::window_detail;
+#endif
 
 namespace {
 
 constexpr auto kStandaloneAutonomousFrameInterval = std::chrono::milliseconds(16);
+
+std::uint64_t currentThreadId() {
+  return static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
+}
+
 std::string describeRequestedWindowMode() {
   const std::string configuredWindowMode = readEnvironmentVariable("MCRTX_WINDOW_MODE");
   return configuredWindowMode.empty() ? std::string("<default>") : configuredWindowMode;
@@ -37,7 +47,7 @@ RemixRenderer& RemixRenderer::instance() {
 }
 
 bool RemixRenderer::initialize(
-  HWND hwnd,
+  NativeWindowHandle sourceWindow,
   std::uint32_t width,
   std::uint32_t height,
   std::filesystem::path remixDllPath) {
@@ -50,16 +60,21 @@ bool RemixRenderer::initialize(
     return true;
   }
 
-  if (hwnd == nullptr) {
+#if defined(_WIN32)
+  if (sourceWindow == nullptr) {
     setError("initialize called with null HWND");
     return false;
   }
 
-  sourceHwnd_ = hwnd;
+  sourceHwnd_ = sourceWindow;
+#else
+  (void)sourceWindow;
+#endif
   width_ = width == 0 ? 1 : width;
   height_ = height == 0 ? 1 : height;
   camera_.aspect = static_cast<float>(width_) / static_cast<float>(height_);
 
+#if defined(_WIN32)
   bool usedLegacySourceWindowEnvVar = false;
   singleNativeOutputWindow_ = shouldUseSingleNativeOutputWindow();
   standaloneOutputWindow_ = shouldUseStandaloneOutputWindow();
@@ -67,6 +82,11 @@ bool RemixRenderer::initialize(
   if (usedLegacySourceWindowEnvVar) {
     log("MCRTX_USE_SOURCE_WINDOW is deprecated; using detached dual-window mode instead");
   }
+#else
+  singleNativeOutputWindow_ = true;
+  standaloneOutputWindow_ = true;
+  overlayOutputWindow_ = false;
+#endif
 
   {
     const std::string evictRadiusStr = readEnvironmentVariable("MCRTX_EVICT_RADIUS");
@@ -100,6 +120,7 @@ bool RemixRenderer::initialize(
     return startStandaloneWorker(std::move(remixDllPath));
   }
 
+#if defined(_WIN32)
   if (!createOutputWindow(sourceHwnd_)) {
     return false;
   }
@@ -176,6 +197,10 @@ bool RemixRenderer::initialize(
               ? "Remix renderer initialized in standalone mode"
               : "Remix renderer initialized in dual-window mode")));
   return true;
+#else
+  setError("Native Linux rendering requires the standalone worker");
+  return false;
+#endif
 }
 
 void RemixRenderer::shutdown() {
@@ -228,10 +253,14 @@ bool RemixRenderer::startStandaloneWorker(std::filesystem::path remixDllPath) {
 
 bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPath) {
   MCRTX_TRACY_SCOPE("RemixRenderer::initializeStandaloneWorker");
+#if defined(_WIN32)
   if (!createOutputWindow(sourceHwnd_)) {
     return false;
   }
-  HWND presentationHwnd = outputHwnd_;
+  NativeWindowHandle presentationWindow = outputHwnd_;
+#else
+  NativeWindowHandle presentationWindow = nullptr;
+#endif
 
   if (remixDllPath.empty()) {
     remixDllPath = resolveRemixDllPath();
@@ -242,13 +271,57 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
     return false;
   }
 
-  applyRemixConfigPreStartupLocked();
+#if !defined(_WIN32)
+  if (remix_.PumpEvents == nullptr
+      || remix_.GetWindowState == nullptr
+      || remix_.PollMouseState == nullptr
+      || remix_.IsKeyDown == nullptr
+      || remix_.SetMouseGrabbed == nullptr
+      || remix_.SetCursorPosition == nullptr
+      || remix_.SetFullscreen == nullptr) {
+    setError("Loaded Remix runtime does not provide the native Linux window and input API");
+    resetLoadedRemix();
+    return false;
+  }
+#endif
 
-  if (!startup(presentationHwnd)) {
+  {
+    const std::string syntheticUi = readEnvironmentVariable("MCRTX_UI_SYNTHETIC_TEST");
+    syntheticUiTestEnabled_ = syntheticUi == "1" || syntheticUi == "true";
+    const bool uiApiPresent = remix_.RegisterUITexture != nullptr
+        && remix_.FreeUITexture != nullptr
+        && remix_.SubmitUIDrawList != nullptr;
+    log(std::string("Screen-space UI draw-list API ")
+        + (uiApiPresent ? "available" : "UNAVAILABLE (runtime predates UI API)"));
+    if (syntheticUiTestEnabled_ && !uiApiPresent) {
+      log("MCRTX_UI_SYNTHETIC_TEST requested but the loaded runtime lacks the UI API; disabling test");
+      syntheticUiTestEnabled_ = false;
+    } else if (syntheticUiTestEnabled_) {
+      log("MCRTX_UI_SYNTHETIC_TEST enabled: emitting a synthetic UI draw list each frame");
+    }
+  }
+
+  {
+    const std::string floatingOrigin = readEnvironmentVariable("MCRTX_FLOATING_ORIGIN");
+    worldOriginRebaseEnabled_ = isTruthyEnvValue(floatingOrigin.c_str());
+    if (worldOriginRebaseEnabled_) {
+      log("MCRTX_FLOATING_ORIGIN enabled: rebasing world camera and terrain chunk transforms");
+    }
+  }
+
+#if defined(_WIN32)
+  applyRemixConfigPreStartupLocked();
+#endif
+
+  if (!startup(presentationWindow)) {
     resetLoadedRemix();
     destroyOutputWindow();
     return false;
   }
+
+#if !defined(_WIN32)
+  pumpOutputWindowMessages();
+#endif
 
   applyRemixConfigPostStartupLocked();
 
@@ -259,14 +332,14 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
     MCRTX_TRACY_LOCK_MARK(mutex_);
     initialized_ = true;
   }
-  log("Remix renderer initialized in standalone mode (async worker threadId=" + std::to_string(GetCurrentThreadId()) + ")");
+  log("Remix renderer initialized in standalone mode (async worker threadId=" + std::to_string(currentThreadId()) + ")");
   return true;
 }
 
 void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPath) {
   MCRTX_TRACY_SET_THREAD_NAME("mc-rtx Standalone Worker");
   MCRTX_TRACY_SCOPE("RemixRenderer::standaloneRenderWorkerMain");
-  const DWORD workerThreadId = GetCurrentThreadId();
+  const std::uint64_t workerThreadId = currentThreadId();
   {
     TracyUniqueLock lock(mutex_);
     MCRTX_TRACY_LOCK_MARK(mutex_);
@@ -312,7 +385,7 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
       const auto lockRequestedAt = std::chrono::steady_clock::now();
       TracyUniqueLock lock(mutex_, std::try_to_lock);
       if (!lock.owns_lock()) {
-        Sleep(1);
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
         continue;
       }
       MCRTX_TRACY_LOCK_MARK(mutex_);
@@ -326,7 +399,7 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
       log(perfSummary);
     }
     if (!presentOk) {
-      Sleep(1);
+      std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
   }
 
@@ -393,7 +466,17 @@ void RemixRenderer::shutdownLocked() {
   overlayOutputWindow_ = true;
   singleNativeOutputWindow_ = false;
   standaloneOutputWindow_ = false;
+#if defined(_WIN32)
   sourceHwnd_ = nullptr;
+#else
+  nativeWindowState_ = {};
+  nativeMouseState_ = {};
+  nativeVirtualKeyDown_.fill(false);
+  nativeMouseGrabbed_ = false;
+  pendingMouseGrabUpdate_ = false;
+  pendingCursorPositionUpdate_ = false;
+  pendingFullscreenUpdate_ = false;
+#endif
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
   activeChunkBlocks_.clear();
@@ -480,20 +563,30 @@ bool RemixRenderer::loadRemix(const std::filesystem::path& remixDllPath) {
   log("Loading Remix runtime from " + remixDllPath.string());
   const remixapi_ErrorCode result = remixapi_lib_loadRemixDllAndInitialize(remixDllPath.c_str(), &remix_, &remixDll_);
   if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-    setError("Failed to load Remix DLL: " + errorCodeToString(result));
+    setError("Failed to load Remix runtime: " + errorCodeToString(result));
     return false;
   }
 
   return true;
 }
 
-bool RemixRenderer::startup(HWND hwnd) {
+bool RemixRenderer::startup(NativeWindowHandle presentationWindow) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::startup");
   remixapi_StartupInfo info {};
   info.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
-  info.hwnd = hwnd;
+#if defined(_WIN32)
+  info.hwnd = presentationWindow;
+#else
+  (void)presentationWindow;
+  info.windowTitle = "BetaRT";
+  info.windowWidth = width_;
+  info.windowHeight = height_;
+  info.fullscreen = outputWindowFullscreen_ ? TRUE : FALSE;
+#endif
   info.disableSrgbConversionForOutput = FALSE;
+#if defined(_WIN32)
   info.forceNoVkSwapchain = FALSE;
+#endif
   info.editorModeEnabled = FALSE;
 
   const remixapi_ErrorCode result = [&]() {
@@ -513,11 +606,11 @@ void RemixRenderer::setError(std::string message) {
 }
 
 void RemixRenderer::log(const std::string& message) {
+#if defined(_WIN32)
   OutputDebugStringA(("[mcrtx] " + message + "\n").c_str());
+#endif
   std::cerr << "[mcrtx] " << message << std::endl;
 }
 
 
 }  // namespace mcrtx
-
-

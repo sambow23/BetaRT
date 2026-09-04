@@ -1,10 +1,22 @@
 #include "mcrtx/scene/celestial_textures.hpp"
-#include "mcrtx/materials/remix_material_common.hpp"
-
 #include <vector>
 
 namespace mcrtx {
 namespace {
+
+void appendFileCandidates(
+    std::vector<std::filesystem::path>& candidates,
+    const std::filesystem::path& directory,
+    std::wstring_view baseName) {
+  if (directory.empty()) {
+    return;
+  }
+
+  candidates.push_back(directory / (std::wstring(baseName) + L".dds"));
+#if defined(_WIN32)
+  candidates.push_back(directory / (std::wstring(baseName) + L".png"));
+#endif
+}
 
 void appendCandidates(
     std::vector<std::filesystem::path>& candidates,
@@ -14,16 +26,8 @@ void appendCandidates(
     return;
   }
 
-  std::filesystem::path cacheDir = material::getCurrentTexturePackCacheDir();
-  if (!cacheDir.empty()) {
-    candidates.push_back(cacheDir / (std::wstring(baseName) + L".dds"));
-    candidates.push_back(cacheDir / (std::wstring(baseName) + L".png"));
-  }
-
-  candidates.push_back(root / L"mcrtx_assets" / (std::wstring(baseName) + L".dds"));
-  candidates.push_back(root / L"mcrtx_assets" / (std::wstring(baseName) + L".png"));
-  candidates.push_back(root / (std::wstring(baseName) + L".dds"));
-  candidates.push_back(root / (std::wstring(baseName) + L".png"));
+  appendFileCandidates(candidates, root / L"mcrtx_assets", baseName);
+  appendFileCandidates(candidates, root, baseName);
 }
 
 std::string pathToGameValue(const std::filesystem::path& path) {
@@ -46,11 +50,14 @@ std::wstring_view celestialTextureBaseName(CelestialTextureKind kind) {
 std::filesystem::path resolveCelestialTexturePath(
     CelestialTextureKind kind,
     const std::filesystem::path& moduleDirectory,
-    const std::filesystem::path& currentDirectory) {
+    const std::filesystem::path& currentDirectory,
+    const std::filesystem::path& texturePackCacheDirectory) {
   std::vector<std::filesystem::path> candidates;
   const std::wstring_view baseName = celestialTextureBaseName(kind);
+  appendFileCandidates(candidates, texturePackCacheDirectory, baseName);
   appendCandidates(candidates, moduleDirectory, baseName);
   appendCandidates(candidates, currentDirectory, baseName);
+  appendCandidates(candidates, currentDirectory / L".." / L"libraries", baseName);
 
   for (const auto& candidate : candidates) {
     if (std::filesystem::exists(candidate)) {

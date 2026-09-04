@@ -58,7 +58,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
                                        float refractiveIndex,
                                        const std::filesystem::path& texturePath,
                                        std::uint64_t materialHash,
-                                       const wchar_t* emissiveTexturePath,
+                                       remixapi_Path emissiveTexturePath,
                                        float emissiveIntensity,
                                        remixapi_Float3D emissiveColor,
                                        std::uint8_t spriteSheetColumns,
@@ -142,7 +142,7 @@ bool RemixRenderer::initializeTerrainMaterials() {
     return true;
   };
 
-  const wchar_t* terrainEmissiveTexture = terrainEmissiveTexturePath_.empty()
+  const remixapi_Path terrainEmissiveTexture = terrainEmissiveTexturePath_.empty()
       ? nullptr
       : terrainEmissiveTexturePath_.c_str();
   const float terrainEmissiveIntensity = terrainEmissiveTexturePath_.empty()

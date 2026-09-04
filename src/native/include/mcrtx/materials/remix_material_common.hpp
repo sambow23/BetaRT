@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <string>
 #include <string_view>
+#include <vector>
 
 #include <remix/remix_c.h>
 
@@ -48,7 +49,7 @@ void pushAssetCandidates(
     std::vector<std::filesystem::path>& attemptedPaths,
     const std::filesystem::path& moduleDirectory,
     const std::filesystem::path& relativePath);
-const wchar_t* optionalTexturePath(const std::filesystem::path& path);
+remixapi_Path optionalTexturePath(const std::filesystem::path& path);
 std::filesystem::path resolveOptionalPbrSibling(const std::filesystem::path& texturePath, const wchar_t* suffix);
 OptionalPbrTextures resolveOptionalPbrTextures(const std::filesystem::path& texturePath);
 OptionalSssTextures resolveOptionalSssTextures(const std::filesystem::path& texturePath);

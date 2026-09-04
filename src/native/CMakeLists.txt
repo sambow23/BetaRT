@@ -98,15 +98,24 @@ add_library(mcrtx_jni SHARED
   src/particles/remix_overlay_fire.cpp
   src/particles/remix_overlay_particles.cpp
   src/scene/remix_subsystem_world.cpp
-  src/platform/remix_window_internals.cpp
-  src/platform/remix_window_output.cpp
-  src/platform/remix_window_input.cpp
   src/core/runtime_config.cpp
   src/core/remix_render_utils.cpp
   src/scene/remix_light_common.cpp
   src/core/world_origin.cpp
   src/lifecycle/perf_log.cpp
 )
+
+if(WIN32)
+  target_sources(mcrtx_jni PRIVATE
+    src/platform/remix_window_internals.cpp
+    src/platform/remix_window_output.cpp
+    src/platform/remix_window_input.cpp
+  )
+else()
+  target_sources(mcrtx_jni PRIVATE
+    src/platform/remix_window_linux.cpp
+  )
+endif()
 
 target_include_directories(mcrtx_jni
   PRIVATE
@@ -125,11 +134,13 @@ if(MCRTX_ENABLE_TRACY)
   )
 endif()
 
-target_compile_definitions(mcrtx_jni
-  PRIVATE
-    WIN32_LEAN_AND_MEAN
-    NOMINMAX
-)
+if(WIN32)
+  target_compile_definitions(mcrtx_jni
+    PRIVATE
+      WIN32_LEAN_AND_MEAN
+      NOMINMAX
+  )
+endif()
 
 if(MCRTX_ENABLE_TRACY)
   target_compile_definitions(mcrtx_jni
@@ -142,12 +153,14 @@ endif()
 
 target_compile_features(mcrtx_jni PRIVATE cxx_std_20)
 
-if(JAVA_AWT_LIBRARY)
+if(WIN32 AND JAVA_AWT_LIBRARY)
   target_link_libraries(mcrtx_jni PRIVATE ${JAVA_AWT_LIBRARY})
 endif()
 
 if(WIN32)
   target_link_libraries(mcrtx_jni PRIVATE ws2_32)
+else()
+  target_link_libraries(mcrtx_jni PRIVATE ${CMAKE_DL_LIBS})
 endif()
 
 if(MSVC)
@@ -161,6 +174,11 @@ else()
 endif()
 
 set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
+
+install(TARGETS mcrtx_jni
+  RUNTIME DESTINATION .
+  LIBRARY DESTINATION .
+)
 endif()
 
 if(MCRTX_BUILD_TESTS)

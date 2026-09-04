@@ -50,9 +50,11 @@ bool RemixRenderer::drawScreenOverlay(
     return false;
   }
 
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return true;
   }
+#endif
 
   if (remix_.DrawScreenOverlay == nullptr) {
     setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
@@ -95,9 +97,11 @@ bool RemixRenderer::clearScreenOverlay() {
     return true;
   }
 
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return true;
   }
+#endif
 
   if (remix_.DrawScreenOverlay == nullptr) {
     setError("DrawScreenOverlay is unavailable in the loaded Remix runtime");
@@ -135,9 +139,11 @@ bool RemixRenderer::registerUiTexture(
     setError("registerUiTexture called before initialize");
     return false;
   }
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return true;
   }
+#endif
   if (remix_.RegisterUITexture == nullptr) {
     setError("RegisterUITexture is unavailable in the loaded Remix runtime");
     return false;
@@ -161,9 +167,11 @@ bool RemixRenderer::freeUiTexture(std::uint64_t id) {
   if (!initialized_) {
     return true;
   }
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return true;
   }
+#endif
   if (remix_.FreeUITexture == nullptr) {
     setError("FreeUITexture is unavailable in the loaded Remix runtime");
     return false;
@@ -188,9 +196,11 @@ bool RemixRenderer::submitUiDrawList(const remixapi_UIDrawList* drawList) {
     setError("submitUiDrawList called before initialize");
     return false;
   }
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return true;
   }
+#endif
   if (remix_.SubmitUIDrawList == nullptr) {
     setError("SubmitUIDrawList is unavailable in the loaded Remix runtime");
     return false;
@@ -290,9 +300,14 @@ bool RemixRenderer::submitUiDrawListFromArrays(
 }
 
 void RemixRenderer::submitSyntheticUiTest() {
-  if (!syntheticUiTestEnabled_ || standaloneOutputWindow_) {
+  if (!syntheticUiTestEnabled_) {
     return;
   }
+#if defined(_WIN32)
+  if (standaloneOutputWindow_) {
+    return;
+  }
+#endif
   if (remix_.SubmitUIDrawList == nullptr || remix_.RegisterUITexture == nullptr) {
     return;
   }
@@ -391,9 +406,11 @@ remixapi_UIState RemixRenderer::getUiState() const {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::getUiState");
   std::scoped_lock lock(mutex_);
 
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return REMIXAPI_UI_STATE_NONE;
   }
+#endif
 
   if (!initialized_ || remix_.GetUIState == nullptr) {
     return REMIXAPI_UI_STATE_NONE;
@@ -407,9 +424,11 @@ bool RemixRenderer::setUiState(remixapi_UIState state) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setUiState");
   std::scoped_lock lock(mutex_);
 
+#if defined(_WIN32)
   if (standaloneOutputWindow_) {
     return state == REMIXAPI_UI_STATE_NONE;
   }
+#endif
 
   if (!initialized_) {
     setError("setUiState called before initialize");

@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstddef>
 #include <cstdint>
@@ -46,7 +47,7 @@ struct BlockOutlineAnimatedColor {
   std::size_t materialIndex;
 };
 
-constexpr ULONGLONG kBlockOutlineRgbCycleIntervalMilliseconds = 180;
+constexpr std::uint64_t kBlockOutlineRgbCycleIntervalMilliseconds = 180;
 
 BlockOutlineAnimatedColor currentBlockOutlineRgbColor() {
   constexpr std::array<std::array<float, 3>, 6> kBlockOutlineRgbPalette {{
@@ -59,7 +60,9 @@ BlockOutlineAnimatedColor currentBlockOutlineRgbColor() {
   }};
 
   const std::size_t materialIndex = static_cast<std::size_t>(
-      (GetTickCount64() / kBlockOutlineRgbCycleIntervalMilliseconds) % kBlockOutlineRgbPalette.size());
+      (std::chrono::duration_cast<std::chrono::milliseconds>(
+          std::chrono::steady_clock::now().time_since_epoch()).count()
+       / kBlockOutlineRgbCycleIntervalMilliseconds) % kBlockOutlineRgbPalette.size());
   const std::array<float, 3>& color = kBlockOutlineRgbPalette[materialIndex];
   return {color[0], color[1], color[2], materialIndex};
 }

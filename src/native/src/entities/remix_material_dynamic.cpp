@@ -119,7 +119,7 @@ remixapi_MaterialHandle RemixRenderer::acquireDynamicEntityMaterial(
     }
   }
 
-  const wchar_t* emissiveTexture = emissiveTexturePath == nullptr ? nullptr : emissiveTexturePath->c_str();
+  remixapi_Path emissiveTexture = emissiveTexturePath == nullptr ? nullptr : emissiveTexturePath->c_str();
   float emissiveIntensity = emissiveTexture == nullptr ? 0.0f : kTerrainEmissiveIntensity;
   remixapi_Float3D emissiveColor = emissiveTexture == nullptr
       ? remixapi_Float3D {0.0f, 0.0f, 0.0f}

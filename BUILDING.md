@@ -2,11 +2,15 @@
 
 ### Requirements
 
-- Visual Studio 2022 with the **Desktop development with C++** workload and the Windows SDK
 - CMake 3.24 or newer
 - JDK 9 or newer containing `java`, `javac`, and `jar`, **JDK 21 recommended**
 - PrismLauncher with an existing vanilla Beta 1.7.3 instance
 - [`dxvk-remix-gmod`](https://github.com/sambow23/dxvk-remix-gmod/tree/betart-numos3) next to the mc-rtx repository
+
+Windows builds additionally require Visual Studio 2022 with the **Desktop
+development with C++** workload and the Windows SDK. Linux builds require an
+x86-64 host, Clang or GCC with C++20 support, Ninja, and a Vulkan-capable NVIDIA
+driver. Only x86-64 native binaries are supported.
 
 The scripts default to `%APPDATA%\PrismLauncher` and the `b1.7.3` instance. They
 resolve the Minecraft, LWJGL, and ASM jars from PrismLauncher's library tree.
@@ -18,7 +22,7 @@ with `--release 8` so the patched client remains compatible with Java 8.
 Tracy instrumentation is disabled by default. Configure with `-DMCRTX_ENABLE_TRACY=ON` to enable Tracy; it uses port
 `8087` by default, or the port selected with `-DMCRTX_TRACY_PORT=<port>`.
 
-### Configure the native build
+### Build the Windows native bridge
 
 From a Developer PowerShell prompt in the repository root:
 
@@ -35,6 +39,47 @@ cmake --build build --config Release --target mcrtx_jni
 ```
 
 The resulting DLL is written to `build/native/Release/mcrtx_jni.dll`.
+
+### Build the Linux native bridge and renderer
+
+The Linux build uses the native Remix renderer. It does not build or load D3D9,
+Wine, or the 32-bit bridge. First build and package the pinned renderer
+dependencies from the adjacent `dxvk-remix-gmod` checkout:
+
+```bash
+DXVK_REMIX_ROOT=../dxvk-remix-gmod
+"$DXVK_REMIX_ROOT/scripts-linux/build-dependencies.sh" out/remix-deps
+"$DXVK_REMIX_ROOT/scripts-linux/build-remix.sh" \
+  out/remix-build out/remix-deps/prefix
+"$DXVK_REMIX_ROOT/scripts-linux/package-remix.sh" \
+  out/remix-build out/remix-deps/prefix out/remix-runtime
+```
+
+Build the JNI bridge against that checkout, then assemble the colocated native
+runtime directory:
+
+```bash
+./scripts-linux/build-native.sh build-linux "$DXVK_REMIX_ROOT" Release
+./scripts-linux/package-native.sh \
+  build-linux out/remix-runtime out/linux-native
+```
+
+`out/linux-native/` contains `libmcrtx_jni.so`, `libremix.so.0`, and the pinned
+SDL3 shared library. The renderer links SDL3 with an `$ORIGIN` runpath, so these
+files can remain together without installing SDL3 system-wide. Vulkan is loaded
+from the host and must come from the installed NVIDIA driver.
+
+Place `libmcrtx_jni.so` next to the patched client jar, add its directory to
+`java.library.path`, or set `MCRTX_JNI_PATH` to its absolute path. Keep the
+other shared libraries beside it; alternatively, set `MCRTX_REMIX_DLL` to the
+absolute `libremix.so.0` path. On Linux, Remix owns the SDL3 window and BetaRT
+forwards that window's size, focus, keyboard, mouse, cursor-grab, fullscreen,
+and close state to the legacy LWJGL-facing Java hooks.
+
+The existing patched-client and PrismLauncher deployment scripts below are
+PowerShell/Windows workflows. A jar produced by them is platform-independent;
+for Linux, deploy that jar with the contents of `out/linux-native/` instead of
+`mcrtx_jni.dll`.
 
 ### Build the patched client bundle
 
@@ -77,3 +122,4 @@ nonstandard layouts. The script keeps a one-time vanilla jar backup under
 
 ```powershell
 .\scripts\deploy-test-build.ps1 -Restore
+```

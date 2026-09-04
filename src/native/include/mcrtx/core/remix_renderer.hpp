@@ -13,7 +13,9 @@
 #include <unordered_set>
 #include <vector>
 
+#if defined(_WIN32)
 #include <windows.h>
+#endif
 
 #include "mcrtx/core/tracy.hpp"
 
@@ -30,13 +32,22 @@
 
 namespace mcrtx {
 
+#if defined(_WIN32)
+using NativeWindowHandle = HWND;
+#else
+using NativeWindowHandle = void*;
+
+inline constexpr remixapi_Bool FALSE = 0;
+inline constexpr remixapi_Bool TRUE = 1;
+#endif
+
 struct ChunkGeometryBuild;
 
 class RemixRenderer {
 public:
   static RemixRenderer& instance();
 
-  bool initialize(HWND sourceHwnd, std::uint32_t width, std::uint32_t height, std::filesystem::path remixDllPath = {});
+  bool initialize(NativeWindowHandle sourceWindow, std::uint32_t width, std::uint32_t height, std::filesystem::path remixDllPath = {});
   void shutdown();
 
   bool initializeTerrainMaterials();
@@ -277,9 +288,12 @@ public:
         std::int32_t& dWheel,
         std::uint32_t& buttonsMask,
         std::int32_t& windowHeight);
-      bool setNativeMouseGrabbed(bool grabbed);
-      bool setNativeCursorPosition(std::int32_t x, std::int32_t y);
-      bool setOutputWindowFullscreen(bool fullscreen);
+  bool setNativeMouseGrabbed(bool grabbed);
+  bool setNativeCursorPosition(std::int32_t x, std::int32_t y);
+  bool setOutputWindowFullscreen(bool fullscreen);
+  bool isOutputCloseRequested() const;
+  std::uint32_t getOutputWindowWidth() const;
+  std::uint32_t getOutputWindowHeight() const;
   bool requestPresentedScreenshot(const std::string& absolutePath);
   bool present();
 
@@ -312,11 +326,13 @@ private:
   void publishCelestialTexturePathsLocked();
   void updateAtmosphereConfigLocked(float celestialAngle, bool forceDarkAtmosphere);
   bool hasWindowFocusLocked() const;
+#if defined(_WIN32)
   HWND resolveNativeMouseWindowLocked() const;
   bool getNativeMouseClientRectLocked(HWND mouseWindow, RECT& clientRect, RECT& clientRectScreenSpace) const;
   void releaseNativeMouseGrabLocked(HWND mouseWindow);
   bool applyNativeMouseGrabLocked(HWND mouseWindow, const RECT& clientRect, const RECT& clientRectScreenSpace);
-  bool createOutputWindow(HWND sourceHwnd);
+#endif
+  bool createOutputWindow(NativeWindowHandle sourceWindow);
   void destroyOutputWindow();
   void pumpOutputWindowMessages();
   void updateOutputWindowSize();
@@ -326,7 +342,7 @@ private:
   void destroyBlockOutlineMaterials();
   void rebuildMaterialDependentMeshesLocked();
   void resetLoadedRemix();
-  bool startup(HWND hwnd);
+  bool startup(NativeWindowHandle presentationWindow);
   bool createPrimingMesh();
   remixapi_MaterialHandle acquireDynamicEntityMaterial(
       const std::string& texturePath,
@@ -422,6 +438,11 @@ private:
   bool startStandaloneWorker(std::filesystem::path remixDllPath);
   bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
   void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
+#if !defined(_WIN32)
+  bool updateNativeWindowStateLocked();
+  void applyNativeWindowCommandsLocked();
+  void updateNativeKeyboardStateLocked();
+#endif
   bool presentLocked(TracyUniqueLock& lock,
                      std::string& perfSummary,
                      std::uint64_t lockWaitNanoseconds);
@@ -442,7 +463,8 @@ private:
   TracyConditionVariable standaloneWorkerEvent_ {};
   std::thread standaloneWorker_ {};
   remixapi_Interface remix_ {};
-  HMODULE remixDll_ {nullptr};
+  remixapi_HMODULE remixDll_ {nullptr};
+#if defined(_WIN32)
   HWND sourceHwnd_ {nullptr};
   HWND outputHwnd_ {nullptr};
   bool outputWindowInteractive_ {false};
@@ -450,18 +472,30 @@ private:
   bool nativeMouseGrabActive_ {false};
   bool nativeMouseLastCursorValid_ {false};
   POINT nativeMouseLastCursorPos_ {};
+  RECT outputWindowedRect_ {};
+  LONG outputWindowedStyle_ {0};
+  LONG outputWindowedExStyle_ {0};
+#else
+  remixapi_WindowState nativeWindowState_ {};
+  remixapi_MouseState nativeMouseState_ {};
+  std::array<bool, 256> nativeVirtualKeyDown_ {};
+  bool nativeMouseGrabbed_ {false};
+  bool pendingMouseGrabUpdate_ {false};
+  bool pendingCursorPositionUpdate_ {false};
+  float pendingCursorX_ {0.0f};
+  float pendingCursorY_ {0.0f};
+  bool pendingFullscreenUpdate_ {false};
+  bool pendingFullscreen_ {false};
+#endif
   bool overlayOutputWindow_ {true};
   bool singleNativeOutputWindow_ {false};
   bool standaloneOutputWindow_ {false};
   bool outputWindowFullscreen_ {false};
-  RECT outputWindowedRect_ {};
-  LONG outputWindowedStyle_ {0};
-  LONG outputWindowedExStyle_ {0};
   bool standaloneWorkerActive_ {false};
   bool standaloneWorkerInitReady_ {false};
   bool standaloneWorkerStopRequested_ {false};
   bool standaloneWorkerPresentRequested_ {false};
-  DWORD standaloneWorkerThreadId_ {0};
+  std::uint64_t standaloneWorkerThreadId_ {0};
   bool renderSubmissionInFlight_ {false};
   bool initialized_ {false};
   bool syntheticUiTestEnabled_ {false};
@@ -644,6 +678,3 @@ private:
 };
 
 }  // namespace mcrtx
-
-
-

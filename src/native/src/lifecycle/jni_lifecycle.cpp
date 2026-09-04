@@ -1,17 +1,21 @@
 #include "mcrtx/core/jni_helpers.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/remix_renderer.hpp"
+#if defined(_WIN32)
 #include "mcrtx/platform/remix_window_internals.hpp"
+#endif
 #include "mcrtx/core/runtime_config.hpp"
 #include "mcrtx/core/tracy.hpp"
 
-#if defined(MCRTX_ENABLE_TRACY)
+#if defined(MCRTX_ENABLE_TRACY) && defined(_WIN32)
 #include <winsock2.h>
 #include <ws2tcpip.h>
 #endif
 
+#if defined(_WIN32)
 #include <jawt.h>
 #include <jawt_md.h>
+#endif
 #include <jni.h>
 
 #include <cstdint>
@@ -22,7 +26,7 @@ namespace {
 
 using mcrtx::RemixRenderer;
 
-#if defined(MCRTX_ENABLE_TRACY)
+#if defined(MCRTX_ENABLE_TRACY) && defined(_WIN32)
 constexpr std::uint16_t kCompiledTracyPort = TRACY_PORT;
 
 std::string readProcessEnvironmentVariable(const char* name) {
@@ -116,6 +120,7 @@ void appendTracyDiagnostic(const char* phase, bool initializeResult) {
 }
 #endif
 
+#if defined(_WIN32)
 HWND fromJniHandle(jlong handle) {
   return reinterpret_cast<HWND>(static_cast<intptr_t>(handle));
 }
@@ -247,6 +252,7 @@ bool isEmbeddedWindowActive(HWND childWindow, HWND parentWindow) {
       || matchesAnyManagedWindow(guiThreadInfo.hwndFocus)
       || matchesAnyManagedWindow(guiThreadInfo.hwndCapture);
 }
+#endif
 
 }  // namespace
 
@@ -258,11 +264,19 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nInitialize(
   MCRTX_TRACY_SCOPE("nInitialize");
   MCRTX_TRACY_SET_THREAD_NAME("mc-rtx JNI/Main");
   auto& renderer = RemixRenderer::instance();
+#if defined(_WIN32)
   const bool ok = renderer.initialize(
       reinterpret_cast<HWND>(static_cast<intptr_t>(hwnd)),
       static_cast<std::uint32_t>(width),
       static_cast<std::uint32_t>(height));
-#if defined(MCRTX_ENABLE_TRACY)
+#else
+  (void)hwnd;
+  const bool ok = renderer.initialize(
+      nullptr,
+      static_cast<std::uint32_t>(width),
+      static_cast<std::uint32_t>(height));
+#endif
+#if defined(MCRTX_ENABLE_TRACY) && defined(_WIN32)
   appendTracyDiagnostic("nInitialize", ok);
 #endif
   return mcrtx::jni::toJniBoolean(ok);
@@ -271,37 +285,62 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nInitialize(
 JNIEXPORT jlong JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nResolveAwtWindowHandle(
     JNIEnv* env, jclass, jobject canvas) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nResolveAwtWindowHandle");
+#if defined(_WIN32)
   return toJniHandle(resolveAwtWindowHandle(env, canvas));
+#else
+  (void)env;
+  (void)canvas;
+  return 0;
+#endif
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nEmbedCompatibilityWindow(
     JNIEnv*, jclass, jlong childHwnd, jlong parentHwnd, jint width, jint height) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEmbedCompatibilityWindow");
+#if defined(_WIN32)
   const bool ok = embedCompatibilityWindow(
       fromJniHandle(childHwnd),
       fromJniHandle(parentHwnd),
       static_cast<int>(width),
       static_cast<int>(height));
   return mcrtx::jni::toJniBoolean(ok);
+#else
+  (void)childHwnd;
+  (void)parentHwnd;
+  (void)width;
+  (void)height;
+  return JNI_FALSE;
+#endif
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nFocusWindow(
     JNIEnv*, jclass, jlong hwnd) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nFocusWindow");
+#if defined(_WIN32)
   return mcrtx::jni::toJniBoolean(focusWindow(fromJniHandle(hwnd)));
+#else
+  (void)hwnd;
+  return mcrtx::jni::toJniBoolean(RemixRenderer::instance().hasWindowFocus());
+#endif
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nIsEmbeddedWindowActive(
     JNIEnv*, jclass, jlong childHwnd, jlong parentHwnd) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsEmbeddedWindowActive");
+#if defined(_WIN32)
   return mcrtx::jni::toJniBoolean(
       isEmbeddedWindowActive(fromJniHandle(childHwnd), fromJniHandle(parentHwnd)));
+#else
+  (void)childHwnd;
+  (void)parentHwnd;
+  return mcrtx::jni::toJniBoolean(RemixRenderer::instance().hasWindowFocus());
+#endif
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nShutdown(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nShutdown");
   MCRTX_TRACY_SCOPE("nShutdown");
-#if defined(MCRTX_ENABLE_TRACY)
+#if defined(MCRTX_ENABLE_TRACY) && defined(_WIN32)
   appendTracyDiagnostic("nShutdown", true);
 #endif
   RemixRenderer::instance().shutdown();
@@ -333,18 +372,17 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nHasWindowFocu
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nIsOutputCloseRequested(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nIsOutputCloseRequested");
-  return mcrtx::jni::toJniBoolean(
-      ::mcrtx::window_detail::g_outputWindowCloseRequested.load(std::memory_order_relaxed));
+  return mcrtx::jni::toJniBoolean(RemixRenderer::instance().isOutputCloseRequested());
 }
 
 JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nGetOutputWindowWidth(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetOutputWindowWidth");
-  return static_cast<jint>(::mcrtx::window_detail::g_outputWindowClientWidth.load(std::memory_order_relaxed));
+  return static_cast<jint>(RemixRenderer::instance().getOutputWindowWidth());
 }
 
 JNIEXPORT jint JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nGetOutputWindowHeight(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nGetOutputWindowHeight");
-  return static_cast<jint>(::mcrtx::window_detail::g_outputWindowClientHeight.load(std::memory_order_relaxed));
+  return static_cast<jint>(RemixRenderer::instance().getOutputWindowHeight());
 }
 
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nSetOutputWindowFullscreen(

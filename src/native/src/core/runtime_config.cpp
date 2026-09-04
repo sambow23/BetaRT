@@ -10,13 +10,17 @@
 #include <unordered_map>
 #include <vector>
 
+#if defined(_WIN32)
 #include <windows.h>
+#else
+#include <dlfcn.h>
+#endif
 
 namespace mcrtx::detail {
 
 namespace {
 
-constexpr wchar_t kRuntimeConfigFileName[] = L"mcrtx-runtime.env";
+constexpr char kRuntimeConfigFileName[] = "mcrtx-runtime.env";
 
 std::string trimAsciiWhitespace(std::string value) {
   const std::size_t first = value.find_first_not_of(" \t\r\n");
@@ -90,6 +94,7 @@ std::string readEnvironmentVariable(const char* name) {
     return configuredValue->second;
   }
 
+#if defined(_WIN32)
   char* envValue = nullptr;
   std::size_t envValueLength = 0;
   if (_dupenv_s(&envValue, &envValueLength, name) != 0 || envValue == nullptr || envValueLength == 0) {
@@ -100,9 +105,14 @@ std::string readEnvironmentVariable(const char* name) {
   std::string value(envValue);
   std::free(envValue);
   return value;
+#else
+  const char* envValue = std::getenv(name);
+  return envValue == nullptr ? std::string() : std::string(envValue);
+#endif
 }
 
 std::filesystem::path getRuntimeConfigPath() {
+#if defined(_WIN32)
   std::vector<wchar_t> buffer(MAX_PATH);
   DWORD length = GetCurrentDirectoryW(static_cast<DWORD>(buffer.size()), buffer.data());
   if (length == 0) {
@@ -118,6 +128,9 @@ std::filesystem::path getRuntimeConfigPath() {
   }
 
   return std::filesystem::path(std::wstring(buffer.data(), length)) / kRuntimeConfigFileName;
+#else
+  return std::filesystem::current_path() / kRuntimeConfigFileName;
+#endif
 }
 
 bool isVerboseLoggingEnabled() {
@@ -145,6 +158,7 @@ bool equalsIgnoreCase(std::string_view left, std::string_view right) {
 }
 
 std::filesystem::path getCurrentModuleDirectory() {
+#if defined(_WIN32)
   HMODULE moduleHandle = nullptr;
   if (!GetModuleHandleExW(
           GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
@@ -169,6 +183,14 @@ std::filesystem::path getCurrentModuleDirectory() {
 
   buffer.resize(length);
   return std::filesystem::path(buffer).parent_path();
+#else
+  Dl_info moduleInfo {};
+  if (dladdr(reinterpret_cast<const void*>(&getCurrentModuleDirectory), &moduleInfo) == 0
+      || moduleInfo.dli_fname == nullptr) {
+    return {};
+  }
+  return std::filesystem::path(moduleInfo.dli_fname).parent_path();
+#endif
 }
 
 }  // namespace mcrtx::detail

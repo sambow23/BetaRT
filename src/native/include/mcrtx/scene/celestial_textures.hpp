@@ -25,7 +25,8 @@ std::wstring_view celestialTextureBaseName(CelestialTextureKind kind);
 std::filesystem::path resolveCelestialTexturePath(
     CelestialTextureKind kind,
     const std::filesystem::path& moduleDirectory,
-    const std::filesystem::path& currentDirectory);
+    const std::filesystem::path& currentDirectory,
+    const std::filesystem::path& texturePackCacheDirectory = {});
 
 std::array<std::pair<std::string_view, std::string>, 2> makeCelestialTextureGameValues(
     const CelestialTexturePaths& paths);

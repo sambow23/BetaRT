@@ -6,6 +6,7 @@
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 
+#include <chrono>
 #include <cstddef>
 #include <cstdint>
 #include <vector>
@@ -41,7 +42,10 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
     return true;
   }
 
-  const std::uint32_t frameIndex = static_cast<std::uint32_t>((GetTickCount64() / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
+  const auto elapsedMilliseconds = std::chrono::duration_cast<std::chrono::milliseconds>(
+      std::chrono::steady_clock::now().time_since_epoch()).count();
+  const std::uint32_t frameIndex = static_cast<std::uint32_t>(
+      (elapsedMilliseconds / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
   if (fireMeshHandle_ != nullptr
       && lastFireAnimationFrame_ == frameIndex
       && lastFireChunkBuildCount_ == capturedChunkBuilds_
