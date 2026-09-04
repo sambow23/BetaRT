@@ -76,6 +76,19 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   snapshot.camera.position[1] = rebaseWorldCoordinate(snapshot.camera.position[1], snapshot.renderOrigin.y);
   snapshot.camera.position[2] = rebaseWorldCoordinate(snapshot.camera.position[2], snapshot.renderOrigin.z);
 
+  const std::vector<ParticleQuad>& frameParticleQuads = standaloneOutputWindow_
+      ? publishedParticleQuads_
+      : particleQuads_;
+  const std::vector<WorldRenderPosition>& frameFlameParticleLightPositions = standaloneOutputWindow_
+      ? publishedFlameParticleLightPositions_
+      : flameParticleLightPositions_;
+  const std::unordered_map<int, EntityHeldTorchLightInput>& frameEntityHeldTorchLightInputs = standaloneOutputWindow_
+      ? publishedEntityHeldTorchLightInputs_
+      : entityHeldTorchLightInputs_;
+  const int frameHeldItemId = standaloneOutputWindow_
+      ? publishedHeldItemId_
+      : heldItemId_;
+
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.rebuildTransientMeshes");
     if (!rebuildFireMesh(snapshot.renderOrigin)) {
@@ -94,7 +107,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
       return false;
     }
 
-    if (!rebuildParticleMesh(snapshot.renderOrigin)) {
+    if (!rebuildParticleMesh(snapshot.renderOrigin, frameParticleQuads)) {
       return false;
     }
   }
@@ -183,27 +196,17 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.reconcileTorchLights");
     MCRTX_TRACY_VALUE(torchLights_.size() + entityHeldTorchLights_.size() + activeFlameParticleLights_.size());
     if (heldTorchLightsEnabled_) {
-      if (!reconcileHeldItemTorchLight(snapshot.renderOrigin)) {
+      if (!reconcileHeldItemTorchLight(frameHeldItemId, snapshot.camera, snapshot.renderOrigin)) {
         return false;
       }
-
-      for (auto lightIt = entityHeldTorchLights_.begin(); lightIt != entityHeldTorchLights_.end(); ) {
-        if (entityHeldTorchLightsSeenThisFrame_.find(lightIt->first) != entityHeldTorchLightsSeenThisFrame_.end()) {
-          ++lightIt;
-          continue;
-        }
-
-        if (lightIt->second.handle != nullptr) {
-          destroyLightHandle(lightIt->second.handle);
-        }
-        lightIt = entityHeldTorchLights_.erase(lightIt);
+      if (!updateEntityLightsLocked(frameEntityHeldTorchLightInputs, snapshot.renderOrigin)) {
+        return false;
       }
-
     } else {
       clearHeldTorchLightsLocked();
     }
 
-    reconcileParticleLights(snapshot.renderOrigin);
+    reconcileParticleLights(snapshot.renderOrigin, frameFlameParticleLightPositions);
 
     if (!refreshTorchLightDefinitions(snapshot.renderOrigin)) {
       return false;
@@ -255,4 +258,3 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 }
 
 }  // namespace mcrtx
-

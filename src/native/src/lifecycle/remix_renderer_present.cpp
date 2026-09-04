@@ -83,6 +83,8 @@ bool RemixRenderer::present() {
     publishedCamera_ = camera_;
     publishedCameraValid_ = true;
     publishDynamicEntityFrameInstancesLocked();
+    publishParticleFrameLocked();
+    publishLightFrameLocked();
     standaloneWorkerPresentRequested_ = true;
     standaloneWorkerEvent_.notify_all();
     return true;

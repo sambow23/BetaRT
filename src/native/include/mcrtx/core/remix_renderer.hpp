@@ -367,12 +367,19 @@ private:
   bool reconcileChunkGlowstoneLights(ChunkMeshData& meshData, const std::vector<GlowstoneLightPlacement>& desiredGlowstoneLights);
   void destroyGlowstoneLight(const WorldBlockPosition& position);
   void destroyChunkGlowstoneLights(ChunkMeshData& meshData);
-  bool reconcileHeldItemTorchLight(const WorldRenderOrigin& renderOrigin);
-  void reconcileParticleLights(const WorldRenderOrigin& renderOrigin);
+  bool reconcileHeldItemTorchLight(
+      int itemId,
+      const CameraState& camera,
+      const WorldRenderOrigin& renderOrigin);
+  void reconcileParticleLights(
+      const WorldRenderOrigin& renderOrigin,
+      const std::vector<WorldRenderPosition>& flameParticleLightPositions);
   bool refreshTorchLightDefinitions(const WorldRenderOrigin& renderOrigin);
   bool refreshGlowstoneLightDefinitions(const WorldRenderOrigin& renderOrigin);
   bool updateEntityLight(int entityId, EntityHeldTorchLightState& state, const WorldRenderOrigin& renderOrigin);
-  void updateEntityLightsLocked(const WorldRenderOrigin& renderOrigin);
+  bool updateEntityLightsLocked(
+      const std::unordered_map<int, EntityHeldTorchLightInput>& lightInputs,
+      const WorldRenderOrigin& renderOrigin);
   void destroyEntityHeldTorchLight(int entityId);
   bool rebuildCloudMesh(
       bool fancy,
@@ -420,6 +427,7 @@ private:
   void destroyLightLevelOverlayMaterials();
   void destroyMeshHandle(remixapi_MeshHandle& meshHandle);
   void destroyLightHandle(remixapi_LightHandle lightHandle);
+  void cancelDeferredLightDestroy(remixapi_LightHandle lightHandle);
   void flushDeferredDestroyQueuesLocked();
   void destroyChunkMeshHandle(ChunkMeshData& meshData);
   void destroyChunkTorchLights(ChunkMeshData& meshData);
@@ -429,10 +437,14 @@ private:
   void clearHeldTorchLightsLocked();
   void clearDynamicEntityFrameInstances();
   void publishDynamicEntityFrameInstancesLocked();
+  void publishParticleFrameLocked();
+  void publishLightFrameLocked();
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
-  bool rebuildParticleMesh(const WorldRenderOrigin& renderOrigin);
+  bool rebuildParticleMesh(
+      const WorldRenderOrigin& renderOrigin,
+      const std::vector<ParticleQuad>& particleQuads);
   void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
   void evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks);
   void computeFaceCoverage(ChunkMeshData& meshData);
@@ -575,6 +587,7 @@ private:
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
   std::uint64_t nextBlockOutlineMeshHash_ {1};
   std::uint64_t nextParticleMeshHash_ {1};
+  std::uint64_t nextCloudMeshHash_ {1};
   std::size_t cloudQuadCount_ {0};
   bool cloudMeshFancy_ {false};
   std::int64_t cloudMeshPhaseX_ {0};
@@ -597,6 +610,7 @@ private:
   std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
   std::vector<BlockOutlineInstance> blockOutlineInstances_ {};
   std::vector<ParticleQuad> particleQuads_ {};
+  std::vector<ParticleQuad> publishedParticleQuads_ {};
   std::unordered_map<std::string, std::array<remixapi_MaterialHandle, kDynamicEntityMaterialVariantCount>> dynamicEntityMaterialHandles_ {};
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
@@ -614,10 +628,13 @@ private:
   remixapi_LightHandle heldItemTorchLightHandle_ {nullptr};
   WorldRenderOrigin heldItemTorchLightRenderOrigin_ {};
   std::unordered_map<int, EntityHeldTorchLightState> entityHeldTorchLights_ {};
+  std::unordered_map<int, EntityHeldTorchLightInput> entityHeldTorchLightInputs_ {};
+  std::unordered_map<int, EntityHeldTorchLightInput> publishedEntityHeldTorchLightInputs_ {};
   std::vector<WorldRenderPosition> flameParticleLightPositions_ {};
+  std::vector<WorldRenderPosition> publishedFlameParticleLightPositions_ {};
   std::vector<TorchLightState> activeFlameParticleLights_ {};
-  std::unordered_set<int> entityHeldTorchLightsSeenThisFrame_ {};
   int heldItemId_ {-1};
+  int publishedHeldItemId_ {-1};
   bool playerShadowsEnabled_ {true};
   bool firstPersonBodyEnabled_ {false};
   bool heldTorchLightsEnabled_ {true};

@@ -192,25 +192,19 @@ void RemixRenderer::setEntityLight(int entityId, double worldX, double worldY, d
     return;
   }
 
-  if (!heldTorchLightsEnabled_) {
-    destroyEntityHeldTorchLight(entityId);
-    return;
-  }
-
   const bool supportsLightCreation = remix_.CreateLight != nullptr;
-  if (!supportsLightCreation || !isEmissiveEntityItem(itemId)) {
-    destroyEntityHeldTorchLight(entityId);
+  if (!heldTorchLightsEnabled_ || !supportsLightCreation || !isEmissiveEntityItem(itemId)) {
+    entityHeldTorchLightInputs_.erase(entityId);
     return;
   }
 
-  entityHeldTorchLightsSeenThisFrame_.insert(entityId);
-  MCRTX_TRACY_VALUE(entityHeldTorchLights_.size());
+  MCRTX_TRACY_VALUE(entityHeldTorchLightInputs_.size());
+  entityHeldTorchLightInputs_[entityId] = {worldX, worldY, worldZ, itemId};
+}
 
-  EntityHeldTorchLightState& lightState = entityHeldTorchLights_[entityId];
-  lightState.worldX = worldX;
-  lightState.worldY = worldY;
-  lightState.worldZ = worldZ;
-  lightState.itemId = itemId;
+void RemixRenderer::publishLightFrameLocked() {
+  entityHeldTorchLightInputs_.swap(publishedEntityHeldTorchLightInputs_);
+  publishedHeldItemId_ = heldItemId_;
 }
 
 bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
@@ -252,6 +246,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const
     setError("CreateLight failed: " + errorCodeToString(result));
     return false;
   }
+  cancelDeferredLightDestroy(lightHandle);
 
   if (torchLightHashLogMode() != TorchLightHashLogMode::Disabled) {
     log(describeTorchLightHashSubmission(
@@ -400,12 +395,6 @@ bool RemixRenderer::refreshTorchLightDefinitions(const WorldRenderOrigin& render
     }
   }
 
-  for (auto& [entityId, state] : entityHeldTorchLights_) {
-    if (!updateEntityLight(entityId, state, renderOrigin)) {
-      return false;
-    }
-  }
-
   return true;
 }
 
@@ -459,6 +448,7 @@ bool RemixRenderer::updateEntityLight(
       setError("CreateLight failed: " + errorCodeToString(result));
       return false;
     }
+    cancelDeferredLightDestroy(state.handle);
     state.renderOrigin = renderOrigin;
     return true;
   }
@@ -483,27 +473,30 @@ bool RemixRenderer::updateEntityLight(
   return true;
 }
 
-bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderOrigin) {
+bool RemixRenderer::reconcileHeldItemTorchLight(
+    int itemId,
+    const CameraState& camera,
+    const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileHeldItemTorchLight");
   MCRTX_TRACY_SCOPE("RemixRenderer::reconcileHeldItemTorchLight");
 
   const bool supportsLightCreation = remix_.CreateLight != nullptr;
-  if (!supportsLightCreation || !isEmissiveEntityItem(heldItemId_) || firstPersonBodyEnabled_) {
+  if (!supportsLightCreation || !isEmissiveEntityItem(itemId) || firstPersonBodyEnabled_) {
     destroyHeldItemTorchLight();
     return true;
   }
 
-  const WorldRenderPosition lightPosition = rebaseWorldPosition(
-      camera_.position[0] + camera_.forward[0] * kHeldTorchLightForwardOffset
-          + camera_.right[0] * kHeldTorchLightRightOffset
-          + camera_.up[0] * kHeldTorchLightUpOffset,
-      camera_.position[1] + camera_.forward[1] * kHeldTorchLightForwardOffset
-          + camera_.right[1] * kHeldTorchLightRightOffset
-          + camera_.up[1] * kHeldTorchLightUpOffset,
-      camera_.position[2] + camera_.forward[2] * kHeldTorchLightForwardOffset
-          + camera_.right[2] * kHeldTorchLightRightOffset
-          + camera_.up[2] * kHeldTorchLightUpOffset,
-      renderOrigin);
+  const WorldRenderPosition lightPosition {
+      static_cast<float>(camera.position[0]) + camera.forward[0] * kHeldTorchLightForwardOffset
+          + camera.right[0] * kHeldTorchLightRightOffset
+          + camera.up[0] * kHeldTorchLightUpOffset,
+      static_cast<float>(camera.position[1]) + camera.forward[1] * kHeldTorchLightForwardOffset
+          + camera.right[1] * kHeldTorchLightRightOffset
+          + camera.up[1] * kHeldTorchLightUpOffset,
+      static_cast<float>(camera.position[2]) + camera.forward[2] * kHeldTorchLightForwardOffset
+          + camera.right[2] * kHeldTorchLightRightOffset
+          + camera.up[2] * kHeldTorchLightUpOffset,
+  };
   remixapi_LightInfoSphereEXT sphereInfo {};
   sphereInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
   sphereInfo.position = {lightPosition.x, lightPosition.y, lightPosition.z};
@@ -517,7 +510,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &originInfo;
   lightInfo.hash = persistentLightHashForRenderOrigin(kHeldTorchLightHash, renderOrigin);
-  lightInfo.radiance = entityLightRadiance(heldItemId_);
+  lightInfo.radiance = entityLightRadiance(itemId);
   lightInfo.isDynamic = TRUE;
   lightInfo.ignoreViewModel = !firstPersonBodyEnabled_;
   lightInfo.ignoreFirstPersonPlayerShadow = !firstPersonBodyEnabled_;
@@ -534,6 +527,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
       setError("CreateLight failed: " + errorCodeToString(result));
       return false;
     }
+    cancelDeferredLightDestroy(heldItemTorchLightHandle_);
     heldItemTorchLightRenderOrigin_ = renderOrigin;
     return true;
   }
@@ -541,7 +535,7 @@ bool RemixRenderer::reconcileHeldItemTorchLight(const WorldRenderOrigin& renderO
   if (remix_.UpdateLightDefinition == nullptr) {
     MCRTX_TRACY_SCOPE("reconcileHeldItemTorchLight.recreate");
     destroyHeldItemTorchLight();
-    return reconcileHeldItemTorchLight(renderOrigin);
+    return reconcileHeldItemTorchLight(itemId, camera, renderOrigin);
   }
 
   const remixapi_ErrorCode result = [&]() {
@@ -586,26 +580,40 @@ void RemixRenderer::destroyHeldItemTorchLight() {
 
 void RemixRenderer::clearHeldTorchLightsLocked() {
   heldItemId_ = -1;
+  publishedHeldItemId_ = -1;
+  entityHeldTorchLightInputs_.clear();
+  publishedEntityHeldTorchLightInputs_.clear();
   destroyHeldItemTorchLight();
   while (!entityHeldTorchLights_.empty()) {
     destroyEntityHeldTorchLight(entityHeldTorchLights_.begin()->first);
   }
-  entityHeldTorchLightsSeenThisFrame_.clear();
 }
 
-void RemixRenderer::updateEntityLightsLocked(const WorldRenderOrigin& renderOrigin) {
+bool RemixRenderer::updateEntityLightsLocked(
+    const std::unordered_map<int, EntityHeldTorchLightInput>& lightInputs,
+    const WorldRenderOrigin& renderOrigin) {
   for (auto it = entityHeldTorchLights_.begin(); it != entityHeldTorchLights_.end();) {
-    const int entityId = it->first;
-    if (entityHeldTorchLightsSeenThisFrame_.find(entityId) == entityHeldTorchLightsSeenThisFrame_.end()) {
+    if (lightInputs.find(it->first) == lightInputs.end()) {
       if (it->second.handle != nullptr) {
         destroyLightHandle(it->second.handle);
       }
       it = entityHeldTorchLights_.erase(it);
     } else {
-      updateEntityLight(entityId, it->second, renderOrigin);
       ++it;
     }
   }
+
+  for (const auto& [entityId, input] : lightInputs) {
+    EntityHeldTorchLightState& state = entityHeldTorchLights_[entityId];
+    state.worldX = input.worldX;
+    state.worldY = input.worldY;
+    state.worldZ = input.worldZ;
+    state.itemId = input.itemId;
+    if (!updateEntityLight(entityId, state, renderOrigin)) {
+      return false;
+    }
+  }
+  return true;
 }
 
 void RemixRenderer::destroyEntityHeldTorchLight(int entityId) {
@@ -618,7 +626,6 @@ void RemixRenderer::destroyEntityHeldTorchLight(int entityId) {
     destroyLightHandle(lightIt->second.handle);
   }
   entityHeldTorchLights_.erase(lightIt);
-  entityHeldTorchLightsSeenThisFrame_.erase(entityId);
 }
 
 void RemixRenderer::destroyChunkTorchLights(ChunkMeshData& meshData) {
@@ -702,7 +709,9 @@ bool RemixRenderer::createPortalLight(const PortalLightPlacement& placement, con
   remixapi_LightHandle lightHandleBack = nullptr;
   
   if (remix_.CreateLight(&lightInfoFront, &lightHandleFront) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
+  cancelDeferredLightDestroy(lightHandleFront);
   if (remix_.CreateLight(&lightInfoBack, &lightHandleBack) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
+  cancelDeferredLightDestroy(lightHandleBack);
 
   portalLights_[placement.blockPosition] = {lightHandleFront, lightHandleBack, renderOrigin, lightInfoFront.hash, lightInfoBack.hash, lightPosition};
   portalLightPlacements_[placement.blockPosition] = placement;
@@ -858,7 +867,9 @@ void RemixRenderer::destroyChunkPortalLights(ChunkMeshData& meshData) {
   meshData.portalLights.clear();
 }
 
-void RemixRenderer::reconcileParticleLights(const WorldRenderOrigin& renderOrigin) {
+void RemixRenderer::reconcileParticleLights(
+    const WorldRenderOrigin& renderOrigin,
+    const std::vector<WorldRenderPosition>& flameParticleLightPositions) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::reconcileParticleLights");
 
   if (remix_.CreateLight == nullptr) {
@@ -872,7 +883,7 @@ void RemixRenderer::reconcileParticleLights(const WorldRenderOrigin& renderOrigi
   }
 
   // Destroy excess lights
-  while (activeFlameParticleLights_.size() > flameParticleLightPositions_.size()) {
+  while (activeFlameParticleLights_.size() > flameParticleLightPositions.size()) {
     if (activeFlameParticleLights_.back().handle != nullptr) {
       destroyLightHandle(activeFlameParticleLights_.back().handle);
     }
@@ -880,8 +891,12 @@ void RemixRenderer::reconcileParticleLights(const WorldRenderOrigin& renderOrigi
   }
 
   // Create or update lights
-  for (std::size_t i = 0; i < flameParticleLightPositions_.size(); ++i) {
-    const WorldRenderPosition pos = rebaseWorldPosition(flameParticleLightPositions_[i].x, flameParticleLightPositions_[i].y, flameParticleLightPositions_[i].z, renderOrigin);
+  for (std::size_t i = 0; i < flameParticleLightPositions.size(); ++i) {
+    const WorldRenderPosition pos = rebaseWorldPosition(
+        flameParticleLightPositions[i].x,
+        flameParticleLightPositions[i].y,
+        flameParticleLightPositions[i].z,
+        renderOrigin);
 
     if (i >= activeFlameParticleLights_.size()) {
       TorchLightState newState {};
@@ -909,13 +924,17 @@ void RemixRenderer::reconcileParticleLights(const WorldRenderOrigin& renderOrigi
     lightInfo.ignoreFirstPersonPlayerShadow = FALSE;
 
     if (state.handle == nullptr) {
-      remix_.CreateLight(&lightInfo, &state.handle);
+      if (remix_.CreateLight(&lightInfo, &state.handle) == REMIXAPI_ERROR_CODE_SUCCESS) {
+        cancelDeferredLightDestroy(state.handle);
+      }
     } else {
       if (remix_.UpdateLightDefinition != nullptr) {
         remix_.UpdateLightDefinition(state.handle, &lightInfo);
       } else {
         destroyLightHandle(state.handle);
-        remix_.CreateLight(&lightInfo, &state.handle);
+        if (remix_.CreateLight(&lightInfo, &state.handle) == REMIXAPI_ERROR_CODE_SUCCESS) {
+          cancelDeferredLightDestroy(state.handle);
+        }
       }
     }
 
@@ -1007,6 +1026,7 @@ bool RemixRenderer::createGlowstoneLight(
     }();
 
     if (result == REMIXAPI_ERROR_CODE_SUCCESS && handle != nullptr) {
+      cancelDeferredLightDestroy(handle);
       state.handles[i] = handle;
       state.apiHashes[i] = lightInfo.hash;
       anyCreated = true;
@@ -1102,6 +1122,7 @@ bool RemixRenderer::updateGlowstoneLight(
     if (state.handles[i] == nullptr) {
       remixapi_LightHandle handle = nullptr;
       if (remix_.CreateLight(&lightInfo, &handle) == REMIXAPI_ERROR_CODE_SUCCESS) {
+        cancelDeferredLightDestroy(handle);
         state.handles[i] = handle;
         state.apiHashes[i] = lightInfo.hash;
       } else {
@@ -1196,10 +1217,6 @@ bool RemixRenderer::refreshGlowstoneLightDefinitions(const WorldRenderOrigin& re
 }
 
 }  // namespace mcrtx
-
-
-
-
 
 
 

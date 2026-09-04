@@ -491,7 +491,9 @@ void RemixRenderer::shutdownLocked() {
   destroyOverlayInstances_.clear();
   blockOutlineInstances_.clear();
   particleQuads_.clear();
+  publishedParticleQuads_.clear();
   flameParticleLightPositions_.clear();
+  publishedFlameParticleLightPositions_.clear();
   dynamicEntityMaterialHandles_.clear();
   activeDynamicEntity_ = {};
   torchLights_.clear();
@@ -499,8 +501,10 @@ void RemixRenderer::shutdownLocked() {
   heldItemTorchLightHandle_ = nullptr;
   heldItemTorchLightRenderOrigin_ = {};
   entityHeldTorchLights_.clear();
-  entityHeldTorchLightsSeenThisFrame_.clear();
+  entityHeldTorchLightInputs_.clear();
+  publishedEntityHeldTorchLightInputs_.clear();
   heldItemId_ = -1;
+  publishedHeldItemId_ = -1;
   deferredMeshDestroys_.clear();
   deferredLightDestroys_.clear();
   nextChunkMeshHash_ = 1;
@@ -526,6 +530,7 @@ void RemixRenderer::shutdownLocked() {
   nextDestroyOverlayMeshHash_ = 1;
   nextBlockOutlineMeshHash_ = 1;
   nextParticleMeshHash_ = 1;
+  nextCloudMeshHash_ = 1;
   cloudQuadCount_ = 0;
   fireQuadCount_ = 0;
   destroyOverlayCount_ = 0;

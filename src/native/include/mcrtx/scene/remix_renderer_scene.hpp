@@ -97,6 +97,13 @@ struct EntityHeldTorchLightState {
   int itemId {-1};
 };
 
+struct EntityHeldTorchLightInput {
+  double worldX {0.0};
+  double worldY {0.0};
+  double worldZ {0.0};
+  int itemId {-1};
+};
+
 struct TorchLightState {
   remixapi_LightHandle handle {nullptr};
   WorldRenderOrigin renderOrigin {};

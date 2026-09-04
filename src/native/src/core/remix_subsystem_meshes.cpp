@@ -44,8 +44,11 @@ void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
     rebuildBlockOutlineMesh(renderOrigin);
   }
 
-  if (!particleQuads_.empty()) {
-    rebuildParticleMesh(renderOrigin);
+  const std::vector<ParticleQuad>& frameParticleQuads = standaloneOutputWindow_
+      ? publishedParticleQuads_
+      : particleQuads_;
+  if (!frameParticleQuads.empty()) {
+    rebuildParticleMesh(renderOrigin, frameParticleQuads);
   }
 
   rebuildFireMesh(renderOrigin);

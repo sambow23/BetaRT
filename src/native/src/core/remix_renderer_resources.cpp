@@ -4,6 +4,7 @@
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 
+#include <algorithm>
 #include <cstddef>
 #include <cstdint>
 
@@ -54,6 +55,12 @@ void RemixRenderer::destroyLightHandle(remixapi_LightHandle lightHandle) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyLight");
     remix_.DestroyLight(lightHandle);
   }
+}
+
+void RemixRenderer::cancelDeferredLightDestroy(remixapi_LightHandle lightHandle) {
+  deferredLightDestroys_.erase(
+      std::remove(deferredLightDestroys_.begin(), deferredLightDestroys_.end(), lightHandle),
+      deferredLightDestroys_.end());
 }
 
 void RemixRenderer::flushDeferredDestroyQueuesLocked() {

@@ -38,6 +38,14 @@ constexpr int kFancyCloudRadiusCells = 3;
 constexpr float kFancyCloudThickness = 4.0f;
 constexpr float kFancyCloudUvScale = 1.0f / 256.0f;
 constexpr float kFancyCloudInset = 1.0f / 1024.0f;
+constexpr std::uint64_t kCloudMeshHashSeed = 0x434C000000000000ull;
+constexpr std::uint64_t kCloudMeshFancyBit = 0x0000800000000000ull;
+
+std::uint64_t makeCloudMeshHash(bool fancy, std::uint64_t sequence) {
+  return kCloudMeshHashSeed
+      | (fancy ? kCloudMeshFancyBit : 0)
+      | (sequence & 0x00007FFFFFFFFFFFull);
+}
 
 void appendFastCloudGeometry(
     float cameraX,
@@ -463,10 +471,16 @@ void RemixRenderer::clearWorldScene() {
   blockOutlineInstances_.clear();
   lightLevelMarkers_.clear();
   particleQuads_.clear();
+  publishedParticleQuads_.clear();
+  flameParticleLightPositions_.clear();
+  publishedFlameParticleLightPositions_.clear();
   while (!entityHeldTorchLights_.empty()) {
     destroyEntityHeldTorchLight(entityHeldTorchLights_.begin()->first);
   }
-  entityHeldTorchLightsSeenThisFrame_.clear();
+  entityHeldTorchLightInputs_.clear();
+  publishedEntityHeldTorchLightInputs_.clear();
+  heldItemId_ = -1;
+  publishedHeldItemId_ = -1;
   activeDynamicEntity_ = {};
   activeChunkBlocks_.clear();
   activeChunkBuild_ = {};
@@ -542,13 +556,11 @@ bool RemixRenderer::rebuildCloudMesh(
 
   remixapi_MeshInfo meshInfo {};
   meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = fancy ? 0x4D43525458434C46ull : 0x4D43525458434C30ull;
+  meshInfo.hash = makeCloudMeshHash(fancy, nextCloudMeshHash_++);
   meshInfo.surfaces_values = &surface;
   meshInfo.surfaces_count = 1;
 
-  // Cloud geometry is rebuilt from live world-space phase math. Reuse a stable
-  // per-mode hash, but destroy the previous cloud mesh first so Remix never has
-  // two different live meshes with the same identity at once.
+  // The old generation may remain alive until an in-flight submission completes.
   destroyCloudMesh();
 
   remixapi_MeshHandle newMeshHandle = nullptr;

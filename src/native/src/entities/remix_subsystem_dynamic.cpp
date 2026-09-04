@@ -169,7 +169,7 @@ void RemixRenderer::beginDynamicEntityFrame() {
   clearDynamicEntityFrameInstances();
   clearActiveDynamicEntityState(activeDynamicEntity_);
   heldItemId_ = -1;
-  entityHeldTorchLightsSeenThisFrame_.clear();
+  entityHeldTorchLightInputs_.clear();
 }
 
 void RemixRenderer::beginDynamicEntity(int entityId, std::uint32_t hurtStage, std::uint32_t creeperFuseStage) {

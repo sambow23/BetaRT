@@ -38,6 +38,11 @@ void RemixRenderer::beginParticleFrame() {
   flameParticleLightPositions_.clear();
 }
 
+void RemixRenderer::publishParticleFrameLocked() {
+  particleQuads_.swap(publishedParticleQuads_);
+  flameParticleLightPositions_.swap(publishedFlameParticleLightPositions_);
+}
+
 void RemixRenderer::captureParticleQuad(
     float x0,
     float y0,
@@ -108,14 +113,16 @@ void RemixRenderer::destroyParticleMesh() {
   particleQuadCount_ = 0;
 }
 
-bool RemixRenderer::rebuildParticleMesh(const WorldRenderOrigin& renderOrigin) {
+bool RemixRenderer::rebuildParticleMesh(
+    const WorldRenderOrigin& renderOrigin,
+    const std::vector<ParticleQuad>& particleQuads) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildParticleMesh");
   MCRTX_TRACY_SCOPE("RemixRenderer::rebuildParticleMesh");
-  if (particleQuads_.empty()) {
+  if (particleQuads.empty()) {
     destroyParticleMesh();
     return true;
   }
-  MCRTX_TRACY_VALUE(particleQuads_.size());
+  MCRTX_TRACY_VALUE(particleQuads.size());
 
   std::vector<SurfaceBuildBuffers> surfacesToBuild;
   surfacesToBuild.reserve(4);
@@ -141,7 +148,7 @@ bool RemixRenderer::rebuildParticleMesh(const WorldRenderOrigin& renderOrigin) {
   std::size_t quadCount = 0;
   {
     MCRTX_TRACY_SCOPE("rebuildParticleMesh.buildSurfaces");
-    for (const ParticleQuad& quad : particleQuads_) {
+    for (const ParticleQuad& quad : particleQuads) {
       remixapi_MaterialHandle materialHandle = acquireParticleMaterial(quad.textureKind);
       if (materialHandle == nullptr) {
         continue;
@@ -223,7 +230,6 @@ bool RemixRenderer::rebuildParticleMesh(const WorldRenderOrigin& renderOrigin) {
 }
 
 }  // namespace mcrtx
-
 
 
 
