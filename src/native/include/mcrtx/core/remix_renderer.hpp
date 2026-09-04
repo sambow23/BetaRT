@@ -112,6 +112,10 @@ public:
       int taauPreset,
       bool rayReconstructionEnabled,
       bool sparseRenderingEnabled);
+  void setFrameGenerationConfig(bool enabled, int multiplier);
+  std::uint32_t compiledFeatureMask() const;
+  std::uint32_t availableFeatureMask() const;
+  std::uint32_t dlssFrameGenerationMaxInterpolatedFrames() const;
   void setRemixAtmosphereCloudsEnabled(bool enabled);
   void setAerialPerspectiveEnabled(bool enabled);
   void setAerialPerspectiveStrength(int strength);
@@ -319,6 +323,7 @@ private:
   void publishWorldRenderOriginLocked(const WorldRenderOrigin& origin);
   void applyRtQualityConfigLocked();
   void applyUpscalerConfigLocked();
+  void refreshFeatureAvailabilityLocked();
   void applyRemixAtmosphereCloudConfigLocked();
   void applyAerialPerspectiveConfigLocked();
   void applyRemixConfigPreStartupLocked();
@@ -657,6 +662,9 @@ private:
   int taauPreset_ {2};
   bool rayReconstructionEnabled_ {true};
   bool sparseRenderingEnabled_ {true};
+  bool dlssFrameGenerationEnabled_ {false};
+  int dlssFrameGenerationMultiplier_ {2};
+  remixapi_FeatureAvailability featureAvailability_ {};
   bool remixAtmosphereCloudsEnabled_ {false};
   bool aerialPerspectiveEnabled_ {true};
   bool aerialPerspectiveSceneShadowEnabled_ {true};

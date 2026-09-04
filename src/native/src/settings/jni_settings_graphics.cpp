@@ -33,6 +33,30 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nSetUpscale
       sparseRenderingEnabled == JNI_TRUE);
 }
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nSetFrameGenerationConfig(
+    JNIEnv*, jclass, jboolean enabled, jint multiplier) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetFrameGenerationConfig");
+  RemixRenderer::instance().setFrameGenerationConfig(
+      enabled == JNI_TRUE, static_cast<int>(multiplier));
+}
+
+JNIEXPORT jint JNICALL Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nGetCompiledFeatureMask(
+    JNIEnv*, jclass) {
+  return static_cast<jint>(RemixRenderer::instance().compiledFeatureMask());
+}
+
+JNIEXPORT jint JNICALL Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nGetAvailableFeatureMask(
+    JNIEnv*, jclass) {
+  return static_cast<jint>(RemixRenderer::instance().availableFeatureMask());
+}
+
+JNIEXPORT jint JNICALL
+Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nGetDlssFrameGenerationMaxInterpolatedFrames(
+    JNIEnv*, jclass) {
+  return static_cast<jint>(
+      RemixRenderer::instance().dlssFrameGenerationMaxInterpolatedFrames());
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_McrtxGraphicsSettingsNative_nSetRemixAtmosphereCloudsEnabled(
     JNIEnv*, jclass, jboolean enabled) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetRemixAtmosphereCloudsEnabled");

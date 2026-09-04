@@ -1,5 +1,6 @@
 import mcrtx.bridge.McrtxGraphicsSettings;
 import mcrtx.bridge.McrtxGraphicsSettingsNative;
+import mcrtx.bridge.RemixBridgeNative;
 import mcrtx.bridge.RemixSceneBridge;
 import net.minecraft.client.Minecraft;
 import org.lwjgl.opengl.GL11;
@@ -16,6 +17,8 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     private static final int AERIAL_PERSPECTIVE_BUTTON_ID = 33;
     private static final int AERIAL_PERSPECTIVE_STRENGTH_BUTTON_ID = 34;
     private static final int AERIAL_PERSPECTIVE_SHADOW_BUTTON_ID = 35;
+    private static final int DLSS_FRAME_GENERATION_BUTTON_ID = 36;
+    private static final int DLSS_FRAME_GENERATION_MULTIPLIER_BUTTON_ID = 37;
 
     public String getName() { return "Graphics"; }
 
@@ -25,6 +28,10 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         if (shouldShowDlssOptions()) {
             screen.addControl(button(screen, RAY_RECONSTRUCTION_BUTTON_ID, getRayReconstructionLabel()));
             screen.addControl(button(screen, SPARSE_RENDERING_BUTTON_ID, getSparseRenderingLabel()));
+            screen.addControl(button(screen, DLSS_FRAME_GENERATION_BUTTON_ID, getFrameGenerationLabel()));
+            if (McrtxGraphicsSettings.isDlssFrameGenerationEnabled() && isFrameGenerationAvailable()) {
+                screen.addOptionSelector(DLSS_FRAME_GENERATION_MULTIPLIER_BUTTON_ID, getFrameGenerationMultiplierLabel());
+            }
         }
         screen.addOptionSelector(RT_QUALITY_BUTTON_ID, getRtQualityLabel());
         screen.addControl(button(screen, REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID, McrtxGraphicsSettings.formatCloudButtonLabel(McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled())));
@@ -42,6 +49,8 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         if (buttonId == UPSCALER_PRESET_BUTTON_ID) { cycleUpscalerPreset(direction); return UPDATE_REFRESH; }
         if (buttonId == RAY_RECONSTRUCTION_BUTTON_ID) { toggleRayReconstruction(); return UPDATE_REFRESH; }
         if (buttonId == SPARSE_RENDERING_BUTTON_ID) { toggleSparseRendering(); return UPDATE_REFRESH; }
+        if (buttonId == DLSS_FRAME_GENERATION_BUTTON_ID) { toggleFrameGeneration(); return UPDATE_REBUILD; }
+        if (buttonId == DLSS_FRAME_GENERATION_MULTIPLIER_BUTTON_ID) { cycleFrameGenerationMultiplier(direction); return UPDATE_REFRESH; }
         if (buttonId == RT_QUALITY_BUTTON_ID) { cycleRtQuality(direction); return UPDATE_REFRESH; }
         if (buttonId == REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID) {
             setRemixAtmosphereCloudsEnabled(!McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled());
@@ -76,6 +85,8 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         setLabel(screen, UPSCALER_PRESET_BUTTON_ID, getUpscalerPresetLabel());
         setLabel(screen, RAY_RECONSTRUCTION_BUTTON_ID, getRayReconstructionLabel());
         setLabel(screen, SPARSE_RENDERING_BUTTON_ID, getSparseRenderingLabel());
+        setLabel(screen, DLSS_FRAME_GENERATION_BUTTON_ID, getFrameGenerationLabel());
+        setLabel(screen, DLSS_FRAME_GENERATION_MULTIPLIER_BUTTON_ID, getFrameGenerationMultiplierLabel());
         setLabel(screen, RT_QUALITY_BUTTON_ID, getRtQualityLabel());
         setLabel(screen, REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID, McrtxGraphicsSettings.formatCloudButtonLabel(McrtxGraphicsSettings.isRemixAtmosphereCloudsEnabled()));
         setLabel(screen, GAME_RAIN_PARTICLES_BUTTON_ID, getGameRainLabel());
@@ -98,14 +109,37 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     private static void setLabel(McrtxQuickSettingsScreen screen, int id, String label) { ke button = screen.findButton(id); if (button != null) button.e = label; }
     private static String toggle(boolean enabled) { return enabled ? "ON" : "OFF"; }
     private static boolean shouldShowDlssOptions() { return McrtxGraphicsSettings.getUpscalerType() == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS; }
-    private static String getUpscalerLabel() { return "Upscaler: " + describeUpscaler(McrtxGraphicsSettings.getUpscalerType()); }
-    private static String getRayReconstructionLabel() { return "Ray Reconstruction: " + toggle(McrtxGraphicsSettings.isRayReconstructionEnabled()); }
-    private static String getSparseRenderingLabel() { return "Sparse Rendering: " + toggle(McrtxGraphicsSettings.isSparseRenderingEnabled()); }
+    private static String getUpscalerLabel() {
+        int type = McrtxGraphicsSettings.getUpscalerType();
+        if (type == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS && !isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_SUPER_RESOLUTION)) {
+            return "Upscaler: DLSS (Unavailable; using "
+                    + (isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_TAAU) ? "TAAU)" : "native)");
+        }
+        return "Upscaler: " + describeUpscaler(type);
+    }
+    private static String getRayReconstructionLabel() {
+        if (!isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_RAY_RECONSTRUCTION)) return "Ray Reconstruction: Unavailable";
+        return "Ray Reconstruction: " + toggle(McrtxGraphicsSettings.isRayReconstructionEnabled());
+    }
+    private static String getSparseRenderingLabel() {
+        if (!isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_RAY_RECONSTRUCTION)) return "Sparse Rendering: Unavailable";
+        return "Sparse Rendering: " + toggle(McrtxGraphicsSettings.isSparseRenderingEnabled());
+    }
     private static String getRtQualityLabel() { return "PT Quality: " + describeRtQuality(McrtxGraphicsSettings.getRtQuality()); }
     private static String getGameRainLabel() { return "Game Rain: " + toggle(McrtxGraphicsSettings.isGameRainParticlesEnabled()); }
     private static String getAerialPerspectiveLabel() { return "Aerial Perspective: " + toggle(McrtxGraphicsSettings.isAerialPerspectiveEnabled()); }
     private static String getAerialPerspectiveStrengthLabel() { return "  Haze Strength: " + McrtxGraphicsSettings.formatAerialPerspectiveStrength(McrtxGraphicsSettings.getAerialPerspectiveStrength()); }
     private static String getAerialPerspectiveShadowLabel() { return "  Haze Shadowing: " + toggle(McrtxGraphicsSettings.isAerialPerspectiveSceneShadowEnabled()); }
+    private static String getFrameGenerationLabel() {
+        if (!isFrameGenerationAvailable()) return "DLSS Frame Generation: Unavailable";
+        return "DLSS Frame Generation: " + toggle(McrtxGraphicsSettings.isDlssFrameGenerationEnabled());
+    }
+    private static String getFrameGenerationMultiplierLabel() { return "  Frame Generation: " + McrtxGraphicsSettings.getDlssFrameGenerationMultiplier() + "x"; }
+    private static boolean isFeatureAvailable(int bit) { return (McrtxGraphicsSettingsNative.getAvailableFeatureMask() & bit) != 0; }
+    private static boolean isFrameGenerationAvailable() {
+        return isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_FRAME_GENERATION)
+                && McrtxGraphicsSettingsNative.getDlssFrameGenerationMaxInterpolatedFrames() > 0;
+    }
 
     private static void applyAerialPerspective() {
         McrtxGraphicsSettingsNative.setAerialPerspectiveStrength(McrtxGraphicsSettings.getAerialPerspectiveStrength());
@@ -152,6 +186,20 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
 
     private static void cycleUpscalerType(int direction) {
         int type = McrtxGraphicsSettings.getUpscalerType();
+        if (isNativeLinux()) {
+            if (direction >= 0) {
+                if (type == McrtxGraphicsSettings.UPSCALER_TYPE_NONE) type = McrtxGraphicsSettings.UPSCALER_TYPE_DLSS;
+                else if (type == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS) type = McrtxGraphicsSettings.UPSCALER_TYPE_TAAU;
+                else type = McrtxGraphicsSettings.UPSCALER_TYPE_NONE;
+            } else {
+                if (type == McrtxGraphicsSettings.UPSCALER_TYPE_NONE) type = McrtxGraphicsSettings.UPSCALER_TYPE_TAAU;
+                else if (type == McrtxGraphicsSettings.UPSCALER_TYPE_TAAU) type = McrtxGraphicsSettings.UPSCALER_TYPE_DLSS;
+                else type = McrtxGraphicsSettings.UPSCALER_TYPE_NONE;
+            }
+            McrtxGraphicsSettings.setUpscalerType(type);
+            applyUpscaler();
+            return;
+        }
         if (direction >= 0) {
             if (type == McrtxGraphicsSettings.UPSCALER_TYPE_NONE) type = McrtxGraphicsSettings.UPSCALER_TYPE_DLSS;
             else if (type == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS) type = McrtxGraphicsSettings.UPSCALER_TYPE_XESS;
@@ -216,14 +264,29 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     private static void toggleRayReconstruction() {
-        if (!shouldShowDlssOptions()) return;
+        if (!shouldShowDlssOptions() || !isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_RAY_RECONSTRUCTION)) return;
         McrtxGraphicsSettings.setRayReconstructionEnabled(!McrtxGraphicsSettings.isRayReconstructionEnabled());
         applyUpscaler();
     }
     private static void toggleSparseRendering() {
-        if (!shouldShowDlssOptions()) return;
+        if (!shouldShowDlssOptions() || !isFeatureAvailable(McrtxGraphicsSettingsNative.FEATURE_DLSS_RAY_RECONSTRUCTION)) return;
         McrtxGraphicsSettings.setSparseRenderingEnabled(!McrtxGraphicsSettings.isSparseRenderingEnabled());
         applyUpscaler();
+    }
+    private static void toggleFrameGeneration() {
+        if (!shouldShowDlssOptions() || !isFrameGenerationAvailable()) return;
+        McrtxGraphicsSettings.setDlssFrameGenerationEnabled(!McrtxGraphicsSettings.isDlssFrameGenerationEnabled());
+        applyFrameGeneration();
+    }
+    private static void cycleFrameGenerationMultiplier(int direction) {
+        int runtimeMax = Math.min(
+                McrtxGraphicsSettings.MAX_DLSS_FRAME_GENERATION_MULTIPLIER,
+                McrtxGraphicsSettingsNative.getDlssFrameGenerationMaxInterpolatedFrames() + 1);
+        int value = McrtxGraphicsSettings.getDlssFrameGenerationMultiplier();
+        if (direction >= 0) value = value >= runtimeMax ? McrtxGraphicsSettings.MIN_DLSS_FRAME_GENERATION_MULTIPLIER : value + 1;
+        else value = value <= McrtxGraphicsSettings.MIN_DLSS_FRAME_GENERATION_MULTIPLIER ? runtimeMax : value - 1;
+        McrtxGraphicsSettings.setDlssFrameGenerationMultiplier(value);
+        applyFrameGeneration();
     }
 
     private static void cycleRtQuality(int direction) {
@@ -251,6 +314,16 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
                 McrtxGraphicsSettings.getUpscalerType(), McrtxGraphicsSettings.getDlssPreset(),
                 McrtxGraphicsSettings.getXessPreset(), McrtxGraphicsSettings.getTaauPreset(),
                 McrtxGraphicsSettings.isRayReconstructionEnabled(), McrtxGraphicsSettings.isSparseRenderingEnabled());
+        applyFrameGeneration();
+    }
+    private static void applyFrameGeneration() {
+        McrtxGraphicsSettingsNative.setFrameGenerationConfig(
+                McrtxGraphicsSettings.isDlssFrameGenerationEnabled(),
+                McrtxGraphicsSettings.getDlssFrameGenerationMultiplier());
+    }
+
+    private static boolean isNativeLinux() {
+        return RemixBridgeNative.isLinuxPlatform();
     }
 
     private static String describeUpscaler(int value) { if (value == McrtxGraphicsSettings.UPSCALER_TYPE_NONE) return "None"; if (value == McrtxGraphicsSettings.UPSCALER_TYPE_XESS) return "XeSS"; if (value == McrtxGraphicsSettings.UPSCALER_TYPE_TAAU) return "TAAU"; return "DLSS"; }

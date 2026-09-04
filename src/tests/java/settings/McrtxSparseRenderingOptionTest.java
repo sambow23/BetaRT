@@ -41,7 +41,8 @@ public final class McrtxSparseRenderingOptionTest {
 
     String configSubsystem = read("src/native/src/scene/remix_subsystem_config.cpp");
     requireContains(configSubsystem, "rtx.sparseRendering.enableSparseRendering", "native Remix config key");
-    requireContains(configSubsystem, "sparseRenderingEnabled_ ? \"True\" : \"False\"", "DLSS applies saved sparse setting");
+    requireContains(configSubsystem, "sparseRenderingEnabled_ && rayReconstructionEnabled_", "DLSS applies saved sparse setting");
+    requireContains(configSubsystem, "REMIXAPI_FEATURE_DLSS_RAY_RECONSTRUCTION_BIT", "sparse rendering checks ray reconstruction availability");
     requireContains(configSubsystem, "\"rtx.sparseRendering.enableSparseRendering\", \"False\"", "non-DLSS forces sparse off");
   }
 

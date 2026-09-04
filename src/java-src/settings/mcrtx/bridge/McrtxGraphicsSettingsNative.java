@@ -1,6 +1,12 @@
 package mcrtx.bridge;
 
 public final class McrtxGraphicsSettingsNative {
+    public static final int FEATURE_DLSS_SUPER_RESOLUTION = 1 << 0;
+    public static final int FEATURE_DLSS_RAY_RECONSTRUCTION = 1 << 1;
+    public static final int FEATURE_NRD = 1 << 2;
+    public static final int FEATURE_TAAU = 1 << 3;
+    public static final int FEATURE_DLSS_FRAME_GENERATION = 1 << 4;
+
     private McrtxGraphicsSettingsNative() {
     }
 
@@ -22,6 +28,24 @@ public final class McrtxGraphicsSettingsNative {
                     rayReconstructionEnabled,
                     sparseRenderingEnabled);
         }
+    }
+
+    public static void setFrameGenerationConfig(boolean enabled, int multiplier) {
+        if (ready()) {
+            nSetFrameGenerationConfig(enabled, multiplier);
+        }
+    }
+
+    public static int getCompiledFeatureMask() {
+        return RemixBridgeNative.isAvailable() ? nGetCompiledFeatureMask() : 0;
+    }
+
+    public static int getAvailableFeatureMask() {
+        return RemixBridgeNative.isAvailable() ? nGetAvailableFeatureMask() : 0;
+    }
+
+    public static int getDlssFrameGenerationMaxInterpolatedFrames() {
+        return RemixBridgeNative.isAvailable() ? nGetDlssFrameGenerationMaxInterpolatedFrames() : 0;
     }
 
     public static void setRemixAtmosphereCloudsEnabled(boolean enabled) {
@@ -60,6 +84,10 @@ public final class McrtxGraphicsSettingsNative {
             int taauPreset,
             boolean rayReconstructionEnabled,
             boolean sparseRenderingEnabled);
+    private static native void nSetFrameGenerationConfig(boolean enabled, int multiplier);
+    private static native int nGetCompiledFeatureMask();
+    private static native int nGetAvailableFeatureMask();
+    private static native int nGetDlssFrameGenerationMaxInterpolatedFrames();
     private static native void nSetRemixAtmosphereCloudsEnabled(boolean enabled);
     private static native void nSetAerialPerspectiveEnabled(boolean enabled);
     private static native void nSetAerialPerspectiveStrength(int strength);

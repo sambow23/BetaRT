@@ -280,19 +280,34 @@ void RemixRenderer::applyRtQualityConfigLocked() {
 }
 
 void RemixRenderer::applyUpscalerConfigLocked() {
-  switch (upscalerType_) {
+  int effectiveUpscalerType = upscalerType_;
+  if (effectiveUpscalerType == 1
+      && (featureAvailability_.availableFeatures
+          & REMIXAPI_FEATURE_DLSS_SUPER_RESOLUTION_BIT) == 0) {
+    effectiveUpscalerType = (featureAvailability_.availableFeatures & REMIXAPI_FEATURE_TAAU_BIT) != 0
+        ? 3
+        : 0;
+    log(std::string("DLSS is unavailable; using ")
+        + (effectiveUpscalerType == 3 ? "TAAU" : "native rendering"));
+  }
+
+  switch (effectiveUpscalerType) {
     case 0:
       setConfigVariableLocked("rtx.upscalerType", "0", true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
       setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
+#if defined(_WIN32)
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+#endif
       break;
     case 4:
       setConfigVariableLocked("rtx.upscalerType", "4", true, true);
       setConfigVariableLocked("rtx.xess.preset", xessPresetConfigValue(xessPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
       setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
+#if defined(_WIN32)
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+#endif
       break;
     case 3:
       setConfigVariableLocked("rtx.upscalerType", "3", true, true);
@@ -301,7 +316,9 @@ void RemixRenderer::applyUpscalerConfigLocked() {
           "rtx.resolutionScale", taauResolutionScaleConfigValue(taauPreset_), true, true);
       setConfigVariableLocked("rtx.enableRayReconstruction", "False", true, true);
       setConfigVariableLocked("rtx.sparseRendering.enableSparseRendering", "False", true, true);
+#if defined(_WIN32)
       setConfigVariableLocked("rtx.reflexMode", "0", true, true);
+#endif
       break;
     case 1:
     default:
@@ -309,16 +326,47 @@ void RemixRenderer::applyUpscalerConfigLocked() {
       setConfigVariableLocked("rtx.qualityDLSS", dlssQualityConfigValue(dlssPreset_), true, true);
       setConfigVariableLocked(
           "rtx.enableRayReconstruction",
-          rayReconstructionEnabled_ ? "True" : "False",
+          rayReconstructionEnabled_
+                  && (featureAvailability_.availableFeatures
+                      & REMIXAPI_FEATURE_DLSS_RAY_RECONSTRUCTION_BIT) != 0
+              ? "True"
+              : "False",
           true,
           true);
       setConfigVariableLocked(
           "rtx.sparseRendering.enableSparseRendering",
-          sparseRenderingEnabled_ ? "True" : "False",
+          sparseRenderingEnabled_ && rayReconstructionEnabled_
+                  && (featureAvailability_.availableFeatures
+                      & REMIXAPI_FEATURE_DLSS_RAY_RECONSTRUCTION_BIT) != 0
+              ? "True"
+              : "False",
           true,
           true);
+#if defined(_WIN32)
       setConfigVariableLocked("rtx.reflexMode", "1", true, true);
+#endif
       break;
+  }
+
+  const std::uint32_t maxInterpolatedFrames =
+      featureAvailability_.dlssFrameGenerationMaxInterpolatedFrames;
+  const bool frameGenerationAvailable =
+      (featureAvailability_.availableFeatures
+       & REMIXAPI_FEATURE_DLSS_FRAME_GENERATION_BIT) != 0
+      && maxInterpolatedFrames > 0;
+  const bool enableFrameGeneration = dlssFrameGenerationEnabled_
+      && effectiveUpscalerType == 1
+      && frameGenerationAvailable;
+  const std::uint32_t interpolatedFrames = std::min(
+      static_cast<std::uint32_t>(std::clamp(dlssFrameGenerationMultiplier_, 2, 6) - 1),
+      maxInterpolatedFrames);
+  setConfigVariableLocked(
+      "rtx.frameGenerationType", enableFrameGeneration ? "1" : "0", true, true);
+  setConfigVariableLocked(
+      "rtx.dlfg.enable", enableFrameGeneration ? "True" : "False", true, true);
+  if (enableFrameGeneration) {
+    setConfigVariableLocked(
+        "rtx.dlfg.maxInterpolatedFrames", std::to_string(interpolatedFrames), true, true);
   }
 }
 

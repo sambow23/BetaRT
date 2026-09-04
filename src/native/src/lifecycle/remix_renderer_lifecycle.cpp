@@ -557,6 +557,7 @@ void RemixRenderer::resetLoadedRemix() {
 
   remix_ = {};
   remixDll_ = nullptr;
+  featureAvailability_ = {};
 }
 
 bool RemixRenderer::loadRemix(const std::filesystem::path& remixDllPath) {
@@ -567,7 +568,29 @@ bool RemixRenderer::loadRemix(const std::filesystem::path& remixDllPath) {
     return false;
   }
 
+  refreshFeatureAvailabilityLocked();
   return true;
+}
+
+void RemixRenderer::refreshFeatureAvailabilityLocked() {
+  featureAvailability_ = {};
+  if (remix_.GetFeatureAvailability == nullptr) {
+    log("Loaded Remix runtime does not provide feature availability");
+    return;
+  }
+
+  const remixapi_ErrorCode result = remix_.GetFeatureAvailability(&featureAvailability_);
+  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+    featureAvailability_ = {};
+    log("GetFeatureAvailability failed: " + errorCodeToString(result));
+    return;
+  }
+
+  log(
+      "Remix features compiled=" + std::to_string(featureAvailability_.compiledFeatures)
+      + " available=" + std::to_string(featureAvailability_.availableFeatures)
+      + " dlssFgMaxInterpolatedFrames="
+      + std::to_string(featureAvailability_.dlssFrameGenerationMaxInterpolatedFrames));
 }
 
 bool RemixRenderer::startup(NativeWindowHandle presentationWindow) {
@@ -597,6 +620,7 @@ bool RemixRenderer::startup(NativeWindowHandle presentationWindow) {
     setError("Startup failed: " + errorCodeToString(result));
     return false;
   }
+  refreshFeatureAvailabilityLocked();
   return true;
 }
 

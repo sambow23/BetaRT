@@ -12,6 +12,8 @@ public final class McrtxGraphicsSettings {
     public static final String TAAU_PRESET_KEY = "MCRTX_TAAU_PRESET";
     public static final String RAY_RECONSTRUCTION_ENABLED_KEY = "MCRTX_RAY_RECONSTRUCTION_ENABLED";
     public static final String SPARSE_RENDERING_ENABLED_KEY = "MCRTX_SPARSE_RENDERING_ENABLED";
+    public static final String DLSS_FRAME_GENERATION_ENABLED_KEY = "MCRTX_DLSS_FRAME_GENERATION_ENABLED";
+    public static final String DLSS_FRAME_GENERATION_MULTIPLIER_KEY = "MCRTX_DLSS_FRAME_GENERATION_MULTIPLIER";
     public static final String RT_QUALITY_KEY = "MCRTX_RT_QUALITY";
     public static final String AERIAL_PERSPECTIVE_ENABLED_KEY = "MCRTX_AERIAL_PERSPECTIVE_ENABLED";
     public static final String AERIAL_PERSPECTIVE_STRENGTH_KEY = "MCRTX_AERIAL_PERSPECTIVE_STRENGTH";
@@ -23,6 +25,10 @@ public final class McrtxGraphicsSettings {
     public static final boolean DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED = false;
     public static final boolean DEFAULT_GAME_RAIN_PARTICLES_ENABLED = true;
     public static final boolean DEFAULT_SPARSE_RENDERING_ENABLED = true;
+    public static final boolean DEFAULT_DLSS_FRAME_GENERATION_ENABLED = false;
+    public static final int DEFAULT_DLSS_FRAME_GENERATION_MULTIPLIER = 2;
+    public static final int MIN_DLSS_FRAME_GENERATION_MULTIPLIER = 2;
+    public static final int MAX_DLSS_FRAME_GENERATION_MULTIPLIER = 6;
     public static final boolean DEFAULT_AERIAL_PERSPECTIVE_ENABLED = true;
     public static final boolean DEFAULT_AERIAL_PERSPECTIVE_SCENE_SHADOW = true;
 
@@ -76,6 +82,8 @@ public final class McrtxGraphicsSettings {
     private static int taauPreset = TAAU_PRESET_BALANCED;
     private static boolean rayReconstructionEnabled = true;
     private static boolean sparseRenderingEnabled = DEFAULT_SPARSE_RENDERING_ENABLED;
+    private static boolean dlssFrameGenerationEnabled = DEFAULT_DLSS_FRAME_GENERATION_ENABLED;
+    private static int dlssFrameGenerationMultiplier = DEFAULT_DLSS_FRAME_GENERATION_MULTIPLIER;
     private static int rtQuality = RT_QUALITY_HIGH;
     private static boolean aerialPerspectiveEnabled = DEFAULT_AERIAL_PERSPECTIVE_ENABLED;
     private static int aerialPerspectiveStrength = AERIAL_PERSPECTIVE_NORMAL;
@@ -93,6 +101,8 @@ public final class McrtxGraphicsSettings {
     public static int getTaauPreset() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return taauPreset; } }
     public static boolean isRayReconstructionEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return rayReconstructionEnabled; } }
     public static boolean isSparseRenderingEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return sparseRenderingEnabled; } }
+    public static boolean isDlssFrameGenerationEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return dlssFrameGenerationEnabled; } }
+    public static int getDlssFrameGenerationMultiplier() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return dlssFrameGenerationMultiplier; } }
     public static int getRtQuality() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return rtQuality; } }
     public static boolean isAerialPerspectiveEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return aerialPerspectiveEnabled; } }
     public static int getAerialPerspectiveStrength() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return aerialPerspectiveStrength; } }
@@ -107,6 +117,8 @@ public final class McrtxGraphicsSettings {
     public static void setTaauPreset(int preset) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); int value = normalizeTaauPreset(preset); if (taauPreset == value) return; taauPreset = value; McrtxSettingsStore.saveLocked(); } }
     public static void setRayReconstructionEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (rayReconstructionEnabled == enabled) return; rayReconstructionEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
     public static void setSparseRenderingEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (sparseRenderingEnabled == enabled) return; sparseRenderingEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
+    public static void setDlssFrameGenerationEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (dlssFrameGenerationEnabled == enabled) return; dlssFrameGenerationEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
+    public static void setDlssFrameGenerationMultiplier(int multiplier) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); int value = normalizeDlssFrameGenerationMultiplier(multiplier); if (dlssFrameGenerationMultiplier == value) return; dlssFrameGenerationMultiplier = value; McrtxSettingsStore.saveLocked(); } }
     public static void setRtQuality(int quality) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); int value = normalizeRtQuality(quality); if (rtQuality == value) return; rtQuality = value; McrtxSettingsStore.saveLocked(); } }
     public static void setAerialPerspectiveEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); if (aerialPerspectiveEnabled == enabled) return; aerialPerspectiveEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
     public static void setAerialPerspectiveStrength(int strength) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); int value = normalizeAerialPerspectiveStrength(strength); if (aerialPerspectiveStrength == value) return; aerialPerspectiveStrength = value; McrtxSettingsStore.saveLocked(); } }
@@ -205,6 +217,10 @@ public final class McrtxGraphicsSettings {
         taauPreset = readTaauPreset(fileValues, TAAU_PRESET_BALANCED);
         rayReconstructionEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, RAY_RECONSTRUCTION_ENABLED_KEY, true);
         sparseRenderingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, SPARSE_RENDERING_ENABLED_KEY, DEFAULT_SPARSE_RENDERING_ENABLED);
+        dlssFrameGenerationEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, DLSS_FRAME_GENERATION_ENABLED_KEY, DEFAULT_DLSS_FRAME_GENERATION_ENABLED);
+        dlssFrameGenerationMultiplier = McrtxRuntimeSettingParser.readRoundedIntSetting(
+                fileValues, DLSS_FRAME_GENERATION_MULTIPLIER_KEY, DEFAULT_DLSS_FRAME_GENERATION_MULTIPLIER,
+                MIN_DLSS_FRAME_GENERATION_MULTIPLIER, MAX_DLSS_FRAME_GENERATION_MULTIPLIER);
         rtQuality = readRtQuality(fileValues, RT_QUALITY_HIGH);
         aerialPerspectiveEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
                 fileValues, AERIAL_PERSPECTIVE_ENABLED_KEY, DEFAULT_AERIAL_PERSPECTIVE_ENABLED);
@@ -223,6 +239,8 @@ public final class McrtxGraphicsSettings {
         fileValues.put(TAAU_PRESET_KEY, formatTaauPreset(taauPreset));
         fileValues.put(RAY_RECONSTRUCTION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(rayReconstructionEnabled));
         fileValues.put(SPARSE_RENDERING_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(sparseRenderingEnabled));
+        fileValues.put(DLSS_FRAME_GENERATION_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(dlssFrameGenerationEnabled));
+        fileValues.put(DLSS_FRAME_GENERATION_MULTIPLIER_KEY, Integer.toString(dlssFrameGenerationMultiplier));
         fileValues.put(RT_QUALITY_KEY, formatRtQuality(rtQuality));
         fileValues.put(AERIAL_PERSPECTIVE_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(aerialPerspectiveEnabled));
         fileValues.put(AERIAL_PERSPECTIVE_STRENGTH_KEY, formatAerialPerspectiveStrength(aerialPerspectiveStrength));
@@ -311,6 +329,7 @@ public final class McrtxGraphicsSettings {
     private static int normalizeDlssPreset(int preset) { return preset >= DLSS_PRESET_ULTRA_PERFORMANCE && preset <= DLSS_PRESET_DLAA ? preset : DLSS_PRESET_AUTO; }
     private static int normalizeXessPreset(int preset) { return preset >= XESS_PRESET_ULTRA_PERFORMANCE && preset <= XESS_PRESET_NATIVE_AA ? preset : XESS_PRESET_BALANCED; }
     private static int normalizeTaauPreset(int preset) { return preset >= TAAU_PRESET_ULTRA_PERFORMANCE && preset <= TAAU_PRESET_FULLSCREEN ? preset : TAAU_PRESET_BALANCED; }
+    private static int normalizeDlssFrameGenerationMultiplier(int multiplier) { return McrtxRuntimeSettingParser.clamp(multiplier, MIN_DLSS_FRAME_GENERATION_MULTIPLIER, MAX_DLSS_FRAME_GENERATION_MULTIPLIER); }
     private static int normalizeRtQuality(int quality) { return (quality >= RT_QUALITY_LOW && quality <= RT_QUALITY_ULTRA) || quality == RT_QUALITY_POTATO ? quality : RT_QUALITY_HIGH; }
     private static int normalizeAerialPerspectiveStrength(int strength) { return strength >= AERIAL_PERSPECTIVE_SUBTLE && strength <= AERIAL_PERSPECTIVE_EXTREME ? strength : AERIAL_PERSPECTIVE_NORMAL; }
 }

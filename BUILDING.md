@@ -64,10 +64,13 @@ runtime directory:
   build-linux out/remix-runtime out/linux-native
 ```
 
-`out/linux-native/` contains `libmcrtx_jni.so`, `libremix.so.0`, and the pinned
-SDL3 shared library. The renderer links SDL3 with an `$ORIGIN` runpath, so these
-files can remain together without installing SDL3 system-wide. Vulkan is loaded
-from the host and must come from the installed NVIDIA driver.
+`out/linux-native/` contains `libmcrtx_jni.so`, `libremix.so.0`, the pinned SDL3
+shared library, and the pinned NVIDIA NGX feature libraries for DLSS Super
+Resolution, Ray Reconstruction, and Frame Generation. The renderer uses an
+`$ORIGIN` runpath, so these files can remain together without installing them
+system-wide. Vulkan and the NGX driver components are loaded from the host's
+NVIDIA driver. Feature availability still depends on the installed driver and
+GPU; unsupported controls are disabled in BetaRT's graphics settings.
 
 Place `libmcrtx_jni.so` next to the patched client jar, add its directory to
 `java.library.path`, or set `MCRTX_JNI_PATH` to its absolute path. Keep the

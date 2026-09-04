@@ -1,5 +1,7 @@
-#include "mcrtx/lifecycle/perf_log.hpp"
+#include <algorithm>
+
 #include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/lifecycle/perf_log.hpp"
 
 namespace mcrtx {
 
@@ -53,6 +55,32 @@ void RemixRenderer::setUpscalerConfig(
   }
 
   applyUpscalerConfigLocked();
+}
+
+void RemixRenderer::setFrameGenerationConfig(bool enabled, int multiplier) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::setFrameGenerationConfig");
+  std::scoped_lock lock(mutex_);
+
+  dlssFrameGenerationEnabled_ = enabled;
+  dlssFrameGenerationMultiplier_ = std::clamp(multiplier, 2, 6);
+  if (initialized_) {
+    applyUpscalerConfigLocked();
+  }
+}
+
+std::uint32_t RemixRenderer::compiledFeatureMask() const {
+  std::scoped_lock lock(mutex_);
+  return featureAvailability_.compiledFeatures;
+}
+
+std::uint32_t RemixRenderer::availableFeatureMask() const {
+  std::scoped_lock lock(mutex_);
+  return featureAvailability_.availableFeatures;
+}
+
+std::uint32_t RemixRenderer::dlssFrameGenerationMaxInterpolatedFrames() const {
+  std::scoped_lock lock(mutex_);
+  return featureAvailability_.dlssFrameGenerationMaxInterpolatedFrames;
 }
 
 void RemixRenderer::setRemixAtmosphereCloudsEnabled(bool enabled) {
