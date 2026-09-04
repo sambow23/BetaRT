@@ -428,6 +428,7 @@ private:
   void destroyHeldItemTorchLight();
   void clearHeldTorchLightsLocked();
   void clearDynamicEntityFrameInstances();
+  void publishDynamicEntityFrameInstancesLocked();
   void destroyDynamicEntityMeshes();
   void destroyDynamicEntityMesh(DynamicEntityMeshData& meshData);
   void destroyChunkMesh(ChunkMeshData& meshData);
@@ -509,6 +510,8 @@ private:
   std::uint32_t width_ {1};
   std::uint32_t height_ {1};
   CameraState camera_ {};
+  CameraState publishedCamera_ {};
+  bool publishedCameraValid_ {false};
   float viewModelFovDegrees_ {70.0f};
   bool chunkBuildActive_ {false};
   ChunkBuildState activeChunkBuild_ {};
@@ -589,6 +592,8 @@ private:
   std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
   std::size_t dynamicEntityFrameInstanceCount_ {0};
+  std::vector<DynamicEntityFrameInstance> publishedDynamicEntityFrameInstances_ {};
+  std::size_t publishedDynamicEntityFrameInstanceCount_ {0};
   std::vector<DestroyOverlayInstance> destroyOverlayInstances_ {};
   std::vector<BlockOutlineInstance> blockOutlineInstances_ {};
   std::vector<ParticleQuad> particleQuads_ {};

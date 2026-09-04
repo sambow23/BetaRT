@@ -501,6 +501,12 @@ void RemixRenderer::clearDynamicEntityFrameInstances() {
   dynamicEntityFrameInstanceCount_ = 0;
 }
 
+void RemixRenderer::publishDynamicEntityFrameInstancesLocked() {
+  dynamicEntityFrameInstances_.swap(publishedDynamicEntityFrameInstances_);
+  publishedDynamicEntityFrameInstanceCount_ = dynamicEntityFrameInstanceCount_;
+  dynamicEntityFrameInstanceCount_ = 0;
+}
+
 void RemixRenderer::destroyDynamicEntityMeshes() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyDynamicEntityMeshes");
   clearDynamicEntityFrameInstances();
@@ -510,6 +516,8 @@ void RemixRenderer::destroyDynamicEntityMeshes() {
   }
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
+  publishedDynamicEntityFrameInstances_.clear();
+  publishedDynamicEntityFrameInstanceCount_ = 0;
 }
 
 void RemixRenderer::destroyDynamicEntityMesh(DynamicEntityMeshData& meshData) {

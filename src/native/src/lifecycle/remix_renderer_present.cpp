@@ -80,6 +80,9 @@ bool RemixRenderer::present() {
       setError("present called before initialize");
       return false;
     }
+    publishedCamera_ = camera_;
+    publishedCameraValid_ = true;
+    publishDynamicEntityFrameInstancesLocked();
     standaloneWorkerPresentRequested_ = true;
     standaloneWorkerEvent_.notify_all();
     return true;

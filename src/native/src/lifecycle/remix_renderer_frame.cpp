@@ -64,8 +64,14 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::prepareFrameSnapshotLocked");
   MCRTX_TRACY_SCOPE("RemixRenderer::prepareFrameSnapshotLocked");
   snapshot = {};
-  snapshot.camera = camera_;
-  snapshot.renderOrigin = currentRenderOriginLocked();
+  snapshot.camera = standaloneOutputWindow_ && publishedCameraValid_
+      ? publishedCamera_
+      : camera_;
+  snapshot.renderOrigin = makeWorldRenderOrigin(
+      worldOriginRebaseEnabled_,
+      snapshot.camera.position[0],
+      snapshot.camera.position[1],
+      snapshot.camera.position[2]);
   snapshot.camera.position[0] = rebaseWorldCoordinate(snapshot.camera.position[0], snapshot.renderOrigin.x);
   snapshot.camera.position[1] = rebaseWorldCoordinate(snapshot.camera.position[1], snapshot.renderOrigin.y);
   snapshot.camera.position[2] = rebaseWorldCoordinate(snapshot.camera.position[2], snapshot.renderOrigin.z);
@@ -122,10 +128,16 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectDynamicEntities");
-    MCRTX_TRACY_VALUE(dynamicEntityFrameInstanceCount_);
-    snapshot.dynamicEntities.reserve(dynamicEntityFrameInstanceCount_);
-    for (std::size_t index = 0; index < dynamicEntityFrameInstanceCount_; ++index) {
-      const DynamicEntityFrameInstance& frameInstance = dynamicEntityFrameInstances_[index];
+    const std::vector<DynamicEntityFrameInstance>& frameInstances = standaloneOutputWindow_
+        ? publishedDynamicEntityFrameInstances_
+        : dynamicEntityFrameInstances_;
+    const std::size_t frameInstanceCount = standaloneOutputWindow_
+        ? publishedDynamicEntityFrameInstanceCount_
+        : dynamicEntityFrameInstanceCount_;
+    MCRTX_TRACY_VALUE(frameInstanceCount);
+    snapshot.dynamicEntities.reserve(frameInstanceCount);
+    for (std::size_t index = 0; index < frameInstanceCount; ++index) {
+      const DynamicEntityFrameInstance& frameInstance = frameInstances[index];
       if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
         continue;
       }
@@ -243,6 +255,4 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 }
 
 }  // namespace mcrtx
-
-
 

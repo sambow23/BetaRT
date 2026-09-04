@@ -477,6 +477,8 @@ void RemixRenderer::shutdownLocked() {
   pendingCursorPositionUpdate_ = false;
   pendingFullscreenUpdate_ = false;
 #endif
+  publishedCamera_ = {};
+  publishedCameraValid_ = false;
   chunkBuildActive_ = false;
   activeChunkBuild_ = {};
   activeChunkBlocks_.clear();
@@ -484,6 +486,8 @@ void RemixRenderer::shutdownLocked() {
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
   dynamicEntityFrameInstanceCount_ = 0;
+  publishedDynamicEntityFrameInstances_.clear();
+  publishedDynamicEntityFrameInstanceCount_ = 0;
   destroyOverlayInstances_.clear();
   blockOutlineInstances_.clear();
   particleQuads_.clear();
