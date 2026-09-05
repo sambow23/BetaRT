@@ -12,6 +12,62 @@ using mcrtx::RemixRenderer;
 
 extern "C" {
 
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nResetUndergroundCulling(JNIEnv*, jclass) {
+  RemixRenderer::instance().resetUndergroundCulling();
+}
+
+JNIEXPORT jlongArray JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUndergroundStatistics(JNIEnv* env, jclass) {
+  const auto stats = RemixRenderer::instance().undergroundStatistics();
+  std::array<jlong, 5> values;
+  std::copy(stats.begin(), stats.end(), values.begin());
+  jlongArray result = env->NewLongArray(5);
+  if (result) {
+    env->SetLongArrayRegion(result, 0, 5, values.data());
+  }
+  return result;
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nSetUndergroundCullingEnabled(
+    JNIEnv*, jclass, jboolean enabled) {
+  RemixRenderer::instance().setUndergroundCullingEnabled(enabled != JNI_FALSE);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUpdateUndergroundTopology(
+    JNIEnv* env, jclass, jint x, jint y, jint z, jlong revision, jshortArray labels) {
+  const mcrtx::ChunkKey key {x, y, z, 0};
+  if (revision == 0 && labels == nullptr) {
+    RemixRenderer::instance().updateUndergroundTopology(key, nullptr);
+    return;
+  }
+  if (!labels || env->GetArrayLength(labels) != 4096 || revision <= 0) {
+    return;
+  }
+  auto section = std::make_shared<mcrtx::UndergroundSection>();
+  section->revision = static_cast<std::uint64_t>(revision);
+  auto values = std::make_shared<mcrtx::UndergroundSection::Labels>();
+  env->GetShortArrayRegion(labels, 0, 4096, values->data());
+  if (env->ExceptionCheck()) {
+    return;
+  }
+  section->labels = std::move(values);
+  RemixRenderer::instance().updateUndergroundTopology(key, std::move(section));
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUpdateUndergroundVisibility(
+    JNIEnv* env, jclass, jint x, jint y, jint z, jlong revision, jlongArray hidden) {
+  if (!hidden || env->GetArrayLength(hidden) > 64) {
+    return;
+  }
+  std::array<jlong, 64> values {};
+  env->GetLongArrayRegion(hidden, 0, env->GetArrayLength(hidden), values.data());
+  if (env->ExceptionCheck()) {
+    return;
+  }
+  std::array<std::uint64_t, 64> bits;
+  std::copy(values.begin(), values.end(), bits.begin());
+  RemixRenderer::instance().updateUndergroundVisibility({x, y, z, 0}, static_cast<std::uint64_t>(revision), bits);
+}
+
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUnloadChunkSection(
     JNIEnv*, jclass, jint originX, jint originY, jint originZ) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUnloadChunkSection");

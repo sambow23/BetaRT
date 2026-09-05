@@ -5,6 +5,7 @@
 #include "mcrtx/lifecycle/perf_log.hpp"
 
 #include <cstddef>
+#include <algorithm>
 #include <cstdint>
 #include <mutex>
 #include <utility>
@@ -64,6 +65,10 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::prepareFrameSnapshotLocked");
   MCRTX_TRACY_SCOPE("RemixRenderer::prepareFrameSnapshotLocked");
   snapshot = {};
+  activeUndergroundFrame_ = standaloneOutputWindow_ ? publishedUndergroundFrame_ : undergroundFrame_;
+  undergroundHiddenGroups_ = undergroundHiddenTriangles_ = undergroundHiddenEntities_ = 0;
+  undergroundHiddenParticles_ = undergroundHiddenLights_ = 0;
+  undergroundVisibleGroups_ = undergroundPendingGroups_ = 0;
   snapshot.camera = standaloneOutputWindow_ && publishedCameraValid_
       ? publishedCamera_
       : camera_;
@@ -128,7 +133,8 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectChunkMeshes");
     MCRTX_TRACY_VALUE(chunkMeshes_.size());
     snapshot.chunkMeshes.reserve(chunkMeshes_.size());
-    for (const auto& [chunkKey, meshData] : chunkMeshes_) {
+    std::size_t groupBuildBudget = 2;
+    for (auto& [chunkKey, meshData] : chunkMeshes_) {
       if (meshData.meshHandle == nullptr) {
         continue;
       }
@@ -139,6 +145,51 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
       if (isChunkBuried(chunkKey)) {
         continue;
+      }
+
+      if (activeUndergroundFrame_.enabled) {
+        const auto topology = activeUndergroundFrame_.sections->find({chunkKey.originX, chunkKey.originY, chunkKey.originZ, 0});
+        const bool captured = topology != activeUndergroundFrame_.sections->end()
+          && topology->second->revision == meshData.undergroundCaptureRevision;
+        if (meshData.visibilityCheckedTopology != activeUndergroundFrame_.topologyRevision) {
+          meshData.visibilityCheckedTopology = activeUndergroundFrame_.topologyRevision;
+          meshData.visibilityCurrent = meshData.visibilityTopologyFingerprint == activeUndergroundFrame_.topologyFingerprint(chunkKey)
+            && std::all_of(meshData.visibilityGroups.begin(), meshData.visibilityGroups.end(),
+              [&](const auto& group) { return activeUndergroundFrame_.matches(group.pockets); });
+        }
+        const bool current = meshData.visibilityCurrent && meshData.visibilityGeometryFingerprint == meshData.meshFingerprint
+          && !meshData.visibilityGroups.empty();
+        if (!current && captured && groupBuildBudget != 0) {
+          --groupBuildBudget;
+          rebuildUndergroundMeshes(chunkKey, meshData);
+        } else if (!current) {
+          ++undergroundPendingGroups_;
+        }
+        if (meshData.visibilityCheckedFrame != activeUndergroundFrame_.revision) {
+          meshData.visibilityCheckedFrame = activeUndergroundFrame_.revision;
+          for (auto& group : meshData.visibilityGroups) {
+            group.hidden = activeUndergroundFrame_.isHidden(group.pockets);
+          }
+        }
+        const bool anyHidden = std::any_of(meshData.visibilityGroups.begin(), meshData.visibilityGroups.end(),
+          [](const auto& group) { return group.hidden; });
+        if (captured && meshData.visibilityGeometryFingerprint == meshData.meshFingerprint && anyHidden) {
+          bool submitted = false;
+          for (const auto& group : meshData.visibilityGroups) {
+            if (group.hidden) {
+              ++undergroundHiddenGroups_;
+              undergroundHiddenTriangles_ += group.triangleCount;
+              continue;
+            }
+            snapshot.chunkMeshes.push_back({chunkKey, group.handle, submitted ? 0 : meshData.blockCount});
+            submitted = true;
+          }
+          if (submitted) {
+            ++snapshot.cachedChunkMeshes;
+            snapshot.submittedChunkBlocks += meshData.blockCount;
+          }
+          continue;
+        }
       }
 
       ChunkRenderInstance renderInstance;
@@ -166,6 +217,11 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
       if (frameInstance.meshHandle == nullptr || frameInstance.boneTransforms.empty()) {
         continue;
       }
+      if (frameInstance.entityId != kFirstPersonDynamicEntityId && frameInstance.entityId != kFirstPersonPlayerShadowEntityId
+          && activeUndergroundFrame_.isHidden(frameInstance.boundsMin, frameInstance.boundsMax)) {
+        ++undergroundHiddenEntities_;
+        continue;
+      }
 
       snapshot.submittedDynamicEntityQuads += frameInstance.quadCount;
       DynamicEntityRenderInstance snapshotFrameInstance;
@@ -190,6 +246,7 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   }
 
   snapshot.cloudMeshHandle = cloudMeshHandle_;
+  undergroundVisibleGroups_ = snapshot.chunkMeshes.size();
   snapshot.fireMeshHandle = fireMeshHandle_;
   snapshot.destroyOverlayMeshHandle = destroyOverlayMeshHandle_;
   snapshot.blockOutlineMeshHandle = blockOutlineMeshHandle_;
@@ -234,18 +291,35 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
         torchLights_.size() + entityHeldTorchLights_.size() + activeFlameParticleLights_.size()
         + (heldItemTorchLightHandle_ != nullptr ? 1 : 0));
     for (const auto& [position, lightState] : torchLights_) {
-      (void)position;
+      if (activeUndergroundFrame_.isHidden(
+          {position.x - 0.01, position.y - 0.01, position.z - 0.01},
+          {position.x + 1.01, position.y + 1.01, position.z + 1.01})) {
+        ++undergroundHiddenLights_;
+        continue;
+      }
       if (lightState.handle != nullptr) {
         snapshot.torchLights.push_back(lightState.handle);
       }
     }
     for (const auto& [entityId, lightState] : entityHeldTorchLights_) {
-      (void)entityId;
+      if (activeUndergroundFrame_.isHidden(
+          {lightState.worldX - 1, lightState.worldY - 1, lightState.worldZ - 1},
+          {lightState.worldX + 1, lightState.worldY + 1, lightState.worldZ + 1})) {
+        ++undergroundHiddenLights_;
+        continue;
+      }
       if (lightState.handle != nullptr) {
         snapshot.torchLights.push_back(lightState.handle);
       }
     }
     for (const auto& lightState : activeFlameParticleLights_) {
+      const double x = lightState.submittedPosition.x + lightState.renderOrigin.x;
+      const double y = lightState.submittedPosition.y + lightState.renderOrigin.y;
+      const double z = lightState.submittedPosition.z + lightState.renderOrigin.z;
+      if (activeUndergroundFrame_.isHidden({x - 1, y - 1, z - 1}, {x + 1, y + 1, z + 1})) {
+        ++undergroundHiddenLights_;
+        continue;
+      }
       if (lightState.handle != nullptr) {
         snapshot.torchLights.push_back(lightState.handle);
       }

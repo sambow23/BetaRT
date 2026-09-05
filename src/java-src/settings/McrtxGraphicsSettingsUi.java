@@ -11,6 +11,9 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     private static final int RAY_RECONSTRUCTION_BUTTON_ID = 5;
     private static final int RT_QUALITY_BUTTON_ID = 6;
     private static final int NO_CULL_DISTANCE_SLIDER_ID = 9;
+    private static final int UNDERGROUND_CULLING_BUTTON_ID = 38;
+    private static final int UNDERGROUND_STATUS_ID = 39;
+    private static final int UNDERGROUND_COUNTS_ID = 40;
     private static final int REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID = 30;
     private static final int GAME_RAIN_PARTICLES_BUTTON_ID = 31;
     private static final int SPARSE_RENDERING_BUTTON_ID = 32;
@@ -23,6 +26,9 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     public String getName() { return "Graphics"; }
 
     public void addControls(McrtxQuickSettingsScreen screen) {
+        screen.addControl(button(screen, UNDERGROUND_CULLING_BUTTON_ID, "Adaptive Underground Culling: " + toggle(RemixUndergroundCulling.enabled())));
+        screen.addControl(button(screen, UNDERGROUND_STATUS_ID, "Culling: " + RemixUndergroundCulling.status()));
+        screen.addControl(button(screen, UNDERGROUND_COUNTS_ID, "Culling statistics"));
         screen.addOptionSelector(UPSCALER_BUTTON_ID, getUpscalerLabel());
         screen.addOptionSelector(UPSCALER_PRESET_BUTTON_ID, getUpscalerPresetLabel());
         if (shouldShowDlssOptions()) {
@@ -45,6 +51,10 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     public int handleButton(int buttonId, int direction) {
+        if (buttonId == UNDERGROUND_CULLING_BUTTON_ID) {
+            McrtxGraphicsSettings.setUndergroundCullingEnabled(!McrtxGraphicsSettings.isUndergroundCullingEnabled());
+            return UPDATE_REFRESH;
+        }
         if (buttonId == UPSCALER_BUTTON_ID) { cycleUpscalerType(direction); return UPDATE_REBUILD; }
         if (buttonId == UPSCALER_PRESET_BUTTON_ID) { cycleUpscalerPreset(direction); return UPDATE_REFRESH; }
         if (buttonId == RAY_RECONSTRUCTION_BUTTON_ID) { toggleRayReconstruction(); return UPDATE_REFRESH; }
@@ -81,6 +91,7 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     public void refreshButtons(McrtxQuickSettingsScreen screen) {
+        refreshUndergroundStatus(screen);
         setLabel(screen, UPSCALER_BUTTON_ID, getUpscalerLabel());
         setLabel(screen, UPSCALER_PRESET_BUTTON_ID, getUpscalerPresetLabel());
         setLabel(screen, RAY_RECONSTRUCTION_BUTTON_ID, getRayReconstructionLabel());
@@ -107,6 +118,17 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         return new ke(id, screen.getControlX(), screen.takeNextRowY(), screen.getControlWidth(), McrtxQuickSettingsScreen.CONTROL_HEIGHT, label);
     }
     private static void setLabel(McrtxQuickSettingsScreen screen, int id, String label) { ke button = screen.findButton(id); if (button != null) button.e = label; }
+    static void refreshUndergroundStatus(McrtxQuickSettingsScreen screen) {
+        if (screen.findButton(UNDERGROUND_CULLING_BUTTON_ID) == null) return;
+        setLabel(screen, UNDERGROUND_CULLING_BUTTON_ID, "Adaptive Underground Culling: " + toggle(RemixUndergroundCulling.enabled()));
+        setLabel(screen, UNDERGROUND_STATUS_ID, "Culling: " + RemixUndergroundCulling.status());
+        screen.findButton(UNDERGROUND_STATUS_ID).g = false;
+        screen.findButton(UNDERGROUND_COUNTS_ID).g = false;
+        long[] counts = mcrtx.bridge.RemixChunkBridge.undergroundStatistics();
+        if (counts != null && counts.length == 5) {
+            setLabel(screen, UNDERGROUND_COUNTS_ID, "Groups " + counts[0] + "/" + counts[1] + " culled; lights " + counts[3]);
+        }
+    }
     private static String toggle(boolean enabled) { return enabled ? "ON" : "OFF"; }
     private static boolean shouldShowDlssOptions() { return McrtxGraphicsSettings.getUpscalerType() == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS; }
     private static String getUpscalerLabel() {

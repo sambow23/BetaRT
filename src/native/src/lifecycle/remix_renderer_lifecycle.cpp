@@ -394,6 +394,7 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
           perfSummary,
           toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt));
     }
+    ::mcrtx::perf::onFramePresented();
     nextStandaloneRenderAt = std::chrono::steady_clock::now() + kStandaloneAutonomousFrameInterval;
     if (!perfSummary.empty()) {
       log(perfSummary);
@@ -483,6 +484,9 @@ void RemixRenderer::shutdownLocked() {
   activeChunkBuild_ = {};
   activeChunkBlocks_.clear();
   chunkMeshes_.clear();
+  undergroundFrame_ = {};
+  publishedUndergroundFrame_ = {};
+  activeUndergroundFrame_ = {};
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
   dynamicEntityFrameInstanceCount_ = 0;

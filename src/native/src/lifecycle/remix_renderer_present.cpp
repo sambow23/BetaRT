@@ -83,6 +83,7 @@ bool RemixRenderer::present() {
     publishedCamera_ = camera_;
     publishedCameraValid_ = true;
     publishedCloudLayer_ = cloudLayer_;
+    publishedUndergroundFrame_ = undergroundFrame_;
     publishDynamicEntityFrameInstancesLocked();
     publishParticleFrameLocked();
     publishLightFrameLocked();
@@ -277,6 +278,15 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
       && loggedPopulatedSubmissionSummaryCount_ < 8;
   const bool shouldLogSubmissionSummary = presentedFrames_ < 8
       || shouldLogPopulatedSubmissionSummary;
+  if (activeUndergroundFrame_.enabled && presentedFrames_ % 120 == 0) {
+    std::ostringstream stream;
+    stream << "Underground submissions: groups=" << snapshot.chunkMeshes.size()
+           << " hiddenGroups=" << undergroundHiddenGroups_ << " hiddenTriangles=" << undergroundHiddenTriangles_
+           << " hiddenEntities=" << undergroundHiddenEntities_ << " hiddenParticles=" << undergroundHiddenParticles_
+           << " hiddenLights=" << undergroundHiddenLights_ << " lights=" << snapshot.torchLights.size();
+    stream << " pendingGroups=" << undergroundPendingGroups_;
+    log(stream.str());
+  }
   if (submissionCountsChanged && shouldLogSubmissionSummary) {
     std::ostringstream stream;
     stream << "Submitted " << snapshot.chunkMeshes.size()

@@ -23,7 +23,7 @@ final class RemixChunkBuildSession {
         RemixChunkWorldState.rememberKnownSection(originX, originY, originZ);
 
         fd world = RemixChunkWorldState.attachedWorld();
-        if (world != null && renderPass == 0) {
+        if (world != null && renderPass == 0 && !RemixUndergroundCulling.enabled()) {
             RemixCaveCulling.Pocket[] pockets =
                     RemixCaveCulling.computePockets(world, originX, originY, originZ);
             RemixCaveCulling.setPockets(originX, originY, originZ, pockets);
@@ -32,7 +32,7 @@ final class RemixChunkBuildSession {
         if (!RemixCameraState.shouldCaptureChunkSection(originX, originY, originZ)) {
             return false;
         }
-        if (!RemixCaveCulling.isVisible(originX, originY, originZ)) {
+        if (!RemixUndergroundCulling.enabled() && !RemixCaveCulling.isVisible(originX, originY, originZ)) {
             return false;
         }
 

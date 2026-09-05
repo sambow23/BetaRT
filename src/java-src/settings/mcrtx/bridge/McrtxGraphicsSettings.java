@@ -6,6 +6,7 @@ public final class McrtxGraphicsSettings {
     public static final String REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY = "MCRTX_REMIX_ATMOSPHERE_CLOUDS_ENABLED";
     public static final String GAME_RAIN_PARTICLES_ENABLED_KEY = "MCRTX_GAME_RAIN_PARTICLES_ENABLED";
     public static final String NO_CULL_DISTANCE_KEY = "MCRTX_NO_CULL_DISTANCE";
+    public static final String UNDERGROUND_CULLING_KEY = "MCRTX_UNDERGROUND_CULLING_ENABLED";
     public static final String UPSCALER_TYPE_KEY = "MCRTX_UPSCALER_TYPE";
     public static final String DLSS_PRESET_KEY = "MCRTX_DLSS_PRESET";
     public static final String XESS_PRESET_KEY = "MCRTX_XESS_PRESET";
@@ -76,6 +77,7 @@ public final class McrtxGraphicsSettings {
     private static boolean remixAtmosphereCloudsEnabled = DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED;
     private static boolean gameRainParticlesEnabled = DEFAULT_GAME_RAIN_PARTICLES_ENABLED;
     private static int noCullDistanceBlocks = DEFAULT_NO_CULL_DISTANCE_BLOCKS;
+    private static boolean undergroundCullingEnabled;
     private static int upscalerType = UPSCALER_TYPE_DLSS;
     private static int dlssPreset = DLSS_PRESET_AUTO;
     private static int xessPreset = XESS_PRESET_BALANCED;
@@ -95,6 +97,8 @@ public final class McrtxGraphicsSettings {
     public static boolean isRemixAtmosphereCloudsEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return remixAtmosphereCloudsEnabled; } }
     public static boolean isGameRainParticlesEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return gameRainParticlesEnabled; } }
     public static int getNoCullDistanceBlocks() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return noCullDistanceBlocks; } }
+    public static boolean isUndergroundCullingEnabled() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return undergroundCullingEnabled; } }
+    public static void setUndergroundCullingEnabled(boolean enabled) { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); undergroundCullingEnabled = enabled; McrtxSettingsStore.saveLocked(); } }
     public static int getUpscalerType() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return upscalerType; } }
     public static int getDlssPreset() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return dlssPreset; } }
     public static int getXessPreset() { synchronized (McrtxSettingsStore.LOCK) { McrtxSettingsStore.ensureLoadedLocked(); return xessPreset; } }
@@ -204,6 +208,7 @@ public final class McrtxGraphicsSettings {
     }
 
     static void loadLocked(Map<String, String> fileValues) {
+        undergroundCullingEnabled = McrtxRuntimeSettingParser.readBooleanSetting(fileValues, UNDERGROUND_CULLING_KEY, false);
         remixAtmosphereCloudsEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
                 fileValues, REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, DEFAULT_REMIX_ATMOSPHERE_CLOUDS_ENABLED);
         gameRainParticlesEnabled = McrtxRuntimeSettingParser.readBooleanSetting(
@@ -230,6 +235,7 @@ public final class McrtxGraphicsSettings {
     }
 
     static void writeLocked(Map<String, String> fileValues) {
+        fileValues.put(UNDERGROUND_CULLING_KEY, McrtxRuntimeSettingFormatter.formatBoolean(undergroundCullingEnabled));
         fileValues.put(REMIX_ATMOSPHERE_CLOUDS_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(remixAtmosphereCloudsEnabled));
         fileValues.put(GAME_RAIN_PARTICLES_ENABLED_KEY, McrtxRuntimeSettingFormatter.formatBoolean(gameRainParticlesEnabled));
         fileValues.put(NO_CULL_DISTANCE_KEY, Integer.toString(noCullDistanceBlocks));

@@ -280,6 +280,10 @@ public final class RemixCameraState {
         return frameViewCaptured ? frameCameraPoseX : cameraPositionX;
     }
 
+    static double[] cullingEye() {
+        return new double[] {currentCameraPoseX(),currentCameraPoseY(),currentCameraPoseZ()};
+    }
+
     private static double currentCameraPoseY() {
         return frameViewCaptured ? frameCameraPoseY : cameraPositionY;
     }

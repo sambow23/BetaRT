@@ -25,6 +25,27 @@ public final class RemixChunkBridge {
     private RemixChunkBridge() {
     }
 
+    public static void setUndergroundCullingEnabled(boolean enabled) {
+        if (RemixLifecycleBridge.isInitialized()) nSetUndergroundCullingEnabled(enabled);
+    }
+    public static void resetUndergroundCulling() {
+        if (RemixLifecycleBridge.isInitialized()) nResetUndergroundCulling();
+    }
+    private static native void nResetUndergroundCulling();
+    public static void updateUndergroundTopology(int x, int y, int z, long revision, short[] labels) {
+        if (RemixLifecycleBridge.isInitialized()) nUpdateUndergroundTopology(x,y,z,revision,labels);
+    }
+    public static void updateUndergroundVisibility(int x, int y, int z, long revision, long[] hidden) {
+        if (RemixLifecycleBridge.isInitialized()) nUpdateUndergroundVisibility(x,y,z,revision,hidden);
+    }
+    private static native void nSetUndergroundCullingEnabled(boolean enabled);
+    public static long[] undergroundStatistics() {
+        return RemixLifecycleBridge.isInitialized() ? nUndergroundStatistics() : new long[5];
+    }
+    private static native long[] nUndergroundStatistics();
+    private static native void nUpdateUndergroundTopology(int x, int y, int z, long revision, short[] labels);
+    private static native void nUpdateUndergroundVisibility(int x, int y, int z, long revision, long[] hidden);
+
     public static synchronized void resetCaptureState() {
         chunkBuildCaptureActive = false;
         activeChunkRenderPass = 0;

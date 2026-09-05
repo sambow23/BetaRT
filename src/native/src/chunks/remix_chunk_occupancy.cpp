@@ -134,6 +134,8 @@ bool RemixRenderer::rebuildChunkMesh(
   }
   meshData.fireCellIndices = std::move(fireCellIndices);
   meshData.hasOccupancy = true;
+  const auto topology = undergroundFrame_.sections->find({chunkKey.originX, chunkKey.originY, chunkKey.originZ, 0});
+  meshData.undergroundCaptureRevision = topology == undergroundFrame_.sections->end() ? 0 : topology->second->revision;
 
   {
     MCRTX_TRACY_SCOPE("rebuildChunkMesh.rebuildChunkMeshFromData");

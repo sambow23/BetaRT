@@ -79,6 +79,22 @@ struct ChunkKeyHash {
   std::size_t operator()(const ChunkKey& key) const noexcept;
 };
 
+struct UndergroundPocket {
+  ChunkKey section {};
+  std::uint64_t revision {0};
+  std::int16_t label {-1};
+  bool operator==(const UndergroundPocket&) const = default;
+  bool operator<(const UndergroundPocket& other) const;
+};
+
+struct UndergroundMeshGroup {
+  bool hidden {false};
+  remixapi_MeshHandle handle {nullptr};
+  std::uint64_t hash {0};
+  std::size_t triangleCount {0};
+  std::vector<UndergroundPocket> pockets;
+};
+
 struct WorldBlockPosition {
   int x {0};
   int y {0};
@@ -169,6 +185,13 @@ struct ChunkMeshData {
   bool hasOccupancy {false};
   bool hidden {false};
   std::array<bool, 6> faceCovered {};
+  std::uint64_t visibilityGeometryFingerprint {0};
+  std::uint64_t undergroundCaptureRevision {0};
+  std::uint64_t visibilityTopologyFingerprint {0};
+  std::uint64_t visibilityCheckedTopology {~std::uint64_t {0}};
+  std::uint64_t visibilityCheckedFrame {~std::uint64_t {0}};
+  bool visibilityCurrent {false};
+  std::vector<UndergroundMeshGroup> visibilityGroups;
 };
 
 } // namespace mcrtx

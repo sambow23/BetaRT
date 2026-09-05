@@ -79,10 +79,24 @@ absolute `libremix.so.0` path. On Linux, Remix owns the SDL3 window and BetaRT
 forwards that window's size, focus, keyboard, mouse, cursor-grab, fullscreen,
 and close state to the legacy LWJGL-facing Java hooks.
 
-The existing patched-client and PrismLauncher deployment scripts below are
-PowerShell/Windows workflows. A jar produced by them is platform-independent;
-for Linux, deploy that jar with the contents of `out/linux-native/` instead of
-`mcrtx_jni.dll`.
+The patched client jar is platform-independent. On Linux, build it without
+regenerating imported textures using existing dependency jars from PrismLauncher:
+
+```bash
+JAVA_HOME=/path/to/jdk-21 bash scripts-linux/build-client.sh \
+  /path/to/minecraft-b1.7.3-client.jar \
+  /path/to/lwjgl.jar /path/to/lwjgl_util.jar \
+  /path/to/asm.jar /path/to/asm-tree.jar \
+  out/linux-client
+```
+
+Use the original vanilla Minecraft jar as input, not a previously patched jar.
+The output directory must not already exist. Deploy the resulting
+`minecraft-b1.7.3-client-mcrtx.jar` with the contents of `out/linux-native/`.
+The deployment scripts below remain PowerShell/Windows workflows.
+
+See [Underground culling](docs/UndergroundCulling.md) for the opt-in culling
+controls, regression tests, and private-instance profiling workflow.
 
 ### Build the patched client bundle
 

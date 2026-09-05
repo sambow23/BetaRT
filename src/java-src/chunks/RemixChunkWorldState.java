@@ -22,6 +22,7 @@ final class RemixChunkWorldState {
     }
 
     static void rememberKnownSection(int originX, int originY, int originZ) {
+        RemixUndergroundCulling.remember(originX, originY, originZ);
         KNOWN_CHUNK_SECTIONS.add(Long.valueOf(RemixChunkSectionKey.encode(originX, originY, originZ)));
     }
 
@@ -32,6 +33,7 @@ final class RemixChunkWorldState {
     }
 
     static void onChunkSectionUnload(int originX, int originY, int originZ) {
+        RemixUndergroundCulling.unload(originX,originY,originZ);
         RemixChunkRecaptureQueue.clearSection(originX, originY, originZ);
         forgetSection(originX, originY, originZ);
         RemixChunkBridge.unloadChunkSection(originX, originY, originZ);
@@ -50,6 +52,7 @@ final class RemixChunkWorldState {
         RemixSceneBridge.clearWorldScene();
         RemixChunkBridge.resetCaptureState();
         RemixCaveCulling.clear();
+        RemixUndergroundCulling.clear();
 
         if (attachedWorld != null) {
             attachedWorld.b(WORLD_LISTENER);
@@ -77,7 +80,7 @@ final class RemixChunkWorldState {
             int originX = RemixChunkSectionKey.originX(key);
             int originY = RemixChunkSectionKey.originY(key);
             int originZ = RemixChunkSectionKey.originZ(key);
-            boolean shouldBeResident = RemixCaveCulling.isVisible(originX, originY, originZ)
+            boolean shouldBeResident = (RemixUndergroundCulling.enabled() || RemixCaveCulling.isVisible(originX, originY, originZ))
                     && RemixCameraState.shouldCaptureChunkSection(originX, originY, originZ);
             boolean isResident = RESIDENT_CHUNK_SECTIONS.contains(keyObject);
             if (shouldBeResident && !isResident) {
@@ -117,5 +120,17 @@ final class RemixChunkWorldState {
         KNOWN_CHUNK_SECTIONS.remove(key);
         HAS_NATIVE_MESH_SECTIONS.remove(key);
         RESIDENT_CHUNK_SECTIONS.remove(key);
+    }
+
+    static void recaptureKnownSections() {
+        for (Long key : new ArrayList<Long>(KNOWN_CHUNK_SECTIONS)) {
+            int x = RemixChunkSectionKey.originX(key), y = RemixChunkSectionKey.originY(key), z = RemixChunkSectionKey.originZ(key);
+            RemixChunkRecaptureQueue.queueRegion(x,y,z,x+15,y+15,z+15);
+        }
+    }
+    static void recaptureTopologySection(int x, int y, int z) {
+        if (KNOWN_CHUNK_SECTIONS.contains(RemixChunkSectionKey.encode(x,y,z))) {
+            RemixChunkRecaptureQueue.queueRegion(x,y,z,x+15,y+15,z+15);
+        }
     }
 }

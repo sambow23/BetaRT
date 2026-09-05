@@ -342,6 +342,28 @@ void RemixRenderer::endDynamicEntity() {
         frameInstance->entityId = activeDynamicEntity_.entityId;
         frameInstance->meshHandle = meshData->meshHandle;
         frameInstance->quadCount = meshData->quadCount;
+        frameInstance->boundsMin.fill(INFINITY);
+        frameInstance->boundsMax.fill(-INFINITY);
+        for (std::size_t q = 0; undergroundFrame_.enabled && q < activeDynamicEntity_.quadCount; ++q) {
+          const auto& quad = activeDynamicEntity_.quads[q];
+          if (quad.boneIndex >= activeDynamicEntity_.boneTransforms.size()) {
+            frameInstance->boundsMin.fill(INFINITY);
+            frameInstance->boundsMax.fill(-INFINITY);
+            break;
+          }
+          const auto& bone = activeDynamicEntity_.boneTransforms[quad.boneIndex];
+          const double origin[] = {bone.worldX, bone.worldY, bone.worldZ};
+          for (int vertex = 0; vertex < 4; ++vertex) {
+            for (int axis = 0; axis < 3; ++axis) {
+              double value = origin[axis];
+              for (int component = 0; component < 3; ++component) {
+                value += bone.transform.matrix[axis][component] * quad.positions[vertex * 3 + component];
+              }
+              frameInstance->boundsMin[axis] = std::min(frameInstance->boundsMin[axis], value - 0.5);
+              frameInstance->boundsMax[axis] = std::max(frameInstance->boundsMax[axis], value + 0.5);
+            }
+          }
+        }
         activeDynamicEntity_.boneTransforms.resize(boneCount);
         frameInstance->boneTransforms = std::move(activeDynamicEntity_.boneTransforms);
         ++dynamicEntityFrameInstanceCount_;

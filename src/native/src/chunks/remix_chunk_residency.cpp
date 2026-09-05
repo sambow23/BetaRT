@@ -30,6 +30,7 @@ constexpr std::size_t kNeighborRefreshBacklogThreshold = 64;
 void RemixRenderer::destroyChunkMeshHandle(ChunkMeshData& meshData) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyChunkMeshHandle");
   destroyMeshHandle(meshData.meshHandle);
+  destroyUndergroundMeshes(meshData);
   meshData.meshHash = 0;
 }
 void RemixRenderer::unloadChunkSection(int originX, int originY, int originZ) {

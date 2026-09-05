@@ -61,6 +61,8 @@ add_library(mcrtx_jni SHARED
   src/scene/remix_cloud_mode.cpp
   src/scene/remix_cloud_geometry.cpp
   src/scene/remix_cloud_mask.cpp
+  src/scene/remix_underground_visibility.cpp
+  src/chunks/remix_chunk_visibility.cpp
   src/scene/remix_aerial_perspective.cpp
   src/lifecycle/remix_renderer_frame.cpp
   src/lifecycle/remix_renderer_present.cpp
@@ -202,6 +204,12 @@ if(MCRTX_BUILD_TESTS)
   add_test(NAME mcrtx_cloud_geometry_tests COMMAND mcrtx_cloud_geometry_tests)
 
   if(MCRTX_BUILD_JNI)
+    add_executable(mcrtx_underground_visibility_tests tests/scene/remix_underground_visibility_tests.cpp)
+    target_include_directories(mcrtx_underground_visibility_tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+    target_link_libraries(mcrtx_underground_visibility_tests PRIVATE mcrtx_jni)
+    target_compile_features(mcrtx_underground_visibility_tests PRIVATE cxx_std_20)
+    add_test(NAME mcrtx_underground_visibility_tests COMMAND mcrtx_underground_visibility_tests)
     add_executable(mcrtx_cloud_lifetime_tests tests/scene/remix_cloud_lifetime_tests.cpp)
     target_include_directories(mcrtx_cloud_lifetime_tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)

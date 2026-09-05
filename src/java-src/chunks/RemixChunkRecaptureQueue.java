@@ -141,7 +141,8 @@ final class RemixChunkRecaptureQueue {
             int playerX = (int) Math.floor(RemixCameraState.cameraPositionX);
             int playerY = (int) Math.floor(RemixCameraState.cameraPositionY);
             int playerZ = (int) Math.floor(RemixCameraState.cameraPositionZ);
-            RemixCaveCulling.updateGlobalCulling(playerX, playerY, playerZ);
+            RemixUndergroundCulling.update(world);
+            if (!RemixUndergroundCulling.enabled()) RemixCaveCulling.updateGlobalCulling(playerX, playerY, playerZ);
             RemixChunkWorldState.syncSectionVisibility();
         }
 
@@ -388,8 +389,8 @@ final class RemixChunkRecaptureQueue {
         for (DirtyChunkSection section : queuedSections) {
             if (RemixCameraState.shouldCaptureChunkSection(
                     section.originX, section.originY, section.originZ)
-                    && RemixCaveCulling.isVisible(
-                            section.originX, section.originY, section.originZ)) {
+                    && (RemixUndergroundCulling.enabled() || RemixCaveCulling.isVisible(
+                            section.originX, section.originY, section.originZ))) {
                 visibleSections.add(section);
             }
         }

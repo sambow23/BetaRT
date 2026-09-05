@@ -7,6 +7,7 @@
 #include "mcrtx/lifecycle/perf_log.hpp"
 
 #include <cstddef>
+#include <cmath>
 #include <cstdint>
 #include <unordered_map>
 #include <vector>
@@ -149,6 +150,19 @@ bool RemixRenderer::rebuildParticleMesh(
   {
     MCRTX_TRACY_SCOPE("rebuildParticleMesh.buildSurfaces");
     for (const ParticleQuad& quad : particleQuads) {
+      if (activeUndergroundFrame_.enabled) {
+        std::array<double, 3> min {INFINITY, INFINITY, INFINITY}, max {-INFINITY, -INFINITY, -INFINITY};
+        for (int vertex = 0; vertex < 4; ++vertex) {
+          for (int axis = 0; axis < 3; ++axis) {
+            min[axis] = std::min(min[axis], static_cast<double>(quad.positions[vertex * 3 + axis]) - 0.5);
+            max[axis] = std::max(max[axis], static_cast<double>(quad.positions[vertex * 3 + axis]) + 0.5);
+          }
+        }
+        if (activeUndergroundFrame_.isHidden(min, max)) {
+          ++undergroundHiddenParticles_;
+          continue;
+        }
+      }
       remixapi_MaterialHandle materialHandle = acquireParticleMaterial(quad.textureKind);
       if (materialHandle == nullptr) {
         continue;
@@ -230,9 +244,6 @@ bool RemixRenderer::rebuildParticleMesh(
 }
 
 }  // namespace mcrtx
-
-
-
 
 
 

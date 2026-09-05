@@ -1,6 +1,23 @@
 package mcrtx.bridge;
 
 public final class RemixSceneBridge {
+    private static final float profileCelestialAngle = readProfileCelestialAngle();
+
+    private static float readProfileCelestialAngle() {
+        String value = System.getProperty("mcrtx.profile.celestialAngle");
+        if (value == null) return Float.NaN;
+        float angle = Float.parseFloat(value);
+        if (!Float.isFinite(angle) || angle < 0 || angle >= 1) {
+            throw new IllegalArgumentException("mcrtx.profile.celestialAngle must be in [0,1)");
+        }
+        System.out.println("[mcrtx] Profiling celestial angle fixed at " + angle);
+        return angle;
+    }
+
+    private static float celestialAngle(float gameAngle) {
+        return Float.isNaN(profileCelestialAngle) ? gameAngle : profileCelestialAngle;
+    }
+
     private RemixSceneBridge() {
     }
 
@@ -66,7 +83,7 @@ public final class RemixSceneBridge {
                 cameraZ,
                 cloudHeight,
                 cloudScroll,
-                celestialAngle,
+                celestialAngle(celestialAngle),
                 colorR,
                 colorG,
                 colorB);
@@ -74,7 +91,7 @@ public final class RemixSceneBridge {
 
     public static synchronized void updateAtmosphereState(float celestialAngle, boolean forceDarkAtmosphere) {
         if (RemixLifecycleBridge.isInitialized()) {
-            nUpdateAtmosphereState(celestialAngle, forceDarkAtmosphere);
+            nUpdateAtmosphereState(celestialAngle(celestialAngle), forceDarkAtmosphere);
         }
     }
 

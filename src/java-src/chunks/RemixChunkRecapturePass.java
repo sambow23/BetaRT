@@ -10,11 +10,13 @@ final class RemixChunkRecapturePass {
     }
 
     static boolean recapture(fd world, DirtyChunkSection section, boolean allowNeighborRefresh) {
-        RemixCaveCulling.Pocket[] pockets = RemixCaveCulling.computePockets(
+        if (!RemixUndergroundCulling.enabled()) {
+            RemixCaveCulling.Pocket[] pockets = RemixCaveCulling.computePockets(
                 world, section.originX, section.originY, section.originZ);
-        RemixCaveCulling.setPockets(section.originX, section.originY, section.originZ, pockets);
+            RemixCaveCulling.setPockets(section.originX, section.originY, section.originZ, pockets);
+        }
 
-        if (!RemixCaveCulling.isVisible(section.originX, section.originY, section.originZ)) {
+        if (!RemixUndergroundCulling.enabled() && !RemixCaveCulling.isVisible(section.originX, section.originY, section.originZ)) {
             return true;
         }
 

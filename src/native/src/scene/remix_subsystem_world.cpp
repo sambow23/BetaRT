@@ -150,6 +150,9 @@ void RemixRenderer::clearWorldScene() {
     destroyChunkMesh(meshData);
   }
   chunkMeshes_.clear();
+  undergroundFrame_ = {};
+  publishedUndergroundFrame_ = {};
+  activeUndergroundFrame_ = {};
 
   cloudLayer_ = {};
   publishedCloudLayer_ = {};

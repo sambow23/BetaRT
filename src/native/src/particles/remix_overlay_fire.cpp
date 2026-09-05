@@ -32,6 +32,8 @@ void RemixRenderer::destroyFireMesh() {
   destroyMeshHandle(fireMeshHandle_);
   fireQuadCount_ = 0;
   lastFireRenderOrigin_ = {};
+  lastFireAnimationFrame_ = 0xFFFFFFFFu;
+  lastFireVisibilityRevision_ = ~std::uint64_t {0};
 }
 
 bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
@@ -46,7 +48,7 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
       std::chrono::steady_clock::now().time_since_epoch()).count();
   const std::uint32_t frameIndex = static_cast<std::uint32_t>(
       (elapsedMilliseconds / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
-  if (fireMeshHandle_ != nullptr
+  if (lastFireVisibilityRevision_ == activeUndergroundFrame_.revision
       && lastFireAnimationFrame_ == frameIndex
       && lastFireChunkBuildCount_ == capturedChunkBuilds_
       && lastFireRenderOrigin_.enabled == renderOrigin.enabled
@@ -109,6 +111,11 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
         const int worldX = chunkKey.originX + localX;
         const int worldY = chunkKey.originY + localY;
         const int worldZ = chunkKey.originZ + localZ;
+        if (activeUndergroundFrame_.isHidden(
+            {worldX - 0.01, worldY - 0.01, worldZ - 0.01},
+            {worldX + 1.01, worldY + 1.01, worldZ + 1.01})) {
+          continue;
+        }
         const WorldRenderPosition firePosition = rebaseWorldPosition(
             static_cast<float>(worldX),
             static_cast<float>(worldY),
@@ -140,6 +147,7 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
     destroyFireMesh();
     lastFireAnimationFrame_ = frameIndex;
     lastFireChunkBuildCount_ = capturedChunkBuilds_;
+    lastFireVisibilityRevision_ = activeUndergroundFrame_.revision;
     lastFireRenderOrigin_ = renderOrigin;
     return true;
   }
@@ -174,6 +182,7 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
   fireQuadCount_ = fireCount;
   lastFireAnimationFrame_ = frameIndex;
   lastFireChunkBuildCount_ = capturedChunkBuilds_;
+  lastFireVisibilityRevision_ = activeUndergroundFrame_.revision;
   lastFireRenderOrigin_ = renderOrigin;
   return true;
 }

@@ -33,11 +33,13 @@ public class RemixCaveCulling {
     }
 
     public static void setPockets(int x, int y, int z, Pocket[] pockets) {
-        chunkPockets.put(getChunkKey(x, y, z), pockets);
+        long key=getChunkKey(x,y,z);
+        if (chunkPockets.put(key,pockets)==null) visibleChunks.add(key);
     }
 
     public static boolean isVisible(int x, int y, int z) {
-        return visibleChunks.contains(getChunkKey(x, y, z));
+        long key=getChunkKey(x,y,z);
+        return !chunkPockets.containsKey(key) || visibleChunks.contains(key);
     }
 
     public static void removeChunk(int x, int y, int z) {

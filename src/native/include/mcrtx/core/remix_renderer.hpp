@@ -27,6 +27,7 @@
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/remix_renderer_frame.hpp"
 #include "mcrtx/scene/remix_renderer_scene.hpp"
+#include "mcrtx/scene/remix_underground_visibility.hpp"
 #include "mcrtx/entities/remix_renderer_dynamic.hpp"
 #include "mcrtx/particles/remix_renderer_overlay.hpp"
 
@@ -196,6 +197,11 @@ public:
   void clearWorldScene();
   void unloadChunkSection(int originX, int originY, int originZ);
   void setChunkSectionHidden(int originX, int originY, int originZ, bool hidden);
+  void setUndergroundCullingEnabled(bool enabled);
+  void resetUndergroundCulling();
+  std::array<std::int64_t, 5> undergroundStatistics() const;
+  void updateUndergroundTopology(const ChunkKey& key, std::shared_ptr<const UndergroundSection> section);
+  void updateUndergroundVisibility(const ChunkKey& key, std::uint64_t revision, const std::array<std::uint64_t, 64>& hidden);
   bool beginChunkBuild(
       int originX,
       int originY,
@@ -311,6 +317,7 @@ public:
 
 private:
   friend class CloudMeshTest;
+  friend class UndergroundVisibilityTest;
   RemixRenderer() = default;
   ~RemixRenderer() = default;
   RemixRenderer(const RemixRenderer&) = delete;
@@ -323,6 +330,8 @@ private:
   bool setGameValueLocked(std::string_view key, const std::string& value, bool logChange);
   bool setGameValueFloatLocked(std::string_view key, float value, int precision, bool logChange);
   void publishWorldRenderOriginLocked(const WorldRenderOrigin& origin);
+  bool rebuildUndergroundMeshes(const ChunkKey& key, ChunkMeshData& meshData);
+  void destroyUndergroundMeshes(ChunkMeshData& meshData);
   void applyRtQualityConfigLocked();
   void applyUpscalerConfigLocked();
   void refreshFeatureAvailabilityLocked();
@@ -525,6 +534,16 @@ private:
   std::uint32_t height_ {1};
   CameraState camera_ {};
   CameraState publishedCamera_ {};
+  UndergroundFrame undergroundFrame_;
+  UndergroundFrame publishedUndergroundFrame_;
+  UndergroundFrame activeUndergroundFrame_;
+  std::size_t undergroundHiddenGroups_ {0};
+  std::size_t undergroundHiddenTriangles_ {0};
+  std::size_t undergroundHiddenEntities_ {0};
+  std::size_t undergroundHiddenParticles_ {0};
+  std::size_t undergroundHiddenLights_ {0};
+  std::size_t undergroundVisibleGroups_ {0};
+  std::size_t undergroundPendingGroups_ {0};
   bool publishedCameraValid_ {false};
   float viewModelFovDegrees_ {70.0f};
   bool chunkBuildActive_ {false};
@@ -608,6 +627,7 @@ private:
   std::size_t particleQuadCount_ {0};
   std::uint32_t lastFireAnimationFrame_ {0xFFFFFFFFu};
   std::uint64_t lastFireChunkBuildCount_ {0xFFFFFFFFFFFFFFFFull};
+  std::uint64_t lastFireVisibilityRevision_ {~std::uint64_t {0}};
   DynamicEntityBuildState activeDynamicEntity_ {};
   std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};

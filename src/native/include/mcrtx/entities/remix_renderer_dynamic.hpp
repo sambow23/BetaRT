@@ -72,6 +72,8 @@ struct DynamicEntityFrameInstance {
   remixapi_MeshHandle meshHandle {nullptr};
   std::size_t quadCount {0};
   std::vector<DynamicEntityBoneTransform> boneTransforms {};
+  std::array<double, 3> boundsMin {};
+  std::array<double, 3> boundsMax {};
 };
 
 struct DynamicEntityRenderInstance {
