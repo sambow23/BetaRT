@@ -1,5 +1,7 @@
 // Terrain-family material initialization and destruction.
 
+#include <exception>
+
 #include "mcrtx/core/remix_renderer.hpp"
 #include "mcrtx/materials/remix_material_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
@@ -511,12 +513,36 @@ bool RemixRenderer::initializeTerrainMaterials() {
   } else {
     log("Initialized cloud material from " + cloudTexturePath_.string());
   }
+
+  try {
+    cloudMask_ = loadCloudMask(cloudTexturePath_);
+    cloudOpaqueInfo.alphaTestType = 7;
+    cloudOpaqueInfo.alphaReferenceValue = 0;
+    cloudOpaqueInfo.blendType_hasvalue = FALSE;
+    cloudMaterialInfo.hash = 0x4D43525458434659ull;
+    const remixapi_ErrorCode result = remix_.CreateMaterial(&cloudMaterialInfo, &fancyCloudMaterialHandle_);
+    if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+      fancyCloudMaterialHandle_ = nullptr;
+      log("Fancy cloud material unavailable: " + errorCodeToString(result));
+    } else {
+      log("Initialized opaque fancy cloud shell: mask=" + std::to_string(cloudMask_.width)
+          + "x" + std::to_string(cloudMask_.height) + " alphaTest=off");
+    }
+  } catch (const std::exception& error) {
+    cloudMask_ = {};
+    log(std::string("Fancy cloud shell unavailable: ") + error.what());
+  }
   return opaqueCreated;
 }
 
 void RemixRenderer::destroyTerrainMaterials() {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::destroyTerrainMaterials");
   destroyCloudMesh();
+  cloudMask_ = {};
+  if (remix_.DestroyMaterial != nullptr && fancyCloudMaterialHandle_ != nullptr) {
+    remix_.DestroyMaterial(fancyCloudMaterialHandle_);
+    fancyCloudMaterialHandle_ = nullptr;
+  }
   destroyDestroyOverlayMesh();
   destroyParticleMesh();
   destroyDynamicEntityMeshes();

@@ -91,6 +91,18 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
 
   {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.rebuildTransientMeshes");
+    // A stable cloud handle can only be replaced after the preceding submission.
+    const CloudLayerState& clouds = standaloneOutputWindow_ ? publishedCloudLayer_ : cloudLayer_;
+    if (clouds.enabled && !remixAtmosphereCloudsEnabled_) {
+      if (!rebuildCloudMesh(clouds.fancy, clouds.cameraX, clouds.cameraY, clouds.cameraZ,
+                           clouds.height, clouds.scroll, clouds.colorR, clouds.colorG, clouds.colorB,
+                           snapshot.renderOrigin)) {
+        return false;
+      }
+    } else {
+      destroyCloudMesh();
+    }
+
     if (!rebuildFireMesh(snapshot.renderOrigin)) {
       return false;
     }

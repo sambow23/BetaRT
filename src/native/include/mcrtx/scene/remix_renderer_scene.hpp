@@ -11,6 +11,19 @@
 
 namespace mcrtx {
 
+struct CloudLayerState {
+  bool enabled {false};
+  bool fancy {false};
+  float cameraX {0.0f};
+  float cameraY {0.0f};
+  float cameraZ {0.0f};
+  float height {0.0f};
+  float scroll {0.0f};
+  float colorR {1.0f};
+  float colorG {1.0f};
+  float colorB {1.0f};
+};
+
 struct ChunkBuildState {
   int origin[3] {0, 0, 0};
   int size[3] {0, 0, 0};

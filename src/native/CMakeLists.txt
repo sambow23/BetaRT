@@ -1,5 +1,7 @@
-if(MCRTX_BUILD_JNI)
 set(MCRTX_DXVK_REMIX_ROOT "${PROJECT_SOURCE_DIR}/../dxvk-remix-gmod" CACHE PATH "Path to the dxvk-remix-gmod checkout")
+set(MCRTX_STB_INCLUDE_DIR "${MCRTX_DXVK_REMIX_ROOT}/submodules/FidelityFX-SDK/framework/cauldron/framework/libs/stb")
+
+if(MCRTX_BUILD_JNI)
 
 option(MCRTX_ENABLE_TRACY "Enable Tracy profiling in the native JNI bridge" OFF)
 set(MCRTX_TRACY_PORT "8087" CACHE STRING "Default Tracy port for mc-rtx native profiling")
@@ -57,6 +59,8 @@ add_library(mcrtx_jni SHARED
   src/settings/jni_settings_material.cpp
   src/scene/celestial_textures.cpp
   src/scene/remix_cloud_mode.cpp
+  src/scene/remix_cloud_geometry.cpp
+  src/scene/remix_cloud_mask.cpp
   src/scene/remix_aerial_perspective.cpp
   src/lifecycle/remix_renderer_frame.cpp
   src/lifecycle/remix_renderer_present.cpp
@@ -124,6 +128,7 @@ target_include_directories(mcrtx_jni
     ${CMAKE_CURRENT_BINARY_DIR}/generated
     ${MCRTX_DXVK_REMIX_ROOT}/public/include
 )
+target_include_directories(mcrtx_jni SYSTEM PRIVATE ${MCRTX_STB_INCLUDE_DIR})
 
 if(MCRTX_ENABLE_TRACY)
   target_sources(mcrtx_jni PRIVATE
@@ -182,6 +187,32 @@ install(TARGETS mcrtx_jni
 endif()
 
 if(MCRTX_BUILD_TESTS)
+  add_executable(mcrtx_cloud_geometry_tests
+    src/chunks/remix_chunk_policy.cpp
+    src/scene/remix_cloud_geometry.cpp
+    src/scene/remix_cloud_mask.cpp
+    src/core/remix_geometry_common.cpp
+    src/core/remix_render_utils.cpp
+    tests/scene/remix_cloud_geometry_tests.cpp
+  )
+  target_include_directories(mcrtx_cloud_geometry_tests PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+  target_include_directories(mcrtx_cloud_geometry_tests SYSTEM PRIVATE ${MCRTX_STB_INCLUDE_DIR})
+  target_compile_features(mcrtx_cloud_geometry_tests PRIVATE cxx_std_20)
+  add_test(NAME mcrtx_cloud_geometry_tests COMMAND mcrtx_cloud_geometry_tests)
+
+  if(MCRTX_BUILD_JNI)
+    add_executable(mcrtx_cloud_lifetime_tests tests/scene/remix_cloud_lifetime_tests.cpp)
+    target_include_directories(mcrtx_cloud_lifetime_tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+    target_link_libraries(mcrtx_cloud_lifetime_tests PRIVATE mcrtx_jni)
+    target_compile_features(mcrtx_cloud_lifetime_tests PRIVATE cxx_std_20)
+    if(WIN32)
+      set_target_properties(mcrtx_jni PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
+    endif()
+    add_test(NAME mcrtx_cloud_lifetime_tests COMMAND mcrtx_cloud_lifetime_tests)
+  endif()
+
   add_executable(mcrtx_world_origin_tests
     src/core/world_origin.cpp
     tests/core/world_origin_tests.cpp

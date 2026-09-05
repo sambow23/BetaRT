@@ -22,6 +22,7 @@
 #include <remix/remix_c.h>
 
 #include "mcrtx/scene/celestial_textures.hpp"
+#include "mcrtx/scene/remix_cloud_geometry.hpp"
 #include "mcrtx/core/world_origin.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/remix_renderer_frame.hpp"
@@ -309,6 +310,7 @@ public:
   std::string lastError() const;
 
 private:
+  friend class CloudMeshTest;
   RemixRenderer() = default;
   ~RemixRenderer() = default;
   RemixRenderer(const RemixRenderer&) = delete;
@@ -574,6 +576,8 @@ private:
   std::filesystem::path redstoneEmissiveTexturePath_ {};
   std::array<remixapi_MaterialHandle, detail::kTerrainMaterialClassCount> terrainMaterialHandles_ {};
   remixapi_MaterialHandle cloudMaterialHandle_ {nullptr};
+  remixapi_MaterialHandle fancyCloudMaterialHandle_ {nullptr};
+  CloudMask cloudMask_ {};
   remixapi_MaterialHandle destroyOverlayMaterialHandle_ {nullptr};
   remixapi_MaterialHandle blockOutlineGlowMaterialHandle_ {nullptr};
   std::array<remixapi_MaterialHandle, 6> blockOutlineRgbMaterialHandles_ {};
@@ -587,9 +591,12 @@ private:
   std::uint64_t nextDestroyOverlayMeshHash_ {1};
   std::uint64_t nextBlockOutlineMeshHash_ {1};
   std::uint64_t nextParticleMeshHash_ {1};
-  std::uint64_t nextCloudMeshHash_ {1};
+  CloudLayerState cloudLayer_ {};
+  CloudLayerState publishedCloudLayer_ {};
   std::size_t cloudQuadCount_ {0};
   bool cloudMeshFancy_ {false};
+  bool cloudMeshPrepared_ {false};
+  std::array<float, 3> cloudMeshColor_ {};
   std::int64_t cloudMeshPhaseX_ {0};
   std::int64_t cloudMeshPhaseZ_ {0};
   float cloudTransformX_ {0.0f};

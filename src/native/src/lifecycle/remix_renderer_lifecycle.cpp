@@ -530,7 +530,8 @@ void RemixRenderer::shutdownLocked() {
   nextDestroyOverlayMeshHash_ = 1;
   nextBlockOutlineMeshHash_ = 1;
   nextParticleMeshHash_ = 1;
-  nextCloudMeshHash_ = 1;
+  cloudLayer_ = {};
+  publishedCloudLayer_ = {};
   cloudQuadCount_ = 0;
   fireQuadCount_ = 0;
   destroyOverlayCount_ = 0;

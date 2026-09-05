@@ -82,6 +82,7 @@ bool RemixRenderer::present() {
     }
     publishedCamera_ = camera_;
     publishedCameraValid_ = true;
+    publishedCloudLayer_ = cloudLayer_;
     publishDynamicEntityFrameInstancesLocked();
     publishParticleFrameLocked();
     publishLightFrameLocked();
