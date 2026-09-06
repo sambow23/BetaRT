@@ -37,7 +37,7 @@ constexpr std::uint32_t kVirtualKeyRightMenu = 0xa5;
 
 using KeyMapping = std::pair<std::uint32_t, remixapi_Key>;
 
-constexpr std::array<KeyMapping, 63> kKeyMappings {{
+constexpr std::array<KeyMapping, 80> kKeyMappings {{
     {0x41, REMIXAPI_KEY_A},
     {0x42, REMIXAPI_KEY_B},
     {0x43, REMIXAPI_KEY_C},
@@ -101,6 +101,23 @@ constexpr std::array<KeyMapping, 63> kKeyMappings {{
     {kVirtualKeyF1 + 9, REMIXAPI_KEY_F10},
     {kVirtualKeyF1 + 10, REMIXAPI_KEY_F11},
     {kVirtualKeyF1 + 11, REMIXAPI_KEY_F12},
+    {0xde, REMIXAPI_KEY_APOSTROPHE},
+    {0xbc, REMIXAPI_KEY_COMMA},
+    {0xbd, REMIXAPI_KEY_MINUS},
+    {0xbe, REMIXAPI_KEY_PERIOD},
+    {0xbf, REMIXAPI_KEY_SLASH},
+    {0xba, REMIXAPI_KEY_SEMICOLON},
+    {0xbb, REMIXAPI_KEY_EQUAL},
+    {0xdb, REMIXAPI_KEY_LEFT_BRACKET},
+    {0xdc, REMIXAPI_KEY_BACKSLASH},
+    {0xdd, REMIXAPI_KEY_RIGHT_BRACKET},
+    {0xc0, REMIXAPI_KEY_GRAVE_ACCENT},
+    {0x2d, REMIXAPI_KEY_INSERT},
+    {0x2e, REMIXAPI_KEY_DELETE},
+    {0x24, REMIXAPI_KEY_HOME},
+    {0x23, REMIXAPI_KEY_END},
+    {0x21, REMIXAPI_KEY_PAGE_UP},
+    {0x22, REMIXAPI_KEY_PAGE_DOWN},
 }};
 
 std::uint32_t toLwjglButtonMask(std::uint32_t remixButtons) {

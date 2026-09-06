@@ -24,6 +24,7 @@ class StandaloneRenderTest {
   inline static float uiVertex {0};
   inline static bool failUi {false};
   inline static RemixRenderer* renderer = nullptr;
+  inline static remixapi_Key pressedKey = REMIXAPI_KEY_UNKNOWN;
 
   static void require(bool condition, const char* message) {
     if (!condition) {
@@ -46,8 +47,8 @@ class StandaloneRenderTest {
     *state = {};
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
-  static remixapi_ErrorCode REMIXAPI_CALL key(remixapi_Key, remixapi_Bool* down) {
-    *down = 0;
+  static remixapi_ErrorCode REMIXAPI_CALL key(remixapi_Key key, remixapi_Bool* down) {
+    *down = key == pressedKey;
     return REMIXAPI_ERROR_CODE_SUCCESS;
   }
   static remixapi_ErrorCode REMIXAPI_CALL camera(const remixapi_CameraInfo*) {
@@ -151,6 +152,23 @@ public:
     state.remix_.GetWindowState = window;
     state.remix_.PollMouseState = mouse;
     state.remix_.IsKeyDown = key;
+    for (const auto& mapping : {
+        std::pair {0xdeu, REMIXAPI_KEY_APOSTROPHE}, {0xbcu, REMIXAPI_KEY_COMMA},
+        {0xbdu, REMIXAPI_KEY_MINUS}, {0xbeu, REMIXAPI_KEY_PERIOD},
+        {0xbfu, REMIXAPI_KEY_SLASH}, {0xbau, REMIXAPI_KEY_SEMICOLON},
+        {0xbbu, REMIXAPI_KEY_EQUAL}, {0xdbu, REMIXAPI_KEY_LEFT_BRACKET},
+        {0xdcu, REMIXAPI_KEY_BACKSLASH}, {0xddu, REMIXAPI_KEY_RIGHT_BRACKET},
+        {0xc0u, REMIXAPI_KEY_GRAVE_ACCENT}, {0x2du, REMIXAPI_KEY_INSERT},
+        {0x2eu, REMIXAPI_KEY_DELETE}, {0x24u, REMIXAPI_KEY_HOME},
+        {0x23u, REMIXAPI_KEY_END}, {0x21u, REMIXAPI_KEY_PAGE_UP},
+        {0x22u, REMIXAPI_KEY_PAGE_DOWN}}) {
+      pressedKey = mapping.second;
+      state.updateNativeKeyboardStateLocked();
+      require(state.isVirtualKeyDown(mapping.first), "Text/editing key did not reach the native state");
+      pressedKey = REMIXAPI_KEY_UNKNOWN;
+      state.updateNativeKeyboardStateLocked();
+      require(!state.isVirtualKeyDown(mapping.first), "Text/editing key remained pressed after release");
+    }
     state.remix_.SetupCamera = camera;
     state.remix_.Present = present;
     state.remix_.SetFogState = fog;
