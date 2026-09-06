@@ -9,6 +9,7 @@ public final class RemixLifecycleBridge {
     public static final int REMIX_UI_STATE_ADVANCED = RemixBridgeNative.REMIX_UI_STATE_ADVANCED;
 
     private static volatile boolean initialized;
+    private static volatile long rendererGeneration;
     private static volatile boolean remixUiInputActive;
     private static Minecraft currentMinecraft;
     private static String lastError = "";
@@ -47,6 +48,9 @@ public final class RemixLifecycleBridge {
             return false;
         }
         initialized = nInitialize(hwnd, width, height);
+        if (initialized) {
+            rendererGeneration++;
+        }
         if (!initialized) {
             lastError = nGetLastError();
             report("Renderer initialization failed: " + lastError);
@@ -137,6 +141,14 @@ public final class RemixLifecycleBridge {
 
     public static synchronized boolean isNativeVirtualKeyDown(int virtualKey) {
         return initialized && nIsVirtualKeyDown(virtualKey);
+    }
+
+    public static long getSubmittedFrameCount() {
+        return initialized ? nGetSubmittedFrameCount() : -1L;
+    }
+
+    public static long getRendererGeneration() {
+        return rendererGeneration;
     }
 
     public static synchronized boolean present() {
@@ -237,6 +249,7 @@ public final class RemixLifecycleBridge {
     private static native boolean nPollNativeMouseState(int[] stateOut);
     private static native boolean nSetNativeMouseGrabbed(boolean grabbed);
     private static native boolean nSetNativeCursorPosition(int x, int y);
+    private static native long nGetSubmittedFrameCount();
     private static native boolean nPresent();
     private static native boolean nRequestPresentedScreenshot(String absolutePath);
     private static native String nGetLastError();

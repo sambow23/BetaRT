@@ -20,6 +20,24 @@ std::uint64_t makeTorchLightHash(const WorldBlockPosition& position) {
   return hash;
 }
 
+std::uint64_t makeTorchDefinitionHash(const TorchLightPlacement& placement) {
+  auto hash = makeTorchLightHash(placement.blockPosition);
+  for (float value : {placement.lightX, placement.lightY, placement.lightZ,
+                      placement.radiance.x, placement.radiance.y, placement.radiance.z}) {
+    hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(value));
+  }
+  return hash;
+}
+
+std::uint64_t makePortalDefinitionHash(const PortalLightPlacement& placement) {
+  auto hash = mixHashComponent(makePortalLightHash(placement.blockPosition), placement.isZAxis);
+  for (float value : {placement.lightX, placement.lightY, placement.lightZ,
+                      placement.radiance.x, placement.radiance.y, placement.radiance.z}) {
+    hash = mixHashComponent(hash, std::bit_cast<std::uint32_t>(value));
+  }
+  return hash;
+}
+
 bool containsWorldBlockPosition(const std::vector<WorldBlockPosition>& positions, const WorldBlockPosition& position) {
   return std::find(positions.begin(), positions.end(), position) != positions.end();
 }

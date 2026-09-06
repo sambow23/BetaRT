@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <ctime>
 #include <deque>
 #include <filesystem>
 #include <fstream>
@@ -24,6 +25,27 @@
 #include <vector>
 
 namespace mcrtx::perf {
+
+std::uint64_t threadCpuNanoseconds() noexcept {
+  if (!isEnabled()) {
+    return 0;
+  }
+#if defined(_WIN32)
+  FILETIME creation {}, exit {}, kernel {}, user {};
+  if (!GetThreadTimes(GetCurrentThread(), &creation, &exit, &kernel, &user)) {
+    return 0;
+  }
+  return (((std::uint64_t(kernel.dwHighDateTime) << 32) | kernel.dwLowDateTime)
+      + ((std::uint64_t(user.dwHighDateTime) << 32) | user.dwLowDateTime)) * 100;
+#else
+  timespec cpu {};
+  if (clock_gettime(CLOCK_THREAD_CPUTIME_ID, &cpu) != 0) {
+    return 0;
+  }
+  return std::uint64_t(cpu.tv_sec) * 1000000000 + cpu.tv_nsec;
+#endif
+}
+
 namespace {
 
 std::atomic<bool> g_initialized {false};

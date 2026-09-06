@@ -11,9 +11,6 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     private static final int RAY_RECONSTRUCTION_BUTTON_ID = 5;
     private static final int RT_QUALITY_BUTTON_ID = 6;
     private static final int NO_CULL_DISTANCE_SLIDER_ID = 9;
-    private static final int UNDERGROUND_CULLING_BUTTON_ID = 38;
-    private static final int UNDERGROUND_STATUS_ID = 39;
-    private static final int UNDERGROUND_COUNTS_ID = 40;
     private static final int REMIX_ATMOSPHERE_CLOUDS_BUTTON_ID = 30;
     private static final int GAME_RAIN_PARTICLES_BUTTON_ID = 31;
     private static final int SPARSE_RENDERING_BUTTON_ID = 32;
@@ -26,9 +23,6 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     public String getName() { return "Graphics"; }
 
     public void addControls(McrtxQuickSettingsScreen screen) {
-        screen.addControl(button(screen, UNDERGROUND_CULLING_BUTTON_ID, "Adaptive Underground Culling: " + toggle(RemixUndergroundCulling.enabled())));
-        screen.addControl(button(screen, UNDERGROUND_STATUS_ID, "Culling: " + RemixUndergroundCulling.status()));
-        screen.addControl(button(screen, UNDERGROUND_COUNTS_ID, "Culling statistics"));
         screen.addOptionSelector(UPSCALER_BUTTON_ID, getUpscalerLabel());
         screen.addOptionSelector(UPSCALER_PRESET_BUTTON_ID, getUpscalerPresetLabel());
         if (shouldShowDlssOptions()) {
@@ -51,10 +45,6 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     public int handleButton(int buttonId, int direction) {
-        if (buttonId == UNDERGROUND_CULLING_BUTTON_ID) {
-            McrtxGraphicsSettings.setUndergroundCullingEnabled(!McrtxGraphicsSettings.isUndergroundCullingEnabled());
-            return UPDATE_REFRESH;
-        }
         if (buttonId == UPSCALER_BUTTON_ID) { cycleUpscalerType(direction); return UPDATE_REBUILD; }
         if (buttonId == UPSCALER_PRESET_BUTTON_ID) { cycleUpscalerPreset(direction); return UPDATE_REFRESH; }
         if (buttonId == RAY_RECONSTRUCTION_BUTTON_ID) { toggleRayReconstruction(); return UPDATE_REFRESH; }
@@ -91,7 +81,6 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     public void refreshButtons(McrtxQuickSettingsScreen screen) {
-        refreshUndergroundStatus(screen);
         setLabel(screen, UPSCALER_BUTTON_ID, getUpscalerLabel());
         setLabel(screen, UPSCALER_PRESET_BUTTON_ID, getUpscalerPresetLabel());
         setLabel(screen, RAY_RECONSTRUCTION_BUTTON_ID, getRayReconstructionLabel());
@@ -118,17 +107,6 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         return new ke(id, screen.getControlX(), screen.takeNextRowY(), screen.getControlWidth(), McrtxQuickSettingsScreen.CONTROL_HEIGHT, label);
     }
     private static void setLabel(McrtxQuickSettingsScreen screen, int id, String label) { ke button = screen.findButton(id); if (button != null) button.e = label; }
-    static void refreshUndergroundStatus(McrtxQuickSettingsScreen screen) {
-        if (screen.findButton(UNDERGROUND_CULLING_BUTTON_ID) == null) return;
-        setLabel(screen, UNDERGROUND_CULLING_BUTTON_ID, "Adaptive Underground Culling: " + toggle(RemixUndergroundCulling.enabled()));
-        setLabel(screen, UNDERGROUND_STATUS_ID, "Culling: " + RemixUndergroundCulling.status());
-        screen.findButton(UNDERGROUND_STATUS_ID).g = false;
-        screen.findButton(UNDERGROUND_COUNTS_ID).g = false;
-        long[] counts = mcrtx.bridge.RemixChunkBridge.undergroundStatistics();
-        if (counts != null && counts.length == 5) {
-            setLabel(screen, UNDERGROUND_COUNTS_ID, "Groups " + counts[0] + "/" + counts[1] + " culled; lights " + counts[3]);
-        }
-    }
     private static String toggle(boolean enabled) { return enabled ? "ON" : "OFF"; }
     private static boolean shouldShowDlssOptions() { return McrtxGraphicsSettings.getUpscalerType() == McrtxGraphicsSettings.UPSCALER_TYPE_DLSS; }
     private static String getUpscalerLabel() {
@@ -362,7 +340,7 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
         protected void b(Minecraft minecraft, int mouseX, int mouseY) { if (!this.h) return; if (dragging) update(mouseX); else sync(); GL11.glColor4f(1, 1, 1, 1); int thumbX = this.c + (int) (position * (float) (this.a - 8)); this.b(thumbX, this.d, 0, 66, 4, 20); this.b(thumbX + 4, this.d, 196, 66, 4, 20); }
         public boolean c(Minecraft minecraft, int mouseX, int mouseY) { if (!super.c(minecraft, mouseX, mouseY)) return false; dragging = true; update(mouseX); return true; }
         public void a(int mouseX, int mouseY) { dragging = false; sync(); }
-        private void sync() { int value = McrtxGraphicsSettings.getNoCullDistanceBlocks(); position = (float) (value - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS) / (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS); this.e = "Anti-Cull Distance: " + value + " Blocks"; }
-        private void update(int mouseX) { float next = (float) (mouseX - (this.c + 4)) / (float) (this.a - 8); if (next < 0) next = 0; if (next > 1) next = 1; int value = McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS + Math.round(next * (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS)); position = (float) (value - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS) / (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS); setNoCullDistance(value); this.e = "Anti-Cull Distance: " + value + " Blocks"; }
+        private void sync() { int value = McrtxGraphicsSettings.getNoCullDistanceBlocks(); position = (float) (value - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS) / (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS); this.e = "Entity/Particle Anti-Cull: " + value + " Blocks"; }
+        private void update(int mouseX) { float next = (float) (mouseX - (this.c + 4)) / (float) (this.a - 8); if (next < 0) next = 0; if (next > 1) next = 1; int value = McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS + Math.round(next * (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS)); position = (float) (value - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS) / (float) (McrtxGraphicsSettings.MAX_NO_CULL_DISTANCE_BLOCKS - McrtxGraphicsSettings.MIN_NO_CULL_DISTANCE_BLOCKS); setNoCullDistance(value); this.e = "Entity/Particle Anti-Cull: " + value + " Blocks"; }
     }
 }

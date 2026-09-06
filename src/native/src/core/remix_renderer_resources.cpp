@@ -49,7 +49,9 @@ void RemixRenderer::destroyLightHandle(remixapi_LightHandle lightHandle) {
     return;
   }
 
-  if (renderSubmissionInFlight_) {
+  if (terrainRetiredLights_ != nullptr) {
+    terrainRetiredLights_->push_back(lightHandle);
+  } else if (renderSubmissionInFlight_) {
     deferredLightDestroys_.push_back(lightHandle);
   } else if (remix_.DestroyLight != nullptr) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DestroyLight");
@@ -58,6 +60,10 @@ void RemixRenderer::destroyLightHandle(remixapi_LightHandle lightHandle) {
 }
 
 void RemixRenderer::cancelDeferredLightDestroy(remixapi_LightHandle lightHandle) {
+  if (terrainRetiredLights_ != nullptr) {
+    auto& retired = *terrainRetiredLights_;
+    retired.erase(std::remove(retired.begin(), retired.end(), lightHandle), retired.end());
+  }
   deferredLightDestroys_.erase(
       std::remove(deferredLightDestroys_.begin(), deferredLightDestroys_.end(), lightHandle),
       deferredLightDestroys_.end());

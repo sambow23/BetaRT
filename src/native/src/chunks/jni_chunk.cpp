@@ -1,178 +1,84 @@
-#include "mcrtx/core/jni_helpers.hpp"
-#include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/chunks/remix_chunk_policy.hpp"
+#include "mcrtx/lifecycle/perf_log.hpp"
 
+#include <bit>
+#include <cmath>
 #include <jni.h>
-
-namespace {
-
-using mcrtx::RemixRenderer;
-
-}  // namespace
 
 extern "C" {
 
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nResetUndergroundCulling(JNIEnv*, jclass) {
-  RemixRenderer::instance().resetUndergroundCulling();
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nResetTerrain(JNIEnv*, jclass, jlong world) {
+  mcrtx::RemixRenderer::instance().terrain().reset(world);
 }
 
-JNIEXPORT jlongArray JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUndergroundStatistics(JNIEnv* env, jclass) {
-  const auto stats = RemixRenderer::instance().undergroundStatistics();
-  std::array<jlong, 5> values;
-  std::copy(stats.begin(), stats.end(), values.begin());
-  jlongArray result = env->NewLongArray(5);
-  if (result) {
-    env->SetLongArrayRegion(result, 0, 5, values.data());
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nAllocateSection(
+    JNIEnv*, jclass, jint x, jint y, jint z, jlong world, jlong lifetime) {
+  mcrtx::RemixRenderer::instance().terrain().allocate({x, y, z, 0}, world, lifetime);
+}
+
+JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nRemoveSection(
+    JNIEnv*, jclass, jint x, jint y, jint z, jlong world, jlong lifetime) {
+  mcrtx::RemixRenderer::instance().terrain().remove({x, y, z, 0}, world, lifetime);
+}
+
+JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUpdateSection(
+    JNIEnv* env, jclass, jint x, jint y, jint z, jlong world, jlong lifetime, jlong revision,
+    jint minX, jint minY, jint minZ, jint maxX, jint maxY, jint maxZ, jintArray records) {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "terrain.update");
+  if (!records || minX < 0 || minY < 0 || minZ < 0 || maxX > 15 || maxY > 15 || maxZ > 15
+      || minX > maxX || minY > maxY || minZ > maxZ || world <= 0 || lifetime <= 0 || revision <= 0
+      || (x & 15) || (y & 15) || (z & 15) || y < 0 || y >= 128) {
+    return JNI_FALSE;
   }
-  return result;
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nSetUndergroundCullingEnabled(
-    JNIEnv*, jclass, jboolean enabled) {
-  RemixRenderer::instance().setUndergroundCullingEnabled(enabled != JNI_FALSE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUpdateUndergroundTopology(
-    JNIEnv* env, jclass, jint x, jint y, jint z, jlong revision, jshortArray labels) {
-  const mcrtx::ChunkKey key {x, y, z, 0};
-  if (revision == 0 && labels == nullptr) {
-    RemixRenderer::instance().updateUndergroundTopology(key, nullptr);
-    return;
+  constexpr int kRecordWords = 23;
+  const int count = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
+  if (env->GetArrayLength(records) != count * kRecordWords) {
+    return JNI_FALSE;
   }
-  if (!labels || env->GetArrayLength(labels) != 4096 || revision <= 0) {
-    return;
+  try {
+    std::vector<jint> owned(count * kRecordWords);
+    env->GetIntArrayRegion(records, 0, static_cast<jsize>(owned.size()), owned.data());
+    if (env->ExceptionCheck()) {
+      return JNI_FALSE;
+    }
+    std::vector<mcrtx::ChunkBlockCell> cells(count);
+    for (int i = 0; i < count; ++i) {
+      const auto* pRecord = owned.data() + i * kRecordWords;
+      if (!mcrtx::chunk::shouldCaptureBlock(pRecord[0], pRecord[2], pRecord[3])) {
+        continue;
+      }
+      auto& cell = cells[i];
+      cell.blockId = pRecord[0];
+      cell.blockMetadata = pRecord[1];
+      cell.renderType = pRecord[2];
+      cell.renderPass = pRecord[3];
+      cell.materialClass = mcrtx::chunk::materialClassForBlock(pRecord[0], pRecord[1], pRecord[2]);
+      for (int j = 0; j < 6; ++j) {
+        cell.terrainTiles[j] = pRecord[4 + j];
+        cell.bounds[j] = std::bit_cast<float>(pRecord[10 + j]);
+        if (!std::isfinite(cell.bounds[j])) {
+          return JNI_FALSE;
+        }
+      }
+      cell.blockColor = pRecord[16] & 0x00FFFFFFu;
+      cell.liquidVisibilityMask = pRecord[17] & 0x3F;
+      for (int j = 0; j < 4; ++j) {
+        cell.liquidHeights[j] = std::bit_cast<float>(pRecord[18 + j]);
+        if (!std::isfinite(cell.liquidHeights[j])) {
+          return JNI_FALSE;
+        }
+      }
+      cell.liquidFlowAngle = std::bit_cast<float>(pRecord[22]);
+      if (!std::isfinite(cell.liquidFlowAngle)) {
+        return JNI_FALSE;
+      }
+    }
+    return mcrtx::RemixRenderer::instance().terrain().update({x, y, z, 0}, world, lifetime, revision,
+        {minX, minY, minZ, maxX, maxY, maxZ}, cells) ? JNI_TRUE : JNI_FALSE;
+  } catch (const std::bad_alloc&) {
+    return JNI_FALSE;
   }
-  auto section = std::make_shared<mcrtx::UndergroundSection>();
-  section->revision = static_cast<std::uint64_t>(revision);
-  auto values = std::make_shared<mcrtx::UndergroundSection::Labels>();
-  env->GetShortArrayRegion(labels, 0, 4096, values->data());
-  if (env->ExceptionCheck()) {
-    return;
-  }
-  section->labels = std::move(values);
-  RemixRenderer::instance().updateUndergroundTopology(key, std::move(section));
 }
 
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUpdateUndergroundVisibility(
-    JNIEnv* env, jclass, jint x, jint y, jint z, jlong revision, jlongArray hidden) {
-  if (!hidden || env->GetArrayLength(hidden) > 64) {
-    return;
-  }
-  std::array<jlong, 64> values {};
-  env->GetLongArrayRegion(hidden, 0, env->GetArrayLength(hidden), values.data());
-  if (env->ExceptionCheck()) {
-    return;
-  }
-  std::array<std::uint64_t, 64> bits;
-  std::copy(values.begin(), values.end(), bits.begin());
-  RemixRenderer::instance().updateUndergroundVisibility({x, y, z, 0}, static_cast<std::uint64_t>(revision), bits);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nUnloadChunkSection(
-    JNIEnv*, jclass, jint originX, jint originY, jint originZ) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nUnloadChunkSection");
-  RemixRenderer::instance().unloadChunkSection(
-      static_cast<int>(originX),
-      static_cast<int>(originY),
-      static_cast<int>(originZ));
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nSetChunkSectionHidden(
-    JNIEnv*, jclass, jint originX, jint originY, jint originZ, jboolean hidden) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nSetChunkSectionHidden");
-  RemixRenderer::instance().setChunkSectionHidden(
-      static_cast<int>(originX),
-      static_cast<int>(originY),
-      static_cast<int>(originZ),
-      hidden != JNI_FALSE);
-}
-
-JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixChunkBridge_nBeginChunkBuild(
-    JNIEnv*, jclass,
-    jint originX, jint originY, jint originZ,
-    jint sizeX, jint sizeY, jint sizeZ,
-    jint dirtyMinX, jint dirtyMinY, jint dirtyMinZ,
-    jint dirtyMaxX, jint dirtyMaxY, jint dirtyMaxZ,
-    jint renderPass) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nBeginChunkBuild");
-  const bool ok = RemixRenderer::instance().beginChunkBuild(
-      originX,
-      originY,
-      originZ,
-      sizeX,
-      sizeY,
-      sizeZ,
-      dirtyMinX,
-      dirtyMinY,
-      dirtyMinZ,
-      dirtyMaxX,
-      dirtyMaxY,
-      dirtyMaxZ,
-      renderPass);
-  return mcrtx::jni::toJniBoolean(ok);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nCaptureBlock(
-    JNIEnv*, jclass,
-    jint blockX, jint blockY, jint blockZ,
-    jint blockId, jint blockMetadata, jint renderType,
-    jint texture0, jint texture1, jint texture2,
-    jint texture3, jint texture4, jint texture5,
-    jfloat boundsMinX,
-    jfloat boundsMinY,
-    jfloat boundsMinZ,
-    jfloat boundsMaxX,
-    jfloat boundsMaxY,
-    jfloat boundsMaxZ,
-    jint blockColorRgb,
-    jint liquidVisibilityMask,
-    jfloat liquidHeight0,
-    jfloat liquidHeight1,
-    jfloat liquidHeight2,
-    jfloat liquidHeight3,
-    jfloat liquidFlowAngle) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nCaptureBlock");
-  RemixRenderer::instance().captureBlock(
-      blockX,
-      blockY,
-      blockZ,
-      blockId,
-      blockMetadata,
-      renderType,
-      texture0,
-      texture1,
-      texture2,
-      texture3,
-      texture4,
-      texture5,
-      boundsMinX,
-      boundsMinY,
-      boundsMinZ,
-      boundsMaxX,
-      boundsMaxY,
-      boundsMaxZ,
-      blockColorRgb,
-      liquidVisibilityMask,
-      liquidHeight0,
-      liquidHeight1,
-      liquidHeight2,
-      liquidHeight3,
-      liquidFlowAngle);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nEndChunkBuild(
-    JNIEnv*, jclass, jboolean emittedGeometry, jboolean deferNeighborRefresh, jboolean allowNeighborRefresh) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nEndChunkBuild");
-  RemixRenderer::instance().endChunkBuild(
-      emittedGeometry == JNI_TRUE,
-      deferNeighborRefresh == JNI_TRUE,
-      allowNeighborRefresh == JNI_TRUE);
-}
-
-JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixChunkBridge_nFlushChunkNeighborRefreshes(
-    JNIEnv*, jclass) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nFlushChunkNeighborRefreshes");
-  RemixRenderer::instance().flushChunkNeighborRefreshes();
-}
-
-}  // extern "C"
+} // extern "C"

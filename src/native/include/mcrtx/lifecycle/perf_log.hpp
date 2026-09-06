@@ -21,6 +21,7 @@ enum class Side : std::uint8_t {
 // but exposing this lets callers avoid building site strings when disabled.
 bool isEnabled() noexcept;
 bool isTraceEnabled() noexcept;
+std::uint64_t threadCpuNanoseconds() noexcept;
 
 // Appends one duration sample for `site` with the given side classification.
 void recordDuration(Side side, std::string_view site, std::uint64_t nanoseconds) noexcept;
@@ -53,9 +54,11 @@ void shutdown() noexcept;
 // RAII timer. Disabled runs: both ctor and dtor are trivial.
 class ScopedTimer {
  public:
-  ScopedTimer(Side side, std::string_view site) noexcept
+  ScopedTimer(Side side, std::string_view site, std::string_view cpuSite = {}) noexcept
       : side_(side),
         site_(site),
+        cpuSite_(cpuSite),
+        cpuStart_(cpuSite.empty() ? 0 : threadCpuNanoseconds()),
         start_(isEnabled() ? std::chrono::steady_clock::now()
                            : std::chrono::steady_clock::time_point{}),
         enabled_(isEnabled()) {}
@@ -72,12 +75,18 @@ class ScopedTimer {
     const auto end = std::chrono::steady_clock::now();
     const auto nanos = static_cast<std::uint64_t>(
         std::chrono::duration_cast<std::chrono::nanoseconds>(end - start_).count());
+    const auto cpuEnd = cpuSite_.empty() ? 0 : threadCpuNanoseconds();
     recordDuration(side_, site_, nanos);
+    if (cpuStart_ != 0 && cpuEnd >= cpuStart_) {
+      recordDuration(side_, cpuSite_, cpuEnd - cpuStart_);
+    }
   }
 
  private:
   Side side_;
   std::string_view site_;
+  std::string_view cpuSite_;
+  std::uint64_t cpuStart_;
   std::chrono::steady_clock::time_point start_;
   bool enabled_;
 };
@@ -91,3 +100,6 @@ class ScopedTimer {
 #define MCRTX_PERF_CONCAT(a, b) MCRTX_PERF_CONCAT_INNER(a, b)
 #define MCRTX_PERF_SCOPE(side, site_literal) \
   ::mcrtx::perf::ScopedTimer MCRTX_PERF_CONCAT(_mcrtx_perf_scope_, __LINE__)((side), (site_literal))
+
+#define MCRTX_PERF_CPU_SCOPE(side, site_literal) \
+  ::mcrtx::perf::ScopedTimer MCRTX_PERF_CONCAT(_mcrtx_perf_cpu_scope_, __LINE__)((side), (site_literal), site_literal ".cpu")

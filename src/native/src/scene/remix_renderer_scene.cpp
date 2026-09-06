@@ -58,6 +58,11 @@ void RemixRenderer::updateFogState(
   fogInfo.end = fogEnd;
   fogInfo.density = fogDensity;
 
+  if (standaloneOutputWindow_) {
+    gameFrameState_.fog = fogInfo;
+    return;
+  }
+
   remixapi_ErrorCode result;
   {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetFogState");

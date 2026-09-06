@@ -1,6 +1,9 @@
 #pragma once
 
 #include <cstdint>
+#include <array>
+#include <memory>
+#include <optional>
 #include <vector>
 
 #include <remix/remix_c.h>
@@ -20,6 +23,26 @@ struct CameraState {
   float aspect {16.0f / 9.0f};
   float nearPlane {0.05f};
   float farPlane {1024.0f};
+};
+
+struct UiFrameData {
+  std::uint32_t displayWidth {0};
+  std::uint32_t displayHeight {0};
+  std::vector<remixapi_UIVertex> vertices;
+  std::vector<std::uint32_t> indices;
+  std::vector<remixapi_UIDrawCommand> commands;
+};
+
+struct AtmosphereFrameState {
+  float celestialAngle {0.0f};
+  bool forceDark {false};
+};
+
+struct GameFrameState {
+  std::optional<remixapi_FogInfo> fog;
+  std::optional<std::array<float, 4>> tint;
+  std::optional<AtmosphereFrameState> atmosphere;
+  std::shared_ptr<const UiFrameData> ui;
 };
 
 struct DurationPerfCounter {

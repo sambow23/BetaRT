@@ -453,6 +453,10 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nSetNativeCurs
       RemixRenderer::instance().setNativeCursorPosition(static_cast<std::int32_t>(x), static_cast<std::int32_t>(y)));
 }
 
+JNIEXPORT jlong JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nGetSubmittedFrameCount(JNIEnv*, jclass) {
+  return static_cast<jlong>(RemixRenderer::instance().submittedFrameCount());
+}
+
 JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nPresent(JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nPresent");
   return mcrtx::jni::toJniBoolean(RemixRenderer::instance().present());

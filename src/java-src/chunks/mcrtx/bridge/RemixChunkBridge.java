@@ -1,294 +1,32 @@
 package mcrtx.bridge;
 
 public final class RemixChunkBridge {
-    private static final int MAX_CAPTURED_BLOCKS_PER_CHUNK = 4096;
-    private static final int ICE_BLOCK_ID = 79;
-    private static final int WATER_STILL_BLOCK_ID = 8;
-    private static final int WATER_FLOWING_BLOCK_ID = 9;
-    private static final int LAVA_STILL_BLOCK_ID = 10;
-    private static final int LAVA_FLOWING_BLOCK_ID = 11;
-    private static final int NETHER_PORTAL_BLOCK_ID = 90;
-    private static final int DOOR_BLOCK_RENDER_TYPE = 7;
-    private static final int CROP_BLOCK_RENDER_TYPE = 6;
-    private static final int LEVER_OR_BUTTON_BLOCK_RENDER_TYPE = 12;
-    private static final int CACTUS_BLOCK_RENDER_TYPE = 13;
-    private static final int STAIRS_BLOCK_RENDER_TYPE = 10;
-    private static final int BED_BLOCK_RENDER_TYPE = 14;
-    private static final int REPEATER_BLOCK_RENDER_TYPE = 15;
-    private static final int PISTON_BASE_BLOCK_RENDER_TYPE = 16;
-    private static final int PISTON_HEAD_BLOCK_RENDER_TYPE = 17;
+    public static final int RECORD_WORDS = 23;
+    private RemixChunkBridge() { }
 
-    private static boolean chunkBuildCaptureActive;
-    private static int activeChunkRenderPass;
-    private static int capturedChunkBlocks;
-
-    private RemixChunkBridge() {
-    }
-
-    public static void setUndergroundCullingEnabled(boolean enabled) {
-        if (RemixLifecycleBridge.isInitialized()) nSetUndergroundCullingEnabled(enabled);
-    }
-    public static void resetUndergroundCulling() {
-        if (RemixLifecycleBridge.isInitialized()) nResetUndergroundCulling();
-    }
-    private static native void nResetUndergroundCulling();
-    public static void updateUndergroundTopology(int x, int y, int z, long revision, short[] labels) {
-        if (RemixLifecycleBridge.isInitialized()) nUpdateUndergroundTopology(x,y,z,revision,labels);
-    }
-    public static void updateUndergroundVisibility(int x, int y, int z, long revision, long[] hidden) {
-        if (RemixLifecycleBridge.isInitialized()) nUpdateUndergroundVisibility(x,y,z,revision,hidden);
-    }
-    private static native void nSetUndergroundCullingEnabled(boolean enabled);
-    public static long[] undergroundStatistics() {
-        return RemixLifecycleBridge.isInitialized() ? nUndergroundStatistics() : new long[5];
-    }
-    private static native long[] nUndergroundStatistics();
-    private static native void nUpdateUndergroundTopology(int x, int y, int z, long revision, short[] labels);
-    private static native void nUpdateUndergroundVisibility(int x, int y, int z, long revision, long[] hidden);
-
-    public static synchronized void resetCaptureState() {
-        chunkBuildCaptureActive = false;
-        activeChunkRenderPass = 0;
-        capturedChunkBlocks = 0;
-    }
-
-    public static synchronized void unloadChunkSection(int originX, int originY, int originZ) {
+    public static void resetTerrain(long world) {
         if (RemixLifecycleBridge.isInitialized()) {
-            nUnloadChunkSection(originX, originY, originZ);
+            nResetTerrain(world);
         }
     }
-
-    public static synchronized void setChunkSectionHidden(int originX, int originY, int originZ, boolean hidden) {
+    public static void allocateSection(int x, int y, int z, long world, long lifetime) {
         if (RemixLifecycleBridge.isInitialized()) {
-            nSetChunkSectionHidden(originX, originY, originZ, hidden);
+            nAllocateSection(x, y, z, world, lifetime);
         }
     }
-
-    public static boolean beginChunkBuild(
-            int originX,
-            int originY,
-            int originZ,
-            int sizeX,
-            int sizeY,
-            int sizeZ,
-            int renderPass) {
-        return beginChunkBuild(
-                originX,
-                originY,
-                originZ,
-                sizeX,
-                sizeY,
-                sizeZ,
-                renderPass,
-                originX,
-                originY,
-                originZ,
-                originX + sizeX - 1,
-                originY + sizeY - 1,
-                originZ + sizeZ - 1);
-    }
-
-    public static boolean beginChunkBuild(
-            int originX,
-            int originY,
-            int originZ,
-            int sizeX,
-            int sizeY,
-            int sizeZ,
-            int renderPass,
-            int dirtyMinX,
-            int dirtyMinY,
-            int dirtyMinZ,
-            int dirtyMaxX,
-            int dirtyMaxY,
-            int dirtyMaxZ) {
-        if (!RemixLifecycleBridge.isInitialized()) {
-            resetCaptureState();
-            return false;
-        }
-
-        boolean active = nBeginChunkBuild(
-                originX,
-                originY,
-                originZ,
-                sizeX,
-                sizeY,
-                sizeZ,
-                dirtyMinX,
-                dirtyMinY,
-                dirtyMinZ,
-                dirtyMaxX,
-                dirtyMaxY,
-                dirtyMaxZ,
-                renderPass);
-        chunkBuildCaptureActive = active;
-        activeChunkRenderPass = active ? renderPass : 0;
-        capturedChunkBlocks = 0;
-        return active;
-    }
-
-    public static void captureBlock(
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType,
-            int texture0,
-            int texture1,
-            int texture2,
-            int texture3,
-            int texture4,
-            int texture5,
-            float boundsMinX,
-            float boundsMinY,
-            float boundsMinZ,
-            float boundsMaxX,
-            float boundsMaxY,
-            float boundsMaxZ,
-            int blockColorRgb,
-            int liquidVisibilityMask,
-            float liquidHeight0,
-            float liquidHeight1,
-            float liquidHeight2,
-            float liquidHeight3,
-            float liquidFlowAngle) {
-        if (!RemixLifecycleBridge.isInitialized() || !chunkBuildCaptureActive) {
-            return;
-        }
-        if (!shouldCaptureBlock(blockId, renderType) || capturedChunkBlocks >= MAX_CAPTURED_BLOCKS_PER_CHUNK) {
-            return;
-        }
-        capturedChunkBlocks += 1;
-        nCaptureBlock(
-                blockX,
-                blockY,
-                blockZ,
-                blockId,
-                blockMetadata,
-                renderType,
-                texture0,
-                texture1,
-                texture2,
-                texture3,
-                texture4,
-                texture5,
-                boundsMinX,
-                boundsMinY,
-                boundsMinZ,
-                boundsMaxX,
-                boundsMaxY,
-                boundsMaxZ,
-                blockColorRgb,
-                liquidVisibilityMask,
-                liquidHeight0,
-                liquidHeight1,
-                liquidHeight2,
-                liquidHeight3,
-                liquidFlowAngle);
-    }
-
-    public static void endChunkBuild(boolean emittedGeometry, boolean deferNeighborRefresh) {
-        endChunkBuild(emittedGeometry, deferNeighborRefresh, true);
-    }
-
-    public static void endChunkBuild(
-            boolean emittedGeometry,
-            boolean deferNeighborRefresh,
-            boolean allowNeighborRefresh) {
-        if (!RemixLifecycleBridge.isInitialized() || !chunkBuildCaptureActive) {
-            return;
-        }
-        nEndChunkBuild(capturedChunkBlocks > 0, deferNeighborRefresh, allowNeighborRefresh);
-        resetCaptureState();
-    }
-
-    public static void flushChunkNeighborRefreshes() {
+    public static void removeSection(int x, int y, int z, long world, long lifetime) {
         if (RemixLifecycleBridge.isInitialized()) {
-            nFlushChunkNeighborRefreshes();
+            nRemoveSection(x, y, z, world, lifetime);
         }
     }
-
-    public static synchronized boolean isChunkBuildCaptureActive() {
-        return chunkBuildCaptureActive;
+    public static boolean updateSection(int x, int y, int z, long world, long lifetime, long revision,
+                                        int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int[] records) {
+        return RemixLifecycleBridge.isInitialized() && nUpdateSection(x, y, z, world, lifetime, revision,
+                minX, minY, minZ, maxX, maxY, maxZ, records);
     }
-
-    private static boolean shouldCaptureBlock(int blockId, int renderType) {
-        if (blockId <= 0) {
-            return false;
-        }
-        if (activeChunkRenderPass == 0) {
-            return (renderType == 0
-                    || renderType == 1
-                    || renderType == 2
-                    || renderType == 3
-                    || renderType == 5
-                    || renderType == CROP_BLOCK_RENDER_TYPE
-                    || renderType == DOOR_BLOCK_RENDER_TYPE
-                    || renderType == 8
-                    || renderType == 9
-                    || renderType == STAIRS_BLOCK_RENDER_TYPE
-                    || renderType == LEVER_OR_BUTTON_BLOCK_RENDER_TYPE
-                    || renderType == CACTUS_BLOCK_RENDER_TYPE
-                    || renderType == BED_BLOCK_RENDER_TYPE
-                    || renderType == REPEATER_BLOCK_RENDER_TYPE
-                    || renderType == PISTON_BASE_BLOCK_RENDER_TYPE
-                    || renderType == PISTON_HEAD_BLOCK_RENDER_TYPE
-                    || renderType == 11)
-                    || (renderType == 4 && (blockId == LAVA_STILL_BLOCK_ID || blockId == LAVA_FLOWING_BLOCK_ID));
-        }
-        if (activeChunkRenderPass == 1) {
-            return (renderType == 4 && (blockId == WATER_STILL_BLOCK_ID || blockId == WATER_FLOWING_BLOCK_ID))
-                    || (renderType == 0 && (blockId == ICE_BLOCK_ID || blockId == NETHER_PORTAL_BLOCK_ID));
-        }
-        return false;
-    }
-
-    private static native void nUnloadChunkSection(int originX, int originY, int originZ);
-    private static native void nSetChunkSectionHidden(int originX, int originY, int originZ, boolean hidden);
-    private static native boolean nBeginChunkBuild(
-            int originX,
-            int originY,
-            int originZ,
-            int sizeX,
-            int sizeY,
-            int sizeZ,
-            int dirtyMinX,
-            int dirtyMinY,
-            int dirtyMinZ,
-            int dirtyMaxX,
-            int dirtyMaxY,
-            int dirtyMaxZ,
-            int renderPass);
-    private static native void nCaptureBlock(
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType,
-            int texture0,
-            int texture1,
-            int texture2,
-            int texture3,
-            int texture4,
-            int texture5,
-            float boundsMinX,
-            float boundsMinY,
-            float boundsMinZ,
-            float boundsMaxX,
-            float boundsMaxY,
-            float boundsMaxZ,
-            int blockColorRgb,
-            int liquidVisibilityMask,
-            float liquidHeight0,
-            float liquidHeight1,
-            float liquidHeight2,
-            float liquidHeight3,
-            float liquidFlowAngle);
-    private static native void nEndChunkBuild(
-            boolean emittedGeometry,
-            boolean deferNeighborRefresh,
-            boolean allowNeighborRefresh);
-    private static native void nFlushChunkNeighborRefreshes();
+    private static native void nResetTerrain(long world);
+    private static native void nAllocateSection(int x, int y, int z, long world, long lifetime);
+    private static native void nRemoveSection(int x, int y, int z, long world, long lifetime);
+    private static native boolean nUpdateSection(int x, int y, int z, long world, long lifetime, long revision,
+                                                int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int[] records);
 }

@@ -128,7 +128,11 @@ void RemixRenderer::updateAtmosphereState(float celestialAngle, bool forceDarkAt
     return;
   }
 
-  updateAtmosphereConfigLocked(celestialAngle, forceDarkAtmosphere);
+  if (standaloneOutputWindow_) {
+    gameFrameState_.atmosphere = AtmosphereFrameState {celestialAngle, forceDarkAtmosphere};
+  } else {
+    updateAtmosphereConfigLocked(celestialAngle, forceDarkAtmosphere);
+  }
 }
 
 void RemixRenderer::clearCloudLayer() {
@@ -150,9 +154,9 @@ void RemixRenderer::clearWorldScene() {
     destroyChunkMesh(meshData);
   }
   chunkMeshes_.clear();
-  undergroundFrame_ = {};
-  publishedUndergroundFrame_ = {};
-  activeUndergroundFrame_ = {};
+  terrain_.clear();
+  terrainSubmissions_.clear();
+  terrainSubmissionsDirty_ = true;
 
   cloudLayer_ = {};
   publishedCloudLayer_ = {};
@@ -179,9 +183,6 @@ void RemixRenderer::clearWorldScene() {
   heldItemId_ = -1;
   publishedHeldItemId_ = -1;
   activeDynamicEntity_ = {};
-  activeChunkBlocks_.clear();
-  activeChunkBuild_ = {};
-  chunkBuildActive_ = false;
   lastSubmittedChunkCount_ = 0;
   lastSubmittedBlockCount_ = 0;
   lastSubmittedCloudQuadCount_ = 0;

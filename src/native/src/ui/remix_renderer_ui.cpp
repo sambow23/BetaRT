@@ -27,6 +27,10 @@ void RemixRenderer::setScreenTint(float r, float g, float b, float a) {
     }
     return;
   }
+  if (standaloneOutputWindow_) {
+    gameFrameState_.tint = {r, g, b, a};
+    return;
+  }
   const remixapi_ErrorCode result = [&]() {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetScreenTint");
     return remix_.SetScreenTint(r, g, b, a);
@@ -204,6 +208,48 @@ bool RemixRenderer::submitUiDrawList(const remixapi_UIDrawList* drawList) {
   if (remix_.SubmitUIDrawList == nullptr) {
     setError("SubmitUIDrawList is unavailable in the loaded Remix runtime");
     return false;
+  }
+
+  if (standaloneOutputWindow_) {
+    auto frame = std::make_shared<UiFrameData>();
+    if (drawList != nullptr) {
+      if (drawList->sType != REMIXAPI_STRUCT_TYPE_UI_DRAW_LIST
+          || (drawList->vertexCount != 0 && drawList->pVertices == nullptr)
+          || (drawList->indexCount != 0 && drawList->pIndices == nullptr)
+          || (drawList->commandCount != 0 && (drawList->pCommands == nullptr
+              || drawList->displayWidth == 0 || drawList->displayHeight == 0))) {
+        setError("Invalid UI draw list");
+        return false;
+      }
+      for (std::uint32_t i = 0; i < drawList->commandCount; ++i) {
+        const auto& command = drawList->pCommands[i];
+        const std::uint64_t end = std::uint64_t(command.indexOffset) + command.indexCount;
+        if ((command.flags & ~REMIXAPI_UI_DRAW_FLAG_DEPTH_TEST) != 0 || end > drawList->indexCount) {
+          setError("Invalid UI draw command");
+          return false;
+        }
+        for (std::uint64_t index = command.indexOffset; index < end; ++index) {
+          const std::int64_t vertex = std::int64_t(drawList->pIndices[index]) + command.vertexOffset;
+          if (vertex < 0 || std::uint64_t(vertex) >= drawList->vertexCount) {
+            setError("Invalid UI vertex index");
+            return false;
+          }
+        }
+      }
+      frame->displayWidth = drawList->displayWidth;
+      frame->displayHeight = drawList->displayHeight;
+      if (drawList->vertexCount != 0) {
+        frame->vertices.assign(drawList->pVertices, drawList->pVertices + drawList->vertexCount);
+      }
+      if (drawList->indexCount != 0) {
+        frame->indices.assign(drawList->pIndices, drawList->pIndices + drawList->indexCount);
+      }
+      if (drawList->commandCount != 0) {
+        frame->commands.assign(drawList->pCommands, drawList->pCommands + drawList->commandCount);
+      }
+    }
+    gameFrameState_.ui = std::move(frame);
+    return true;
   }
 
   const remixapi_ErrorCode result = [&]() {
@@ -416,6 +462,10 @@ remixapi_UIState RemixRenderer::getUiState() const {
     return REMIXAPI_UI_STATE_NONE;
   }
 
+  if (standaloneOutputWindow_) {
+    return remixUiState_;
+  }
+
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "GetUIState");
   return remix_.GetUIState();
 }
@@ -457,6 +507,7 @@ bool RemixRenderer::setUiState(remixapi_UIState state) {
     return false;
   }
 
+  remixUiState_ = state;
   syncOutputWindowInteractivity(state);
 
   return true;

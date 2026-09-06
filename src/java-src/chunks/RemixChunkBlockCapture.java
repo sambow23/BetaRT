@@ -9,36 +9,9 @@ final class RemixChunkBlockCapture {
     private RemixChunkBlockCapture() {
     }
 
-    static void capture(
-            ew blockAccess,
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType) {
-        captureBlock(blockAccess, blockX, blockY, blockZ, blockId, blockMetadata, renderType);
-    }
-
-    static void captureWorldBlock(
-            fd world,
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType) {
-        captureBlock(world, blockX, blockY, blockZ, blockId, blockMetadata, renderType);
-    }
-
-    private static void captureBlock(
-            xp blockAccess,
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType) {
+    static void captureWorldBlock(xp blockAccess, int blockX, int blockY, int blockZ,
+                                  int blockId, int blockMetadata, int renderType,
+                                  int[] records, int offset) {
         uu blockDefinition = blockId >= 0 && blockId < uu.m.length ? uu.m[blockId] : null;
         if (blockDefinition == null || blockAccess == null) {
             return;
@@ -67,32 +40,26 @@ final class RemixChunkBlockCapture {
             liquidFlowAngle = (float) rp.a(blockAccess, blockX, blockY, blockZ, blockDefinition.bA);
         }
 
-        RemixChunkBridge.captureBlock(
-                blockX,
-                blockY,
-                blockZ,
-                blockId,
-                blockMetadata,
-                renderType,
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 0),
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 1),
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 2),
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 3),
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 4),
-                blockDefinition.a(blockAccess, blockX, blockY, blockZ, 5),
-                (float) blockDefinition.bs,
-                (float) blockDefinition.bt,
-                (float) blockDefinition.bu,
-                (float) blockDefinition.bv,
-                (float) blockDefinition.bw,
-                (float) blockDefinition.bx,
-                blockDefinition.b(blockAccess, blockX, blockY, blockZ),
-                liquidVisibilityMask,
-                liquidHeight0,
-                liquidHeight1,
-                liquidHeight2,
-                liquidHeight3,
-                liquidFlowAngle);
+        records[offset++] = blockId;
+        records[offset++] = blockMetadata;
+        records[offset++] = renderType;
+        records[offset++] = blockDefinition.b_();
+        for (int side = 0; side < 6; ++side) {
+            records[offset++] = blockDefinition.a(blockAccess, blockX, blockY, blockZ, side);
+        }
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bs);
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bt);
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bu);
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bv);
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bw);
+        records[offset++] = Float.floatToRawIntBits((float) blockDefinition.bx);
+        records[offset++] = blockDefinition.b(blockAccess, blockX, blockY, blockZ);
+        records[offset++] = liquidVisibilityMask;
+        records[offset++] = Float.floatToRawIntBits(liquidHeight0);
+        records[offset++] = Float.floatToRawIntBits(liquidHeight1);
+        records[offset++] = Float.floatToRawIntBits(liquidHeight2);
+        records[offset++] = Float.floatToRawIntBits(liquidHeight3);
+        records[offset] = Float.floatToRawIntBits(liquidFlowAngle);
     }
 
     private static boolean isWaterBlock(int blockId) {

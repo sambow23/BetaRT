@@ -64,8 +64,7 @@ public final class MinecraftRemixSceneHooks {
     public static void clearWorldScene() {
         long __perf = HookProfiler.begin();
         try {
-            RemixSceneBridge.clearWorldScene();
-            RemixChunkBridge.resetCaptureState();
+            RemixChunkWorldState.clearSections();
         } finally {
             HookProfiler.endHook("hook.clearWorldScene", __perf);
         }

@@ -33,7 +33,6 @@ void RemixRenderer::destroyFireMesh() {
   fireQuadCount_ = 0;
   lastFireRenderOrigin_ = {};
   lastFireAnimationFrame_ = 0xFFFFFFFFu;
-  lastFireVisibilityRevision_ = ~std::uint64_t {0};
 }
 
 bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
@@ -48,9 +47,8 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
       std::chrono::steady_clock::now().time_since_epoch()).count();
   const std::uint32_t frameIndex = static_cast<std::uint32_t>(
       (elapsedMilliseconds / kFireAnimationFrameIntervalMilliseconds) % kFireAnimationFrameCount);
-  if (lastFireVisibilityRevision_ == activeUndergroundFrame_.revision
-      && lastFireAnimationFrame_ == frameIndex
-      && lastFireChunkBuildCount_ == capturedChunkBuilds_
+  if (lastFireAnimationFrame_ == frameIndex
+      && lastFireChunkBuildCount_ == terrainPublications_
       && lastFireRenderOrigin_.enabled == renderOrigin.enabled
       && lastFireRenderOrigin_.x == renderOrigin.x
       && lastFireRenderOrigin_.y == renderOrigin.y
@@ -76,10 +74,10 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
     for (int renderPass = 0; renderPass <= 1; ++renderPass) {
       const ChunkKey chunkKey {originX, originY, originZ, renderPass};
       const auto it = chunkMeshes_.find(chunkKey);
-      if (it == chunkMeshes_.end() || !it->second.hasOccupancy || it->second.occupancy[cellIndex] == 0) {
+      if (it == chunkMeshes_.end() || !it->second.section || it->second.section->occupancy[cellIndex] == 0) {
         continue;
       }
-      return &it->second.cells[cellIndex];
+      return &it->second.section->cells[cellIndex];
     }
 
     return nullptr;
@@ -94,12 +92,12 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
   {
     MCRTX_TRACY_SCOPE("rebuildFireMesh.buildGeometry");
     for (const auto& [chunkKey, meshData] : chunkMeshes_) {
-      if (chunkKey.renderPass != 0 || !meshData.hasOccupancy || meshData.fireCellIndices.empty()) {
+      if (chunkKey.renderPass != 0 || !meshData.section || meshData.section->fireCellIndices.empty()) {
         continue;
       }
 
-      for (std::uint16_t fireCellIndex : meshData.fireCellIndices) {
-        const ChunkBlockCell& cell = meshData.cells[fireCellIndex];
+      for (std::uint16_t fireCellIndex : meshData.section->fireCellIndices) {
+        const ChunkBlockCell& cell = meshData.section->cells[fireCellIndex];
         if (!isFireRenderType(cell.renderType)) {
           continue;
         }
@@ -111,11 +109,6 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
         const int worldX = chunkKey.originX + localX;
         const int worldY = chunkKey.originY + localY;
         const int worldZ = chunkKey.originZ + localZ;
-        if (activeUndergroundFrame_.isHidden(
-            {worldX - 0.01, worldY - 0.01, worldZ - 0.01},
-            {worldX + 1.01, worldY + 1.01, worldZ + 1.01})) {
-          continue;
-        }
         const WorldRenderPosition firePosition = rebaseWorldPosition(
             static_cast<float>(worldX),
             static_cast<float>(worldY),
@@ -146,8 +139,7 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
   if (indices.empty()) {
     destroyFireMesh();
     lastFireAnimationFrame_ = frameIndex;
-    lastFireChunkBuildCount_ = capturedChunkBuilds_;
-    lastFireVisibilityRevision_ = activeUndergroundFrame_.revision;
+    lastFireChunkBuildCount_ = terrainPublications_;
     lastFireRenderOrigin_ = renderOrigin;
     return true;
   }
@@ -181,8 +173,7 @@ bool RemixRenderer::rebuildFireMesh(const WorldRenderOrigin& renderOrigin) {
   fireMeshHandle_ = newMeshHandle;
   fireQuadCount_ = fireCount;
   lastFireAnimationFrame_ = frameIndex;
-  lastFireChunkBuildCount_ = capturedChunkBuilds_;
-  lastFireVisibilityRevision_ = activeUndergroundFrame_.revision;
+  lastFireChunkBuildCount_ = terrainPublications_;
   lastFireRenderOrigin_ = renderOrigin;
   return true;
 }

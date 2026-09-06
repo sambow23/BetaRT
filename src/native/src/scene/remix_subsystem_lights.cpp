@@ -230,7 +230,7 @@ bool RemixRenderer::createTorchLight(const TorchLightPlacement& placement, const
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &originInfo;
-  lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(light::makeTorchDefinitionHash(placement), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -271,6 +271,15 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
     return createTorchLight(placement, renderOrigin);
   }
 
+  if (terrainRetiredLights_ != nullptr) {
+    const auto hash = persistentLightHashForRenderOrigin(light::makeTorchDefinitionHash(placement), renderOrigin);
+    if (lightIt->second.apiHash == hash) {
+      return true;
+    }
+    destroyTorchLight(placement.blockPosition);
+    return createTorchLight(placement, renderOrigin);
+  }
+
   if (remix_.UpdateLightDefinition == nullptr) {
     destroyTorchLight(placement.blockPosition);
     return createTorchLight(placement, renderOrigin);
@@ -293,7 +302,7 @@ bool RemixRenderer::updateTorchLight(const TorchLightPlacement& placement, const
   remixapi_LightInfo lightInfo {};
   lightInfo.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfo.pNext = &originInfo;
-  lightInfo.hash = persistentLightHashForRenderOrigin(makeTorchLightHash(placement.blockPosition), renderOrigin);
+  lightInfo.hash = persistentLightHashForRenderOrigin(light::makeTorchDefinitionHash(placement), renderOrigin);
   lightInfo.radiance = placement.radiance;
   lightInfo.isDynamic = FALSE;
   lightInfo.ignoreViewModel = FALSE;
@@ -694,7 +703,7 @@ bool RemixRenderer::createPortalLight(const PortalLightPlacement& placement, con
   remixapi_LightInfo lightInfoFront {};
   lightInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfoFront.pNext = &originInfoFront;
-  lightInfoFront.hash = persistentLightHashForRenderOrigin(makePortalLightHash(placement.blockPosition), renderOrigin);
+  lightInfoFront.hash = persistentLightHashForRenderOrigin(light::makePortalDefinitionHash(placement), renderOrigin);
   lightInfoFront.radiance = placement.radiance;
   lightInfoFront.isDynamic = FALSE;
   lightInfoFront.ignoreViewModel = FALSE;
@@ -710,7 +719,10 @@ bool RemixRenderer::createPortalLight(const PortalLightPlacement& placement, con
   
   if (remix_.CreateLight(&lightInfoFront, &lightHandleFront) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
   cancelDeferredLightDestroy(lightHandleFront);
-  if (remix_.CreateLight(&lightInfoBack, &lightHandleBack) != REMIXAPI_ERROR_CODE_SUCCESS) return false;
+  if (remix_.CreateLight(&lightInfoBack, &lightHandleBack) != REMIXAPI_ERROR_CODE_SUCCESS) {
+    destroyLightHandle(lightHandleFront);
+    return false;
+  }
   cancelDeferredLightDestroy(lightHandleBack);
 
   portalLights_[placement.blockPosition] = {lightHandleFront, lightHandleBack, renderOrigin, lightInfoFront.hash, lightInfoBack.hash, lightPosition};
@@ -721,6 +733,15 @@ bool RemixRenderer::createPortalLight(const PortalLightPlacement& placement, con
 bool RemixRenderer::updatePortalLight(const PortalLightPlacement& placement, const WorldRenderOrigin& renderOrigin) {
   const auto lightIt = portalLights_.find(placement.blockPosition);
   if (lightIt == portalLights_.end() || lightIt->second.handleFront == nullptr) {
+    return createPortalLight(placement, renderOrigin);
+  }
+
+  if (terrainRetiredLights_ != nullptr) {
+    const auto hash = persistentLightHashForRenderOrigin(light::makePortalDefinitionHash(placement), renderOrigin);
+    if (lightIt->second.apiHashFront == hash) {
+      return true;
+    }
+    destroyPortalLight(placement.blockPosition);
     return createPortalLight(placement, renderOrigin);
   }
 
@@ -785,7 +806,7 @@ bool RemixRenderer::updatePortalLight(const PortalLightPlacement& placement, con
   remixapi_LightInfo lightInfoFront {};
   lightInfoFront.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
   lightInfoFront.pNext = &originInfoFront;
-  lightInfoFront.hash = persistentLightHashForRenderOrigin(makePortalLightHash(placement.blockPosition), renderOrigin);
+  lightInfoFront.hash = persistentLightHashForRenderOrigin(light::makePortalDefinitionHash(placement), renderOrigin);
   lightInfoFront.radiance = placement.radiance;
   lightInfoFront.isDynamic = FALSE;
   lightInfoFront.ignoreViewModel = FALSE;
@@ -981,7 +1002,7 @@ bool RemixRenderer::createGlowstoneLight(
   state.renderOrigin = renderOrigin;
   state.submittedPosition = centerPosition;
   
-  bool anyCreated = false;
+  bool allCreated = true;
   
   for (int i = 0; i < 6; ++i) {
     if ((placement.visibleFacesMask & (1 << i)) == 0) {
@@ -1029,20 +1050,21 @@ bool RemixRenderer::createGlowstoneLight(
       cancelDeferredLightDestroy(handle);
       state.handles[i] = handle;
       state.apiHashes[i] = lightInfo.hash;
-      anyCreated = true;
+    } else {
+      allCreated = false;
     }
   }
 
   glowstoneLights_[placement.blockPosition] = state;
   glowstoneLightPlacements_[placement.blockPosition] = placement;
-  return anyCreated;
+  return allCreated;
 }
 
 bool RemixRenderer::updateGlowstoneLight(
     const GlowstoneLightPlacement& placement,
     const WorldRenderOrigin& renderOrigin) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::updateGlowstoneLight");
-  if (remix_.UpdateLightDefinition == nullptr) {
+  if (remix_.UpdateLightDefinition == nullptr && terrainRetiredLights_ == nullptr) {
     destroyGlowstoneLight(placement.blockPosition);
     return createGlowstoneLight(placement, renderOrigin);
   }
@@ -1128,7 +1150,7 @@ bool RemixRenderer::updateGlowstoneLight(
       } else {
         anyFailed = true;
       }
-    } else {
+    } else if (terrainRetiredLights_ == nullptr) {
       if (remix_.UpdateLightDefinition(state.handles[i], &lightInfo) == REMIXAPI_ERROR_CODE_SUCCESS) {
         state.apiHashes[i] = lightInfo.hash;
       } else {

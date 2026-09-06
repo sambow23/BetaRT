@@ -3,6 +3,8 @@ set(MCRTX_STB_INCLUDE_DIR "${MCRTX_DXVK_REMIX_ROOT}/submodules/FidelityFX-SDK/fr
 
 if(MCRTX_BUILD_JNI)
 
+option(MCRTX_TERRAIN_SYNCHRONOUS "Run the same terrain emitter synchronously for comparisons" OFF)
+
 option(MCRTX_ENABLE_TRACY "Enable Tracy profiling in the native JNI bridge" OFF)
 set(MCRTX_TRACY_PORT "8087" CACHE STRING "Default Tracy port for mc-rtx native profiling")
 
@@ -61,8 +63,6 @@ add_library(mcrtx_jni SHARED
   src/scene/remix_cloud_mode.cpp
   src/scene/remix_cloud_geometry.cpp
   src/scene/remix_cloud_mask.cpp
-  src/scene/remix_underground_visibility.cpp
-  src/chunks/remix_chunk_visibility.cpp
   src/scene/remix_aerial_perspective.cpp
   src/lifecycle/remix_renderer_frame.cpp
   src/lifecycle/remix_renderer_present.cpp
@@ -83,8 +83,7 @@ add_library(mcrtx_jni SHARED
   src/chunks/remix_block_geometry_fixtures.cpp
   src/chunks/remix_block_geometry_redstone.cpp
   src/chunks/remix_block_geometry_pistons.cpp
-  src/chunks/remix_chunk_capture.cpp
-  src/chunks/remix_chunk_occupancy.cpp
+  src/chunks/terrain_pipeline.cpp
   src/chunks/remix_chunk_geometry.cpp
   src/chunks/remix_chunk_submission.cpp
   src/chunks/remix_chunk_residency.cpp
@@ -158,6 +157,11 @@ if(MCRTX_ENABLE_TRACY)
   )
 endif()
 
+if(MCRTX_TERRAIN_SYNCHRONOUS)
+  target_compile_definitions(mcrtx_jni PUBLIC MCRTX_TERRAIN_SYNCHRONOUS)
+endif()
+find_package(Threads REQUIRED)
+target_link_libraries(mcrtx_jni PRIVATE Threads::Threads)
 target_compile_features(mcrtx_jni PRIVATE cxx_std_20)
 
 if(WIN32 AND JAVA_AWT_LIBRARY)
@@ -204,12 +208,27 @@ if(MCRTX_BUILD_TESTS)
   add_test(NAME mcrtx_cloud_geometry_tests COMMAND mcrtx_cloud_geometry_tests)
 
   if(MCRTX_BUILD_JNI)
-    add_executable(mcrtx_underground_visibility_tests tests/scene/remix_underground_visibility_tests.cpp)
-    target_include_directories(mcrtx_underground_visibility_tests PRIVATE
+    add_executable(mcrtx_terrain_tests tests/chunks/terrain_pipeline_tests.cpp tests/chunks/terrain_reference.cpp)
+    target_include_directories(mcrtx_terrain_tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-    target_link_libraries(mcrtx_underground_visibility_tests PRIVATE mcrtx_jni)
-    target_compile_features(mcrtx_underground_visibility_tests PRIVATE cxx_std_20)
-    add_test(NAME mcrtx_underground_visibility_tests COMMAND mcrtx_underground_visibility_tests)
+    target_link_libraries(mcrtx_terrain_tests PRIVATE mcrtx_jni)
+    target_compile_features(mcrtx_terrain_tests PRIVATE cxx_std_20)
+    add_test(NAME mcrtx_terrain_tests COMMAND mcrtx_terrain_tests)
+    add_executable(mcrtx_terrain_publication_tests tests/chunks/terrain_publication_tests.cpp)
+    target_include_directories(mcrtx_terrain_publication_tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+    target_link_libraries(mcrtx_terrain_publication_tests PRIVATE mcrtx_jni)
+    target_compile_features(mcrtx_terrain_publication_tests PRIVATE cxx_std_20)
+    add_test(NAME mcrtx_terrain_publication_tests COMMAND mcrtx_terrain_publication_tests)
+    if(NOT WIN32)
+      add_executable(mcrtx_standalone_tests tests/lifecycle/standalone_tests.cpp)
+      target_include_directories(mcrtx_standalone_tests PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+      target_link_libraries(mcrtx_standalone_tests PRIVATE mcrtx_jni)
+      target_compile_features(mcrtx_standalone_tests PRIVATE cxx_std_20)
+      add_test(NAME mcrtx_standalone_tests COMMAND mcrtx_standalone_tests)
+      set_tests_properties(mcrtx_standalone_tests PROPERTIES TIMEOUT 10)
+    endif()
     add_executable(mcrtx_cloud_lifetime_tests tests/scene/remix_cloud_lifetime_tests.cpp)
     target_include_directories(mcrtx_cloud_lifetime_tests PRIVATE
       ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)

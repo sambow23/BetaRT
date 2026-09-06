@@ -1,5 +1,7 @@
 package mcrtx.bridge;
 
+import java.lang.management.ManagementFactory;
+import java.lang.management.ThreadMXBean;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -24,6 +26,13 @@ public final class HookProfiler {
     public static final int SIDE_REMIX = 4;
 
     public static final boolean ENABLED = "1".equals(System.getenv("MCRTX_PERF"));
+
+    private static final ThreadMXBean CPU_CLOCK = ENABLED ? ManagementFactory.getThreadMXBean() : null;
+
+    public static long threadCpuNanos() {
+        return CPU_CLOCK != null && CPU_CLOCK.isCurrentThreadCpuTimeSupported()
+                && CPU_CLOCK.isThreadCpuTimeEnabled() ? CPU_CLOCK.getCurrentThreadCpuTime() : -1L;
+    }
 
     private static final int BUFFER_CAPACITY = 8192;
 

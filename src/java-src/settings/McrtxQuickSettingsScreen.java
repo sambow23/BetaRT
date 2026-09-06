@@ -152,7 +152,6 @@ public final class McrtxQuickSettingsScreen extends da {
     }
 
     public void a(int mouseX, int mouseY, float partialTicks) {
-        McrtxGraphicsSettingsUi.refreshUndergroundStatus(this);
         if (draggingScrollbar) {
             setScrollOffsetFromThumb(mouseY - scrollbarDragOffset);
         }

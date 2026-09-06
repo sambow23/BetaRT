@@ -2,6 +2,14 @@ final class DirtyChunkSection {
     final int originX;
     final int originY;
     final int originZ;
+    long revision;
+    long snapshotRevision;
+    long snapshotGeneration;
+    long snapshotLifetime;
+    long retryAfter;
+    int cursor;
+    int[] records;
+    DirtyChunkSection snapshotBounds;
     int dirtyMinX;
     int dirtyMinY;
     int dirtyMinZ;

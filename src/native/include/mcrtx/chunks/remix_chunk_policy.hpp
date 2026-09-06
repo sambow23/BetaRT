@@ -14,8 +14,6 @@ inline constexpr std::size_t kMaxOpaqueBlocksPerChunk = 4096;
 inline constexpr int kChunkDimension = 16;
 inline constexpr int kBlocksPerChunk = kChunkDimension * kChunkDimension * kChunkDimension;
 
-std::uint32_t countUniqueBlockIds(const ChunkBuildState& chunkBuild);
-ChunkKey makeChunkKey(const ChunkBuildState& chunkBuild);
 bool isWaterBlock(int blockId);
 bool isLavaBlock(int blockId);
 bool isLiquidBlock(int blockId);
@@ -55,10 +53,6 @@ bool shouldCaptureBlock(int blockId, int renderType, int renderPass);
 bool usesCutoutMaterialForBlock(int blockId, int renderType);
 std::uint8_t materialClassForBlock(int blockId, int blockMetadata, int renderType);
 std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence);
-std::uint64_t computeChunkMeshFingerprint(const std::vector<geometry::SurfaceBuildBuffers>& surfaces);
-std::uint64_t computeChunkFingerprint(
-    const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
-    const std::array<ChunkBlockCell, kBlocksPerChunk>& cells);
 int normalizeTerrainTileIndex(std::int16_t terrainTileIndex);
 bool usesFlippedTerrainTile(std::int16_t terrainTileIndex);
 float maybeFlipTileU(float u, float tileMinU, float scaleU, bool flipU);

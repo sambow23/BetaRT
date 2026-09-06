@@ -1,13 +1,11 @@
 final class RemixWorldListener implements pm {
     @Override
     public void a(int x, int y, int z) {
-        RemixUndergroundCulling.invalidate(x,y,z,x,y,z);
         RemixChunkRecaptureQueue.queueRegion(x, y, z, x, y, z);
     }
 
     @Override
     public void b(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-        RemixUndergroundCulling.invalidate(minX,minY,minZ,maxX,maxY,maxZ);
         RemixChunkRecaptureQueue.queueRegion(minX, minY, minZ, maxX, maxY, maxZ);
     }
 

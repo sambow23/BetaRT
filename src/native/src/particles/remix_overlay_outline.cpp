@@ -251,10 +251,10 @@ bool RemixRenderer::rebuildBlockOutlineMesh(const WorldRenderOrigin& renderOrigi
     for (int renderPass = 0; renderPass <= 1; ++renderPass) {
       const ChunkKey chunkKey {originX, originY, originZ, renderPass};
       const auto it = chunkMeshes_.find(chunkKey);
-      if (it == chunkMeshes_.end() || !it->second.hasOccupancy || it->second.occupancy[cellIndex] == 0) {
+      if (it == chunkMeshes_.end() || !it->second.section || it->second.section->occupancy[cellIndex] == 0) {
         continue;
       }
-      return &it->second.cells[cellIndex];
+      return &it->second.section->cells[cellIndex];
     }
 
     return nullptr;

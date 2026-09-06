@@ -12,7 +12,6 @@ import org.lwjgl.BufferUtils;
 public final class RemixCameraState {
     private static final int GL_MODELVIEW_MATRIX = 0x0BA6;
     private static final int FRUSTUM_PLANE_COUNT = 6;
-    private static final float CHUNK_SECTION_FRUSTUM_PADDING = 6.0f;
     private static final double DEFAULT_NO_CULL_DISTANCE_BLOCKS = 200.0;
     private static final FloatBuffer VIEW_BUFFER = BufferUtils.createFloatBuffer(16);
     private static final float[] FRUSTUM_PLANES = new float[FRUSTUM_PLANE_COUNT * 4];
@@ -290,16 +289,6 @@ public final class RemixCameraState {
 
     private static double currentCameraPoseZ() {
         return frameViewCaptured ? frameCameraPoseZ : cameraPositionZ;
-    }
-
-    static boolean shouldCaptureChunkSection(int originX, int originY, int originZ) {
-        return shouldCaptureBounds(
-                originX - CHUNK_SECTION_FRUSTUM_PADDING,
-                originY - CHUNK_SECTION_FRUSTUM_PADDING,
-                originZ - CHUNK_SECTION_FRUSTUM_PADDING,
-                originX + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING,
-                originY + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING,
-                originZ + 16.0f + CHUNK_SECTION_FRUSTUM_PADDING);
     }
 
     public static boolean isWithinNoCullDistance(double minX, double minY, double minZ, double maxX, double maxY, double maxZ) {

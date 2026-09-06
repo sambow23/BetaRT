@@ -1,5 +1,3 @@
-import mcrtx.bridge.RemixChunkBridge;
-
 public final class RemixChunkCapture {
     private RemixChunkCapture() {
     }
@@ -8,45 +6,12 @@ public final class RemixChunkCapture {
         return RemixChunkWorldState.attachedWorld();
     }
 
-    public static void onChunkSectionUnload(int originX, int originY, int originZ) {
-        RemixChunkWorldState.onChunkSectionUnload(originX, originY, originZ);
-    }
-
     public static void onWorldChanged(fd world) {
         RemixChunkWorldState.onWorldChanged(world);
     }
 
     public static void onChunkUpdateStart(int originX, int originY, int originZ) {
-        // Do not unload the chunk section here. Rebuilding the chunk will natively
-        // overwrite the old mesh and reconcile the torch lights, preserving light handles.
-    }
-
-    public static boolean onChunkBuildBegin(
-            int originX,
-            int originY,
-            int originZ,
-            int sizeX,
-            int sizeY,
-            int sizeZ,
-            int renderPass) {
-        return RemixChunkBuildSession.begin(
-                originX, originY, originZ, sizeX, sizeY, sizeZ, renderPass);
-    }
-
-    public static void onChunkBlock(
-            ew blockAccess,
-            int blockX,
-            int blockY,
-            int blockZ,
-            int blockId,
-            int blockMetadata,
-            int renderType) {
-        RemixChunkBuildSession.captureBlock(
-                blockAccess, blockX, blockY, blockZ, blockId, blockMetadata, renderType);
-    }
-
-    public static void onChunkBuildEnd(boolean emittedGeometry) {
-        RemixChunkBuildSession.end(emittedGeometry);
+        RemixChunkRecaptureQueue.queueSection(originX, originY, originZ);
     }
 
     static void queueRecaptureRegion(

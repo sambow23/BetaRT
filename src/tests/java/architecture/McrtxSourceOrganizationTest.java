@@ -55,7 +55,7 @@ public final class McrtxSourceOrganizationTest {
     requireContains(entityHooks, "public static void onLivingEntityRenderStart", "entity hook ABI");
     requireContains(entityHooks, "public static void onFirstPersonTessellatorDraw", "first-person hook ABI");
     requireContains(particleHooks, "public static void onWeatherTextureBind", "weather hook ABI");
-    requireContains(chunkHooks, "public static boolean onChunkBuildBegin", "chunk hook ABI");
+    requireContains(chunkHooks, "public static void onChunkSectionPosition", "section residency hook ABI");
 
     String patchTool = read("src/tools-src/patcher/mcrtx/tools/ClientPatchTool.java");
     requireContains(patchTool, "LIFECYCLE_HOOKS_CLASS", "lifecycle patch owner");
@@ -157,28 +157,20 @@ public final class McrtxSourceOrganizationTest {
 
     String chunkCapture = read("src/java-src/chunks/RemixChunkCapture.java");
     requireContains(chunkCapture, "public final class RemixChunkCapture", "chunk capture facade");
-    requireContains(chunkCapture, "RemixChunkBuildSession.begin", "chunk build facade delegation");
     requireContains(chunkCapture, "RemixChunkWorldState.onWorldChanged", "chunk world facade delegation");
     requireContains(chunkCapture, "RemixChunkRecaptureQueue.flush", "chunk queue facade delegation");
-    requireFile("src/java-src/chunks/RemixChunkBuildSession.java");
     requireFile("src/java-src/chunks/RemixChunkBlockCapture.java");
     requireFile("src/java-src/chunks/RemixChunkWorldState.java");
     requireFile("src/java-src/chunks/RemixChunkSectionKey.java");
-    requireFile("src/java-src/chunks/RemixChunkRecapturePass.java");
     requireFile("src/java-src/chunks/RemixChunkRecaptureQueue.java");
-    requireFile("src/java-src/chunks/RemixChunkNeighborRefresh.java");
     requireContains(read("src/java-src/chunks/RemixChunkWorldState.java"),
-        "KNOWN_CHUNK_SECTIONS", "chunk world state owns known sections");
+        "LIFETIMES", "chunk world state owns residency");
     requireContains(read("src/java-src/chunks/RemixChunkSectionKey.java"),
-        "RemixCaveCulling.getChunkKey", "section key owns encoding");
+        "0x3FFFFFFL", "section key owns encoding");
     requireContains(read("src/java-src/chunks/RemixChunkBlockCapture.java"),
         "computeLiquidCornerHeight", "chunk block capture owns liquid policy");
-    requireContains(read("src/java-src/chunks/RemixChunkRecapturePass.java"),
-        "hook.chunkRecapture.pass.scanBlocks", "recapture pass owns pass profiling");
     requireContains(read("src/java-src/chunks/RemixChunkRecaptureQueue.java"),
-        "PENDING_RECAPTURE_SECTIONS", "recapture queue owns pending sections");
-    requireContains(read("src/java-src/chunks/RemixChunkNeighborRefresh.java"),
-        "CRITICAL_DISTANCE_SQ", "neighbor refresh owns distance policy");
+        "PENDING", "recapture queue owns pending sections");
     requireNotContains(chunkCapture, "PENDING_RECAPTURE_SECTIONS", "queue state removed from facade");
     requireNotContains(chunkCapture, "KNOWN_CHUNK_SECTIONS", "world state removed from facade");
     requireNotContains(chunkCapture, "recaptureSectionsBudget", "budget state removed from facade");
@@ -246,8 +238,6 @@ public final class McrtxSourceOrganizationTest {
     requireFile("src/native/src/chunks/remix_block_geometry_pistons.cpp");
     requireMissingFile("src/native/src/remix_block_geometry_devices.cpp");
     requireFile("src/native/include/mcrtx/chunks/remix_chunk_build.hpp");
-    requireFile("src/native/src/chunks/remix_chunk_capture.cpp");
-    requireFile("src/native/src/chunks/remix_chunk_occupancy.cpp");
     requireFile("src/native/src/chunks/remix_chunk_geometry.cpp");
     requireFile("src/native/src/chunks/remix_chunk_submission.cpp");
     requireMissingFile("src/native/src/remix_chunk_build.cpp");
@@ -319,8 +309,6 @@ public final class McrtxSourceOrganizationTest {
     requireContains(cmake, "src/chunks/remix_block_geometry_redstone.cpp", "redstone block geometry source in build");
     requireContains(cmake, "src/chunks/remix_block_geometry_pistons.cpp", "piston geometry source in build");
     requireNotContains(cmake, "src/remix_block_geometry_devices.cpp", "mixed device geometry removed from build");
-    requireContains(cmake, "src/chunks/remix_chunk_capture.cpp", "chunk capture source in build");
-    requireContains(cmake, "src/chunks/remix_chunk_occupancy.cpp", "chunk occupancy source in build");
     requireContains(cmake, "src/chunks/remix_chunk_geometry.cpp", "chunk geometry source in build");
     requireContains(cmake, "src/chunks/remix_chunk_submission.cpp", "chunk submission source in build");
     requireNotContains(cmake, "src/remix_chunk_build.cpp", "mixed chunk build source removed from build");
@@ -446,13 +434,10 @@ public final class McrtxSourceOrganizationTest {
     String redstoneBlockGeometry = read("src/native/src/chunks/remix_block_geometry_redstone.cpp");
     String pistonBlockGeometry = read("src/native/src/chunks/remix_block_geometry_pistons.cpp");
     String chunkBuildContract = read("src/native/include/mcrtx/chunks/remix_chunk_build.hpp");
-    String chunkNativeCapture = read("src/native/src/chunks/remix_chunk_capture.cpp");
-    String chunkOccupancy = read("src/native/src/chunks/remix_chunk_occupancy.cpp");
     String chunkGeometry = read("src/native/src/chunks/remix_chunk_geometry.cpp");
     String chunkSubmission = read("src/native/src/chunks/remix_chunk_submission.cpp");
     String chunkResidency = read("src/native/src/chunks/remix_chunk_residency.cpp");
     requireContains(chunkPolicy, "materialClassForBlock", "chunk policy owns material classification");
-    requireContains(chunkPolicy, "computeChunkFingerprint", "chunk policy owns occupancy fingerprints");
     requireContains(chunkPolicy, "shouldCullFaceAgainstNeighbor", "chunk policy owns neighbor culling");
     requireContains(geometryCommon, "appendFaceGeometry", "common geometry owns terrain faces");
     requireContains(geometryCommon, "appendDoubleSidedTexturedQuad", "common geometry owns textured quads");
@@ -497,30 +482,14 @@ public final class McrtxSourceOrganizationTest {
     requireNotContains(chunkBuildContract, "occupancy", "persistent occupancy excluded from transient build");
     requireNotContains(chunkBuildContract, "meshHandle", "persistent mesh handle excluded from transient build");
     requireNotContains(chunkBuildContract, "geometryFingerprint", "persistent fingerprints excluded from transient build");
-    requireContains(chunkNativeCapture, "RemixRenderer::beginChunkBuild", "chunk capture owns build begin");
-    requireContains(chunkNativeCapture, "RemixRenderer::endChunkBuild", "chunk capture owns build end");
-    requireContains(chunkNativeCapture, "rebuildChunkMesh(activeChunkBuild_", "chunk capture keeps occupancy entrypoint");
-    requireContains(chunkOccupancy, "RemixRenderer::rebuildChunkMesh", "chunk occupancy owns captured-block ingestion");
-    requireContains(chunkOccupancy, "rebuildChunkMesh.mergeDirtyRegion", "chunk occupancy owns partial merging");
-    requireContains(chunkOccupancy, "rebuildChunkMesh.scanOccupancy", "chunk occupancy owns occupancy scanning");
-    requireNotContains(chunkOccupancy, "CreateMesh", "mesh creation excluded from chunk occupancy");
-    requireNotContains(chunkOccupancy, "appendWaterGeometry", "geometry dispatch excluded from chunk occupancy");
-    requireContains(chunkGeometry, "RemixRenderer::emitChunkGeometry", "chunk geometry owns dispatch");
-    requireContains(chunkGeometry, "hasFenceNeighbor", "chunk geometry owns fence neighbor lookup");
-    requireContains(chunkGeometry, "findWorldCell", "chunk geometry owns cross-chunk cell lookup");
-    requireContains(chunkGeometry, "rebuildChunkMeshFromData.emitGeometry", "chunk geometry preserves dispatch scope");
-    requireContains(chunkGeometry, "appendWaterGeometry", "chunk geometry dispatches specialized families");
-    requireNotContains(chunkGeometry, "CreateMesh", "mesh creation excluded from chunk geometry");
-    requireContains(chunkSubmission, "RemixRenderer::rebuildChunkMeshFromData", "chunk submission owns rebuild-from-data entrypoint");
-    requireContains(chunkSubmission, "emitChunkGeometry(chunkKey, meshData, build)", "chunk submission invokes geometry once");
-    requireContains(chunkSubmission, "rebuildChunkMeshFromData.finalizeSurfaces", "chunk submission owns finalization");
-    requireContains(chunkSubmission, "CreateMesh.chunk", "chunk submission owns Remix mesh creation");
-    requireContains(chunkSubmission, "rebuildChunkMeshFromData.reconcileTorchLights", "chunk submission owns light reconciliation order");
-    requireContains(chunkSubmission, "destroyChunkMeshHandle(meshData)", "chunk submission owns mesh commit");
-    requireNotContains(chunkSubmission, "remix_block_geometry_effects.hpp", "family dispatch dependencies excluded from submission");
-    requireContains(chunkResidency, "RemixRenderer::unloadChunkSection", "chunk residency owns unload");
-    requireContains(chunkResidency, "rebuildChunkMeshFromData(neighborKey", "chunk residency keeps rebuild-from-data entrypoint");
-    requireContains(chunkResidency, "RemixRenderer::flushChunkNeighborRefreshes", "chunk residency owns refresh budgets");
+    String terrainPipeline = read("src/native/src/chunks/terrain_pipeline.cpp");
+    requireContains(terrainPipeline, "data->cells[index] == cell", "canonical inputs compared before meshing");
+    requireNotContains(terrainPipeline, "remix_.", "workers cannot call Remix");
+    requireNotContains(chunkGeometry, "remix_renderer.hpp", "emitter cannot read renderer state");
+    requireNotContains(chunkGeometry, "chunkMeshes_", "emitter cannot read mutable renderer meshes");
+    requireContains(chunkSubmission, "terrain_.finish", "publication validates current inputs");
+    requireContains(chunkSubmission, "CreateMesh.terrain", "publication owns mesh creation");
+    requireNotContains(chunkSubmission, "emitTerrainGeometry", "publication consumes completed CPU work");
     requireContains(runtimeConfig, "loadRuntimeConfigValues", "runtime source owns config loading");
     requireContains(runtimeConfig, "readEnvironmentVariable", "runtime source owns environment access");
     requireContains(runtimeConfig, "getCurrentModuleDirectory", "runtime source owns module discovery");

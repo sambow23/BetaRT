@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <vector>
+#include <memory>
 
 #include <remix/remix_c.h>
 
@@ -24,41 +25,25 @@ struct CloudLayerState {
   float colorB {1.0f};
 };
 
-struct ChunkBuildState {
-  int origin[3] {0, 0, 0};
-  int size[3] {0, 0, 0};
-  int dirtyMin[3] {0, 0, 0};
-  int dirtyMax[3] {0, 0, 0};
-  int renderPass {0};
-  std::uint64_t blockCount {0};
-  std::array<std::uint32_t, 256> blockIdCounts {};
-};
-
 struct ChunkBlockCell {
   std::array<std::int16_t, 6> terrainTiles {};
   std::uint8_t materialClass {0};
   std::uint8_t blockId {0};
   std::uint8_t blockMetadata {0};
   std::uint8_t renderType {0};
+  std::uint8_t renderPass {0};
   std::array<float, 6> bounds {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
   std::uint8_t liquidVisibilityMask {0x3F};
   std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
   float liquidFlowAngle {-1000.0f};
   std::uint32_t blockColor {0x00FFFFFFu};
+  bool operator==(const ChunkBlockCell&) const = default;
 };
 
-struct CapturedBlockInstance {
-  int position[3] {0, 0, 0};
-  int blockId {0};
-  int blockMetadata {0};
-  int renderType {0};
-  std::array<std::int16_t, 6> terrainTiles {};
-  std::uint8_t materialClass {0};
-  std::array<float, 6> bounds {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};
-  std::uint8_t liquidVisibilityMask {0x3F};
-  std::array<float, 4> liquidHeights {1.0f, 1.0f, 1.0f, 1.0f};
-  float liquidFlowAngle {-1000.0f};
-  std::uint32_t blockColor {0x00FFFFFFu};
+struct TerrainSectionData {
+  std::array<std::uint8_t, 4096> occupancy {};
+  std::array<ChunkBlockCell, 4096> cells {};
+  std::vector<std::uint16_t> fireCellIndices;
 };
 
 struct ChunkKey {
@@ -77,22 +62,6 @@ struct ChunkKey {
 
 struct ChunkKeyHash {
   std::size_t operator()(const ChunkKey& key) const noexcept;
-};
-
-struct UndergroundPocket {
-  ChunkKey section {};
-  std::uint64_t revision {0};
-  std::int16_t label {-1};
-  bool operator==(const UndergroundPocket&) const = default;
-  bool operator<(const UndergroundPocket& other) const;
-};
-
-struct UndergroundMeshGroup {
-  bool hidden {false};
-  remixapi_MeshHandle handle {nullptr};
-  std::uint64_t hash {0};
-  std::size_t triangleCount {0};
-  std::vector<UndergroundPocket> pockets;
 };
 
 struct WorldBlockPosition {
@@ -176,22 +145,12 @@ struct ChunkMeshData {
   std::uint64_t geometryFingerprint {0};
   std::uint64_t meshFingerprint {0};
   std::size_t blockCount {0};
-  std::array<std::uint8_t, 4096> occupancy {};
-  std::array<ChunkBlockCell, 4096> cells {};
-  std::vector<std::uint16_t> fireCellIndices {};
+  std::size_t triangleCount {0};
+  std::shared_ptr<const TerrainSectionData> section;
+  std::uint64_t lifetime {0};
   std::vector<TorchLightPlacement> torchLights {};
   std::vector<PortalLightPlacement> portalLights {};
   std::vector<GlowstoneLightPlacement> glowstoneLights {};
-  bool hasOccupancy {false};
-  bool hidden {false};
-  std::array<bool, 6> faceCovered {};
-  std::uint64_t visibilityGeometryFingerprint {0};
-  std::uint64_t undergroundCaptureRevision {0};
-  std::uint64_t visibilityTopologyFingerprint {0};
-  std::uint64_t visibilityCheckedTopology {~std::uint64_t {0}};
-  std::uint64_t visibilityCheckedFrame {~std::uint64_t {0}};
-  bool visibilityCurrent {false};
-  std::vector<UndergroundMeshGroup> visibilityGroups;
 };
 
 } // namespace mcrtx

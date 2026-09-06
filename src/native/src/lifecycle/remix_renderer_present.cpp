@@ -24,6 +24,7 @@ using namespace mcrtx::renderer_detail;
 namespace {
 
 constexpr std::uint64_t kPerfLogIntervalFrames = 60;
+constexpr auto kGameFrameWait = std::chrono::milliseconds(16);
 std::string formatMilliseconds(std::uint64_t nanoseconds) {
   std::ostringstream stream;
   stream << std::fixed << std::setprecision(2)
@@ -82,13 +83,19 @@ bool RemixRenderer::present() {
     }
     publishedCamera_ = camera_;
     publishedCameraValid_ = true;
+    const auto previousRevision = publishedGameFrameRevision_;
+    publishedGameFrameState_ = gameFrameState_;
+    ++publishedGameFrameRevision_;
     publishedCloudLayer_ = cloudLayer_;
-    publishedUndergroundFrame_ = undergroundFrame_;
     publishDynamicEntityFrameInstancesLocked();
     publishParticleFrameLocked();
     publishLightFrameLocked();
     standaloneWorkerPresentRequested_ = true;
     standaloneWorkerEvent_.notify_all();
+    // Allow capture to overlap one native frame without running far ahead of stalled output.
+    standaloneWorkerEvent_.wait_for(lock, kGameFrameWait, [this, previousRevision]() {
+      return submittedGameFrameRevision_ >= previousRevision || standaloneWorkerStopRequested_ || !initialized_;
+    });
     return true;
   }
 
@@ -158,11 +165,21 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
     pumpOutputWindowMessages();
   }
   const auto outputWindowEnd = std::chrono::steady_clock::now();
+#if defined(_WIN32)
+  outputSuspended_ = outputHwnd_ != nullptr && IsIconic(outputHwnd_);
+#else
+  outputSuspended_ = nativeWindowState_.minimized || nativeWindowState_.closeRequested
+      || nativeWindowState_.drawableWidth == 0 || nativeWindowState_.drawableHeight == 0;
+#endif
+  if (outputSuspended_) {
+    return true;
+  }
+
 
   FrameRenderSnapshot snapshot;
   bool logNoCapturedScene = false;
   {
-    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.prepareSnapshot");
+    MCRTX_PERF_CPU_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.prepareSnapshot");
     MCRTX_TRACY_SCOPE("presentLocked.prepareSnapshot");
     if (!prepareFrameSnapshotLocked(snapshot, logNoCapturedScene)) {
       return false;
@@ -171,16 +188,11 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
 
   publishWorldRenderOriginLocked(snapshot.renderOrigin);
 
-  if (!chunkBuildActive_) {
-    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.evictDistantChunks");
-    MCRTX_TRACY_SCOPE("presentLocked.evictDistantChunks");
-    const int cameraChunkX = static_cast<int>(camera_.position[0]) / kChunkDimension;
-    const int cameraChunkZ = static_cast<int>(camera_.position[2]) / kChunkDimension;
-    evictDistantChunks(cameraChunkX, cameraChunkZ, evictRadiusChunks_);
-  }
+
 
   std::uint64_t lockHoldNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockAcquiredAt);
   lock.unlock();
+  standaloneWorkerEvent_.notify_all();
 
   const auto cameraSubmitStart = std::chrono::steady_clock::now();
   if (!submitCamera(snapshot.camera)) {
@@ -192,7 +204,11 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
   const auto cameraSubmitEnd = std::chrono::steady_clock::now();
 
   const auto geometrySubmitStart = std::chrono::steady_clock::now();
-  if (!drawCapturedGeometry(snapshot)) {
+  const bool geometryOk = [&]() {
+    MCRTX_PERF_CPU_SCOPE(::mcrtx::perf::Side::Native, "presentLocked.geometry");
+    return drawCapturedGeometry(snapshot);
+  }();
+  if (!geometryOk) {
     lock.lock();
     renderSubmissionInFlight_ = false;
     flushDeferredDestroyQueuesLocked();
@@ -204,7 +220,7 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
 
   const auto remixPresentStart = std::chrono::steady_clock::now();
   const remixapi_ErrorCode result = [&]() {
-    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "Present");
+    MCRTX_PERF_CPU_SCOPE(::mcrtx::perf::Side::Remix, "Present");
     MCRTX_TRACY_SCOPE("Present");
     return remix_.Present(nullptr);
   }();
@@ -236,6 +252,7 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
     renderSubmissionInFlight_ = false;
     flushDeferredDestroyQueuesLocked();
     if (hasUiState) {
+      remixUiState_ = uiState;
       syncOutputWindowInteractivity(uiState);
     }
 
@@ -278,15 +295,6 @@ bool RemixRenderer::presentLocked(TracyUniqueLock& lock,
       && loggedPopulatedSubmissionSummaryCount_ < 8;
   const bool shouldLogSubmissionSummary = presentedFrames_ < 8
       || shouldLogPopulatedSubmissionSummary;
-  if (activeUndergroundFrame_.enabled && presentedFrames_ % 120 == 0) {
-    std::ostringstream stream;
-    stream << "Underground submissions: groups=" << snapshot.chunkMeshes.size()
-           << " hiddenGroups=" << undergroundHiddenGroups_ << " hiddenTriangles=" << undergroundHiddenTriangles_
-           << " hiddenEntities=" << undergroundHiddenEntities_ << " hiddenParticles=" << undergroundHiddenParticles_
-           << " hiddenLights=" << undergroundHiddenLights_ << " lights=" << snapshot.torchLights.size();
-    stream << " pendingGroups=" << undergroundPendingGroups_;
-    log(stream.str());
-  }
   if (submissionCountsChanged && shouldLogSubmissionSummary) {
     std::ostringstream stream;
     stream << "Submitted " << snapshot.chunkMeshes.size()

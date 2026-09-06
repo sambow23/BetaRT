@@ -3,7 +3,8 @@ final class RemixChunkSectionKey {
     }
 
     static long encode(int originX, int originY, int originZ) {
-        return RemixCaveCulling.getChunkKey(originX, originY, originZ);
+        return (((originX >> 4) & 0x3FFFFFFL) << 37)
+                | (((originZ >> 4) & 0x3FFFFFFL) << 11) | ((originY >> 4) & 0x7FFL);
     }
 
     static int originX(long key) {

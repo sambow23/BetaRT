@@ -1,132 +1,249 @@
-// Chunk surface finalization, Remix mesh creation, and commit.
-
 #include "mcrtx/core/remix_renderer.hpp"
-#include "mcrtx/chunks/remix_chunk_build.hpp"
 #include "mcrtx/chunks/remix_chunk_policy.hpp"
-#include "mcrtx/core/remix_geometry_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 
-#include <cstdint>
-#include <vector>
+#include <algorithm>
+#include <chrono>
+#include <sstream>
+#include <unordered_set>
 
 namespace mcrtx {
+namespace {
+using Positions = std::unordered_set<WorldBlockPosition, WorldBlockPositionHash>;
 
-using namespace mcrtx::chunk;
-using namespace mcrtx::detail;
-using namespace mcrtx::geometry;
-bool RemixRenderer::rebuildChunkMeshFromData(
-    const ChunkKey& chunkKey,
-    ChunkMeshData& meshData,
-    bool forceRebuild) {
-  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "RemixRenderer::rebuildChunkMeshFromData");
-  MCRTX_TRACY_SCOPE("RemixRenderer::rebuildChunkMeshFromData");
-  (void)forceRebuild;
-  MCRTX_TRACY_VALUE(meshData.blockCount);
+template<typename Map>
+Map captureEntries(const Map& source, const Positions& positions) {
+  Map result;
+  for (const auto& position : positions) {
+    const auto it = source.find(position);
+    if (it != source.end()) {
+      result.insert(*it);
+    }
+  }
+  return result;
+}
 
-  if (!meshData.hasOccupancy || meshData.blockCount == 0) {
-    destroyChunkMesh(meshData);
+template<typename Map>
+void restoreEntries(Map& target, Map& backup, const Positions& positions) {
+  for (const auto& position : positions) {
+    target.erase(position);
+  }
+  target.merge(backup);
+}
+
+void addHandles(std::unordered_set<remixapi_LightHandle>& handles, const TorchLightState& state) {
+  handles.insert(state.handle);
+}
+void addHandles(std::unordered_set<remixapi_LightHandle>& handles, const PortalLightState& state) {
+  handles.insert(state.handleFront);
+  handles.insert(state.handleBack);
+}
+void addHandles(std::unordered_set<remixapi_LightHandle>& handles, const GlowstoneLightState& state) {
+  handles.insert(state.handles.begin(), state.handles.end());
+}
+}
+
+bool RemixRenderer::createTerrainMesh(const ChunkKey& key, const ChunkGeometryBuild& build,
+                                     const ChunkMeshData& previous, ChunkMeshData& next) {
+  next.meshFingerprint = build.fingerprint;
+  for (const auto& surface : build.surfacesToBuild) {
+    next.triangleCount += surface.indices.size() / 3;
+  }
+  if (previous.meshFingerprint == build.fingerprint) {
+    next.meshHandle = previous.meshHandle;
+    next.meshHash = previous.meshHash;
     return true;
   }
-
-  ChunkGeometryBuild build;
-  emitChunkGeometry(chunkKey, meshData, build);
-  auto& surfacesToBuild = build.surfacesToBuild;
-  auto& desiredTorchLights = build.desiredTorchLights;
-  auto& desiredPortalLights = build.desiredPortalLights;
-  auto& desiredGlowstoneLights = build.desiredGlowstoneLights;
-  MCRTX_TRACY_VALUE(desiredTorchLights.size());
-  MCRTX_TRACY_VALUE(desiredPortalLights.size());
-  MCRTX_TRACY_VALUE(desiredGlowstoneLights.size());
-
   std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
-  {
-    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.finalizeSurfaces");
-    surfaces.reserve(surfacesToBuild.size());
-    for (const SurfaceBuildBuffers& surfaceBuild : surfacesToBuild) {
-      if (surfaceBuild.indices.empty()) {
-        continue;
-      }
-
-      remixapi_MeshInfoSurfaceTriangles surface {};
-      surface.vertices_values = surfaceBuild.vertices.data();
-      surface.vertices_count = surfaceBuild.vertices.size();
-      surface.indices_values = surfaceBuild.indices.data();
-      surface.indices_count = surfaceBuild.indices.size();
-      surface.skinning_hasvalue = FALSE;
-      surface.material = surfaceBuild.materialHandle;
-      surfaces.push_back(surface);
+  for (const auto& source : build.surfacesToBuild) {
+    if (source.indices.empty()) {
+      continue;
     }
+    remixapi_MeshInfoSurfaceTriangles surface {};
+    surface.vertices_values = source.vertices.data();
+    surface.vertices_count = source.vertices.size();
+    surface.indices_values = source.indices.data();
+    surface.indices_count = source.indices.size();
+    surface.material = terrainMaterialHandles_[source.materialClass];
+    if (surface.material == nullptr) {
+      return false;
+    }
+    surfaces.push_back(surface);
   }
-  MCRTX_TRACY_VALUE(surfaces.size());
-
   if (surfaces.empty()) {
-    destroyChunkMesh(meshData);
-    meshData.meshFingerprint = 0;
-    meshData.faceCovered = {};
     return true;
   }
-
-  const std::uint64_t meshFingerprint = computeChunkMeshFingerprint(surfacesToBuild);
-  if (meshData.meshHandle != nullptr && meshData.meshFingerprint == meshFingerprint) {
-    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.reuseExistingMesh");
-    if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
-      return false;
-    }
-    if (!reconcileChunkPortalLights(meshData, desiredPortalLights)) {
-      return false;
-    }
-    if (!reconcileChunkGlowstoneLights(meshData, desiredGlowstoneLights)) {
-      return false;
-    }
-    // Face coverage is already up to date from the previous build.
-    return true;
-  }
-
-  remixapi_MeshInfo meshInfo {};
-  meshInfo.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
-  meshInfo.hash = makeChunkMeshHash(chunkKey, meshFingerprint);
-  meshInfo.surfaces_values = surfaces.data();
-  meshInfo.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
-
-  remixapi_MeshHandle newMeshHandle = nullptr;
-  const remixapi_ErrorCode result = [&]() {
-    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.createMesh");
-    MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.chunk");
-    return remix_.CreateMesh(&meshInfo, &newMeshHandle);
-  }();
-  if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
-    setError("CreateMesh failed: " + errorCodeToString(result));
+  remixapi_MeshInfo info {};
+  info.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+  info.hash = chunk::makeChunkMeshHash(key, build.fingerprint);
+  info.surfaces_values = surfaces.data();
+  info.surfaces_count = static_cast<std::uint32_t>(surfaces.size());
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "CreateMesh.terrain");
+  if (remix_.CreateMesh(&info, &next.meshHandle) != REMIXAPI_ERROR_CODE_SUCCESS || next.meshHandle == nullptr) {
     return false;
   }
-
-  {
-    MCRTX_TRACY_SCOPE("rebuildChunkMeshFromData.reconcileTorchLights");
-    if (!reconcileChunkTorchLights(meshData, desiredTorchLights)) {
-      destroyMeshHandle(newMeshHandle);
-      return false;
-    }
-    if (!reconcileChunkPortalLights(meshData, desiredPortalLights)) {
-      destroyMeshHandle(newMeshHandle);
-      return false;
-    }
-    if (!reconcileChunkGlowstoneLights(meshData, desiredGlowstoneLights)) {
-      destroyMeshHandle(newMeshHandle);
-      return false;
-    }
-  }
-
-  destroyChunkMeshHandle(meshData);
-  meshData.meshHandle = newMeshHandle;
-  meshData.meshHash = meshInfo.hash;
-  meshData.meshFingerprint = meshFingerprint;
-  if (chunkKey.renderPass == 0) {
-    computeFaceCoverage(meshData);
-  }
+  // Remix handles are hashes; retrying can reuse a failed transaction's handle.
+  deferredMeshDestroys_.erase(std::remove(deferredMeshDestroys_.begin(), deferredMeshDestroys_.end(), next.meshHandle),
+                             deferredMeshDestroys_.end());
+  ++terrainMeshCreates_;
+  next.meshHash = info.hash;
   return true;
 }
 
-}  // namespace mcrtx
+bool RemixRenderer::publishTerrainSection(const TerrainResult& result) {
+  std::array<ChunkMeshData, 2> next;
+  std::array<ChunkMeshData*, 2> previous;
+  auto key = result.inputs.key;
+  for (int pass = 0; pass < 2; ++pass) {
+    key.renderPass = pass;
+    previous[pass] = &chunkMeshes_[key];
+    next[pass].section = result.inputs.sections[13];
+    next[pass].lifetime = result.inputs.lifetime;
+    next[pass].blockCount = result.blockCounts[pass];
+    next[pass].torchLights = previous[pass]->torchLights;
+    next[pass].portalLights = previous[pass]->portalLights;
+    next[pass].glowstoneLights = previous[pass]->glowstoneLights;
+  }
+  const auto discardMeshes = [&] {
+    for (int pass = 0; pass < 2; ++pass) {
+      if (next[pass].meshHandle != previous[pass]->meshHandle) {
+        destroyMeshHandle(next[pass].meshHandle);
+      }
+    }
+  };
+  for (int pass = 0; pass < 2; ++pass) {
+    key.renderPass = pass;
+    if (!createTerrainMesh(key, result.passes[pass], *previous[pass], next[pass])) {
+      discardMeshes();
+      return false;
+    }
+  }
 
+  Positions positions;
+  const auto addPositions = [&](const auto& placements) {
+    for (const auto& placement : placements) {
+      positions.insert(placement.blockPosition);
+    }
+  };
+  for (int pass = 0; pass < 2; ++pass) {
+    addPositions(previous[pass]->torchLights);
+    addPositions(previous[pass]->portalLights);
+    addPositions(previous[pass]->glowstoneLights);
+    addPositions(result.passes[pass].desiredTorchLights);
+    addPositions(result.passes[pass].desiredPortalLights);
+    addPositions(result.passes[pass].desiredGlowstoneLights);
+  }
+  auto torchBackup = captureEntries(torchLights_, positions);
+  auto portalBackup = captureEntries(portalLights_, positions);
+  auto glowstoneBackup = captureEntries(glowstoneLights_, positions);
+  auto torchPlacementBackup = captureEntries(torchLightPlacements_, positions);
+  auto portalPlacementBackup = captureEntries(portalLightPlacements_, positions);
+  auto glowstonePlacementBackup = captureEntries(glowstoneLightPlacements_, positions);
+  std::unordered_set<remixapi_LightHandle> oldHandles;
+  for (const auto& [position, state] : torchBackup) { addHandles(oldHandles, state); }
+  for (const auto& [position, state] : portalBackup) { addHandles(oldHandles, state); }
+  for (const auto& [position, state] : glowstoneBackup) { addHandles(oldHandles, state); }
+  std::vector<remixapi_LightHandle> retired;
+  terrainRetiredLights_ = &retired;
+  bool ready = true;
+  for (int pass = 0; pass < 2 && ready; ++pass) {
+    ready = reconcileChunkTorchLights(next[pass], result.passes[pass].desiredTorchLights)
+         && reconcileChunkPortalLights(next[pass], result.passes[pass].desiredPortalLights)
+         && reconcileChunkGlowstoneLights(next[pass], result.passes[pass].desiredGlowstoneLights);
+  }
+  terrainRetiredLights_ = nullptr;
+  bool committed = false;
+  if (ready) {
+    // The pipeline lock spans validation and both swaps, never Remix allocation.
+    committed = terrain_.finish(result, [&] {
+      for (int pass = 0; pass < 2; ++pass) {
+        std::swap(*previous[pass], next[pass]);
+      }
+    });
+  }
+  if (committed) {
+    discardMeshes();
+    for (auto handle : retired) {
+      destroyLightHandle(handle);
+    }
+    terrainSubmissionsDirty_ = true;
+    ++terrainPublications_;
+  } else {
+    std::unordered_set<remixapi_LightHandle> discard(retired.begin(), retired.end());
+    const auto collect = [&](const auto& map) {
+      for (const auto& position : positions) {
+        const auto it = map.find(position);
+        if (it != map.end()) { addHandles(discard, it->second); }
+      }
+    };
+    collect(torchLights_);
+    collect(portalLights_);
+    collect(glowstoneLights_);
+    restoreEntries(torchLights_, torchBackup, positions);
+    restoreEntries(portalLights_, portalBackup, positions);
+    restoreEntries(glowstoneLights_, glowstoneBackup, positions);
+    restoreEntries(torchLightPlacements_, torchPlacementBackup, positions);
+    restoreEntries(portalLightPlacements_, portalPlacementBackup, positions);
+    restoreEntries(glowstoneLightPlacements_, glowstonePlacementBackup, positions);
+    for (auto handle : discard) {
+      if (!oldHandles.count(handle)) {
+        destroyLightHandle(handle);
+      }
+    }
+    discardMeshes();
+  }
+  // Obsolete work was consumed by finish; only allocation failure needs a retry.
+  return ready;
+}
 
-
+void RemixRenderer::publishTerrain() {
+  MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "terrain.publish");
+  using Clock = std::chrono::steady_clock;
+  for (auto key : terrain_.takeResidencyChanges()) {
+    const auto lifetime = terrain_.lifetime(key);
+    for (int pass = 0; pass < 2; ++pass) {
+      key.renderPass = pass;
+      const auto it = chunkMeshes_.find(key);
+      if (it != chunkMeshes_.end() && it->second.lifetime != lifetime) {
+        destroyChunkMesh(it->second);
+        chunkMeshes_.erase(it);
+      }
+    }
+  }
+  terrain_.pump({camera_.position[0], camera_.position[1], camera_.position[2]});
+  const auto start = Clock::now();
+  std::size_t sections = 0, bytes = 0;
+  while (sections < 4 && bytes < 8 * 1024 * 1024 && Clock::now() - start < std::chrono::milliseconds(1)) {
+    auto result = terrain_.takeCompleted();
+    if (!result) {
+      break;
+    }
+    bytes += result->bytes;
+    ++sections;
+    if (!publishTerrainSection(*result)) {
+      terrain_.retry(std::move(result));
+      break;
+    }
+  }
+  const auto duration = Clock::now() - start;
+  terrainPublicationNanos_ += std::chrono::duration_cast<std::chrono::nanoseconds>(duration).count();
+  if (duration > std::chrono::milliseconds(1) || bytes > 8 * 1024 * 1024) {
+    ++terrainPublicationOverruns_;
+  }
+  if (presentedFrames_ % 120 == 0) {
+    const auto stats = terrain_.statistics();
+    std::ostringstream stream;
+    stream << "Terrain: resident=" << stats.resident << " published=" << stats.published << " pending=" << stats.pending
+           << " dispatched=" << stats.dispatched << " completed=" << stats.completed
+           << " completedBytes=" << stats.completedBytes << " canonicalBytes=" << stats.canonicalBytes
+           << " oldestNs=" << stats.oldestNanos << " captures=" << stats.captures << " unchanged=" << stats.unchanged
+           << " builds=" << stats.builds << " stale=" << stats.stale << " failures=" << stats.failures
+           << " workerNs=" << stats.workerNanos << " lockNs=" << stats.lockNanos
+           << " publications=" << terrainPublications_ << " publishNs=" << terrainPublicationNanos_
+           << " overruns=" << terrainPublicationOverruns_ << " meshCreates=" << terrainMeshCreates_
+           << " triangles=" << terrainTriangles_;
+    log(stream.str());
+  }
+}
+} // namespace mcrtx

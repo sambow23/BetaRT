@@ -4,31 +4,11 @@
 #include "mcrtx/core/remix_render_common.hpp"
 
 #include <algorithm>
-#include <bit>
 
 namespace mcrtx::chunk {
 
 using namespace mcrtx::detail;
 using namespace mcrtx::geometry;
-
-std::uint32_t countUniqueBlockIds(const ChunkBuildState& chunkBuild) {
-  std::uint32_t unique = 0;
-  for (const std::uint32_t count : chunkBuild.blockIdCounts) {
-    if (count != 0) {
-      ++unique;
-    }
-  }
-  return unique;
-}
-
-ChunkKey makeChunkKey(const ChunkBuildState& chunkBuild) {
-  return ChunkKey {
-      .originX = chunkBuild.origin[0],
-      .originY = chunkBuild.origin[1],
-      .originZ = chunkBuild.origin[2],
-      .renderPass = chunkBuild.renderPass,
-  };
-}
 
 bool isWaterBlock(int blockId) {
   return blockId == kWaterStillBlockId || blockId == kWaterFlowingBlockId;
@@ -287,80 +267,6 @@ std::uint64_t makeChunkMeshHash(const ChunkKey& key, std::uint64_t sequence) {
   hash = mixHashComponent(hash, static_cast<std::uint32_t>(sequence));
   hash = mixHashComponent(hash, static_cast<std::uint32_t>(sequence >> 32));
   return hash;
-}
-
-std::uint64_t computeChunkMeshFingerprint(const std::vector<SurfaceBuildBuffers>& surfaces) {
-  std::uint64_t fingerprint = 0x4D435254584D4553ull;
-  fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surfaces.size()));
-
-  for (const SurfaceBuildBuffers& surface : surfaces) {
-    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(surface.materialHandle);
-    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey));
-    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey >> 32));
-    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surface.vertices.size()));
-    fingerprint = mixHashComponent(fingerprint, static_cast<std::uint32_t>(surface.indices.size()));
-
-    for (const remixapi_HardcodedVertex& vertex : surface.vertices) {
-      for (float position : vertex.position) {
-        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(position));
-      }
-      for (float normal : vertex.normal) {
-        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(normal));
-      }
-      for (float texcoord : vertex.texcoord) {
-        fingerprint = mixHashComponent(fingerprint, std::bit_cast<std::uint32_t>(texcoord));
-      }
-      fingerprint = mixHashComponent(fingerprint, vertex.color);
-    }
-
-    for (std::uint32_t index : surface.indices) {
-      fingerprint = mixHashComponent(fingerprint, index);
-    }
-  }
-
-  return fingerprint;
-}
-
-std::uint64_t computeChunkFingerprint(
-    const std::array<std::uint8_t, kBlocksPerChunk>& occupancy,
-    const std::array<ChunkBlockCell, kBlocksPerChunk>& cells) {
-  std::uint64_t fingerprint = 1469598103934665603ull;
-  for (std::size_t index = 0; index < occupancy.size(); ++index) {
-    const std::uint8_t occupied = occupancy[index];
-    fingerprint ^= static_cast<std::uint64_t>(occupied);
-    fingerprint *= 1099511628211ull;
-    if (occupied == 0) {
-      continue;
-    }
-
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].materialClass);
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockId);
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockMetadata);
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].renderType);
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].liquidVisibilityMask);
-    fingerprint *= 1099511628211ull;
-    for (const float liquidHeight : cells[index].liquidHeights) {
-      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(liquidHeight));
-      fingerprint *= 1099511628211ull;
-    }
-    fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(cells[index].liquidFlowAngle));
-    fingerprint *= 1099511628211ull;
-    fingerprint ^= static_cast<std::uint64_t>(cells[index].blockColor);
-    fingerprint *= 1099511628211ull;
-    for (const std::int16_t tileIndex : cells[index].terrainTiles) {
-      fingerprint ^= static_cast<std::uint64_t>(static_cast<std::uint16_t>(tileIndex));
-      fingerprint *= 1099511628211ull;
-    }
-    for (const float boundValue : cells[index].bounds) {
-      fingerprint ^= static_cast<std::uint64_t>(std::bit_cast<std::uint32_t>(boundValue));
-      fingerprint *= 1099511628211ull;
-    }
-  }
-  return fingerprint;
 }
 
 int normalizeTerrainTileIndex(std::int16_t terrainTileIndex) {

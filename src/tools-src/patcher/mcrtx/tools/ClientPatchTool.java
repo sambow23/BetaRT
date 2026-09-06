@@ -210,6 +210,16 @@ public final class ClientPatchTool {
             } else if (method.name.equals("a") && method.desc.equals("(I)I")) {
                 patchDkChunkDisplayListLookup(method);
                 patchedChunkDisplayListLookup = true;
+            } else if (method.name.equals("a") && method.desc.equals("(III)V")) {
+                for (AbstractInsnNode node : method.instructions.toArray()) {
+                    if (node.getOpcode() == Opcodes.RETURN) {
+                        InsnList hook = new InsnList();
+                        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                        hook.add(new MethodInsnNode(Opcodes.INVOKESTATIC, hookOwner("onChunkSectionPosition"),
+                                "onChunkSectionPosition", "(Ldk;)V", false));
+                        method.instructions.insertBefore(node, hook);
+                    }
+                }
             } else if (method.name.equals("c") && method.desc.equals("()V")) {
                 patchDkChunkUnload(method);
                 patchedChunkUnload = true;
@@ -247,23 +257,10 @@ public final class ClientPatchTool {
     }
 
     private static void patchDkChunkUnload(MethodNode method) {
-        if (hasHelperCall(method, "onChunkSectionUnload", "(III)V")) {
-            return;
-        }
-
         InsnList hook = new InsnList();
         hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "c", "I")); // originX
-        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "d", "I")); // originY
-        hook.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        hook.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "e", "I")); // originZ
-        hook.add(new MethodInsnNode(
-            Opcodes.INVOKESTATIC,
-            hookOwner("onChunkSectionUnload"),
-            "onChunkSectionUnload",
-            "(III)V",
-            false));
+        hook.add(new MethodInsnNode(Opcodes.INVOKESTATIC, hookOwner("onChunkSectionUnload"),
+                "onChunkSectionUnload", "(Ldk;)V", false));
         method.instructions.insertBefore(method.instructions.getFirst(), hook);
     }
 
@@ -841,56 +838,17 @@ public final class ClientPatchTool {
     }
 
     private static void patchDkChunkBuild(MethodNode method) {
-        if (hasHelperCall(method, "onChunkBuildBegin", "(IIIIIII)Z")) {
-            return;
-        }
-
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (node instanceof FieldInsnNode fieldNode
-                    && fieldNode.getOpcode() == Opcodes.GETFIELD
-                    && fieldNode.owner.equals(CHUNK_RENDERER_CLASS)
-                    && fieldNode.name.equals("u")
-                    && fieldNode.desc.equals("Z")) {
+        for (AbstractInsnNode node : method.instructions.toArray()) {
+            if (node instanceof FieldInsnNode field && field.getOpcode() == Opcodes.GETFIELD
+                    && field.owner.equals(CHUNK_RENDERER_CLASS) && field.name.equals("u")) {
                 AbstractInsnNode next = node.getNext();
-                if (next instanceof JumpInsnNode jumpNode && jumpNode.getOpcode() == Opcodes.IFNE) {
-                    method.instructions.insert(jumpNode.label, onChunkUpdateStartCall());
-                    break;
+                if (next instanceof JumpInsnNode jump && jump.getOpcode() == Opcodes.IFNE) {
+                    method.instructions.insert(jump.label, onChunkUpdateStartCall());
+                    return;
                 }
             }
         }
-
-        final int chunkBuildEnabledLocal = 21;
-
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isStore(node, 14)) {
-                method.instructions.insert(node, beginChunkBuildCall(chunkBuildEnabledLocal));
-                break;
-            }
-        }
-
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (node instanceof MethodInsnNode methodInsnNode
-                    && methodInsnNode.getOpcode() == Opcodes.INVOKEVIRTUAL
-                    && methodInsnNode.owner.equals("cv")
-                    && methodInsnNode.name.equals("b")
-                    && methodInsnNode.desc.equals("(Luu;III)Z")) {
-                AbstractInsnNode insertionPoint = node;
-                while (insertionPoint.getPrevious() != null && !(insertionPoint.getPrevious() instanceof VarInsnNode varInsnNode
-                        && varInsnNode.getOpcode() == Opcodes.ILOAD
-                        && varInsnNode.var == 13)) {
-                    insertionPoint = insertionPoint.getPrevious();
-                }
-                method.instructions.insertBefore(insertionPoint, captureChunkBlockCall(chunkBuildEnabledLocal));
-                break;
-            }
-        }
-
-        for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
-            if (isLoad(node, 12)) {
-                method.instructions.insertBefore(node, endChunkBuildCall(chunkBuildEnabledLocal));
-                break;
-            }
-        }
+        throw new IllegalStateException("Missing dk build dirty guard");
     }
 
     private static void patchCloudRender(MethodNode method) {
@@ -991,6 +949,23 @@ public final class ClientPatchTool {
     }
 
     private static void patchGuiIngameOverlay(MethodNode method) {
+        if (!hasMethodCall(method, "McrtxFrameRate", "drawDebug", "(Lnet/minecraft/client/Minecraft;)Ljava/lang/String;")) {
+            for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
+                if (node instanceof FieldInsnNode field
+                        && field.getOpcode() == Opcodes.GETFIELD
+                        && field.owner.equals(MINECRAFT_CLASS)
+                        && field.name.equals("K") && field.desc.equals("Ljava/lang/String;")) {
+                    AbstractInsnNode next = node.getNext();
+                    method.instructions.set(node, new MethodInsnNode(Opcodes.INVOKESTATIC,
+                            "McrtxFrameRate", "drawDebug", "(Lnet/minecraft/client/Minecraft;)Ljava/lang/String;", false));
+                    if (isStaticCall(next, "McrtxFrameRate", "formatDebug", "(Ljava/lang/String;)Ljava/lang/String;")) {
+                        method.instructions.remove(next);
+                    }
+                    break;
+                }
+            }
+        }
+
         for (AbstractInsnNode node = method.instructions.getFirst(); node != null; node = node.getNext()) {
             if (node instanceof MethodInsnNode methodInsnNode
                     && methodInsnNode.getOpcode() == Opcodes.INVOKESTATIC
@@ -1436,11 +1411,9 @@ public final class ClientPatchTool {
             case "onWeatherTextureBind":
             case "onWeatherRenderEnd":
                 return PARTICLE_HOOKS_CLASS;
+            case "onChunkSectionPosition":
             case "onChunkSectionUnload":
             case "onChunkUpdateStart":
-            case "onChunkBuildBegin":
-            case "onChunkBlock":
-            case "onChunkBuildEnd":
                 return CHUNK_HOOKS_CLASS;
             default:
                 throw new IllegalArgumentException("Unknown hook method: " + name);
@@ -1930,76 +1903,6 @@ public final class ClientPatchTool {
                 "onCloudRender",
                 "(Lnet/minecraft/client/Minecraft;Lfd;IFZ)V",
                 false));
-        return instructions;
-    }
-
-    private static InsnList beginChunkBuildCall(int resultLocalIndex) {
-        InsnList instructions = new InsnList();
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "c", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "d", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "e", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "f", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "g", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
-        instructions.add(new FieldInsnNode(Opcodes.GETFIELD, CHUNK_RENDERER_CLASS, "h", "I"));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 11));
-        instructions.add(new MethodInsnNode(
-                Opcodes.INVOKESTATIC,
-                hookOwner("onChunkBuildBegin"),
-                "onChunkBuildBegin",
-                "(IIIIIII)Z",
-                false));
-        instructions.add(new VarInsnNode(Opcodes.ISTORE, resultLocalIndex));
-        return instructions;
-    }
-
-    private static InsnList captureChunkBlockCall(int chunkBuildEnabledLocal) {
-        LabelNode skip = new LabelNode();
-        InsnList instructions = new InsnList();
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, chunkBuildEnabledLocal));
-        instructions.add(new JumpInsnNode(Opcodes.IFEQ, skip));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 9));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 17));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 15));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 16));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 18));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 9));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 17));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 15));
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 16));
-        instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "ew", "e", "(III)I", false));
-        instructions.add(new VarInsnNode(Opcodes.ALOAD, 19));
-        instructions.add(new MethodInsnNode(Opcodes.INVOKEVIRTUAL, "uu", "b", "()I", false));
-        instructions.add(new MethodInsnNode(
-                Opcodes.INVOKESTATIC,
-                hookOwner("onChunkBlock"),
-                "onChunkBlock",
-            "(Lew;IIIIII)V",
-                false));
-        instructions.add(skip);
-        return instructions;
-    }
-
-    private static InsnList endChunkBuildCall(int chunkBuildEnabledLocal) {
-        LabelNode skip = new LabelNode();
-        InsnList instructions = new InsnList();
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, chunkBuildEnabledLocal));
-        instructions.add(new JumpInsnNode(Opcodes.IFEQ, skip));
-
-        instructions.add(new VarInsnNode(Opcodes.ILOAD, 13));
-        instructions.add(new MethodInsnNode(
-                Opcodes.INVOKESTATIC,
-                hookOwner("onChunkBuildEnd"),
-                "onChunkBuildEnd",
-                "(Z)V",
-                false));
-
-        instructions.add(skip);
         return instructions;
     }
 

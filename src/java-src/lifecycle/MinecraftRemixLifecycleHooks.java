@@ -139,7 +139,12 @@ public final class MinecraftRemixLifecycleHooks {
             long frameStartNanos = System.nanoTime();
             long renderMethodStartNanos = McrtxHookPerfTracker.renderMethodStartNanos();
             long uiRenderBeginNanos = activeUiRenderBeginNanos;
+            long snapshotCpuStart = HookProfiler.threadCpuNanos();
             RemixChunkCapture.flushPendingChunkRecaptures();
+            long snapshotCpuEnd = HookProfiler.threadCpuNanos();
+            if (snapshotCpuStart >= 0L && snapshotCpuEnd >= snapshotCpuStart) {
+                HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.onPresent.chunkFlush.cpu", snapshotCpuEnd - snapshotCpuStart);
+            }
             long flushEndNanos = System.nanoTime();
             if (!loggedPresent) {
                 loggedPresent = true;

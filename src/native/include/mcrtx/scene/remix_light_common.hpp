@@ -5,7 +5,7 @@
 
 #include <remix/remix_c.h>
 
-#include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/scene/remix_renderer_scene.hpp"
 
 namespace mcrtx::light {
 
@@ -33,6 +33,9 @@ inline constexpr remixapi_Float3D kPortalLightRadiance = {300.0f, 100.0f, 800.0f
 
 constexpr std::uint64_t kGlowstoneLightHashSeed = 0x4D43525458474C57ull;
 inline constexpr remixapi_Float3D kGlowstoneLightRadiance = {30.0f, 15.0f, 4.0f};
+
+std::uint64_t makeTorchDefinitionHash(const TorchLightPlacement& placement);
+std::uint64_t makePortalDefinitionHash(const PortalLightPlacement& placement);
 
 std::uint64_t makeTorchLightHash(const WorldBlockPosition& position);
 std::uint64_t makePortalLightHash(const WorldBlockPosition& position);

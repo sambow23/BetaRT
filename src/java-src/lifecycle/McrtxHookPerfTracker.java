@@ -1,4 +1,5 @@
 import java.util.Locale;
+import mcrtx.bridge.HookProfiler;
 
 final class McrtxHookPerfTracker {
     private static final int PERF_LOG_INTERVAL_FRAMES = 60;
@@ -23,6 +24,7 @@ final class McrtxHookPerfTracker {
     private static long perfTotalSectionsRecaptured;
     private static int perfMaxSectionsRecaptured;
     private static long activeRenderMethodStartNanos;
+    private static long activeRenderCpuNanos;
 
     private McrtxHookPerfTracker() {
     }
@@ -52,6 +54,7 @@ final class McrtxHookPerfTracker {
 
     static void onFrameRenderStart() {
         activeRenderMethodStartNanos = System.nanoTime();
+        activeRenderCpuNanos = HookProfiler.threadCpuNanos();
     }
 
     static long renderMethodStartNanos() {
@@ -59,6 +62,10 @@ final class McrtxHookPerfTracker {
     }
 
     static void clearRenderMethodStartNanos() {
+        long cpuEnd = HookProfiler.threadCpuNanos();
+        if (activeRenderMethodStartNanos != 0L && activeRenderCpuNanos >= 0L && cpuEnd >= activeRenderCpuNanos) {
+            HookProfiler.record(HookProfiler.SIDE_HOOK, "hook.renderMethod.cpu", cpuEnd - activeRenderCpuNanos);
+        }
         activeRenderMethodStartNanos = 0L;
     }
 

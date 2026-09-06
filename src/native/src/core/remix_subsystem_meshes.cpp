@@ -29,11 +29,7 @@ void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
   destroyTerrainMaterials();
   initializeTerrainMaterials();
 
-  for (auto& [chunkKey, meshData] : chunkMeshes_) {
-    if (meshData.hasOccupancy) {
-      rebuildChunkMeshFromData(chunkKey, meshData, true);
-    }
-  }
+  terrain_.invalidateSettings();
 
   const WorldRenderOrigin renderOrigin = currentRenderOriginLocked();
   if (!destroyOverlayInstances_.empty()) {

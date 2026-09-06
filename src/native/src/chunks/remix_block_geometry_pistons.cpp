@@ -334,6 +334,9 @@ void appendPistonHeadGeometry(
     std::vector<remixapi_HardcodedVertex>& vertices,
     std::vector<std::uint32_t>& indices) {
   const int facing = cell.blockMetadata & 7;
+  if (facing >= 6) {
+    return;
+  }
   appendPistonBoxGeometry(
       localX + cell.bounds[0],
       localY + cell.bounds[1],

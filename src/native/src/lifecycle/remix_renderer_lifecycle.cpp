@@ -26,7 +26,7 @@ using namespace mcrtx::window_detail;
 
 namespace {
 
-constexpr auto kStandaloneAutonomousFrameInterval = std::chrono::milliseconds(16);
+constexpr auto kStandaloneIdlePollInterval = std::chrono::milliseconds(16);
 
 std::uint64_t currentThreadId() {
   return static_cast<std::uint64_t>(std::hash<std::thread::id>{}(std::this_thread::get_id()));
@@ -88,18 +88,6 @@ bool RemixRenderer::initialize(
   overlayOutputWindow_ = false;
 #endif
 
-  {
-    const std::string evictRadiusStr = readEnvironmentVariable("MCRTX_EVICT_RADIUS");
-    if (!evictRadiusStr.empty()) {
-      try {
-        const int parsed = std::stoi(evictRadiusStr);
-        evictRadiusChunks_ = parsed > 0 ? parsed : 20;
-        log("MCRTX_EVICT_RADIUS=" + evictRadiusStr + " -> evictRadiusChunks=" + std::to_string(evictRadiusChunks_));
-      } catch (...) {
-        log("MCRTX_EVICT_RADIUS=" + evictRadiusStr + " is non-numeric; using default evictRadiusChunks=" + std::to_string(evictRadiusChunks_));
-      }
-    }
-  }
   log(
       [&]() {
         const char* effectiveMode = overlayOutputWindow_
@@ -361,48 +349,7 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
   }
 
   log("Standalone async render worker ready threadId=" + std::to_string(workerThreadId));
-  auto nextStandaloneRenderAt = std::chrono::steady_clock::now();
-  for (;;) {
-    std::string perfSummary;
-    bool presentOk = true;
-    {
-      TracyUniqueLock lock(mutex_);
-      standaloneWorkerEvent_.wait_until(lock, nextStandaloneRenderAt, [this]() {
-        return standaloneWorkerStopRequested_ || standaloneWorkerPresentRequested_;
-      });
-      MCRTX_TRACY_LOCK_MARK(mutex_);
-      if (standaloneWorkerStopRequested_) {
-        break;
-      }
-      standaloneWorkerPresentRequested_ = false;
-    }
-
-    if (std::chrono::steady_clock::now() < nextStandaloneRenderAt) {
-      continue;
-    }
-
-    {
-      const auto lockRequestedAt = std::chrono::steady_clock::now();
-      TracyUniqueLock lock(mutex_, std::try_to_lock);
-      if (!lock.owns_lock()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        continue;
-      }
-      MCRTX_TRACY_LOCK_MARK(mutex_);
-      presentOk = presentLocked(
-          lock,
-          perfSummary,
-          toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt));
-    }
-    ::mcrtx::perf::onFramePresented();
-    nextStandaloneRenderAt = std::chrono::steady_clock::now() + kStandaloneAutonomousFrameInterval;
-    if (!perfSummary.empty()) {
-      log(perfSummary);
-    }
-    if (!presentOk) {
-      std::this_thread::sleep_for(std::chrono::milliseconds(1));
-    }
-  }
+  renderStandaloneFrames();
 
   {
     TracyUniqueLock lock(mutex_);
@@ -418,7 +365,45 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
   log("Standalone async render worker stopped");
 }
 
+void RemixRenderer::renderStandaloneFrames() {
+  bool presentOk = true;
+  for (;;) {
+    std::string perfSummary;
+    const auto lockRequestedAt = std::chrono::steady_clock::now();
+    const auto lockCpuStart = ::mcrtx::perf::threadCpuNanoseconds();
+    TracyUniqueLock lock(mutex_);
+    const auto lockWaitNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt);
+    const auto lockCpuEnd = ::mcrtx::perf::threadCpuNanoseconds();
+    MCRTX_TRACY_LOCK_MARK(mutex_);
+    if (outputSuspended_ || !presentOk) {
+      // Java scene notifications must not turn a minimized renderer into a busy loop.
+      standaloneWorkerEvent_.wait_for(lock, kStandaloneIdlePollInterval, [this]() {
+        return standaloneWorkerStopRequested_;
+      });
+    }
+    if (standaloneWorkerStopRequested_) {
+      break;
+    }
+    standaloneWorkerPresentRequested_ = false;
+    const auto previousFrames = submittedFrameCount();
+    presentOk = presentLocked(lock, perfSummary, lockWaitNanoseconds);
+    const bool submitted = submittedFrameCount() != previousFrames;
+    lock.unlock();
+    if (lockCpuStart != 0 && lockCpuEnd >= lockCpuStart) {
+      ::mcrtx::perf::recordDuration(::mcrtx::perf::Side::Native,
+          "presentLocked.lockWait.cpu", lockCpuEnd - lockCpuStart);
+    }
+    if (submitted) {
+      ::mcrtx::perf::onFramePresented();
+    }
+    if (!perfSummary.empty()) {
+      log(perfSummary);
+    }
+  }
+}
+
 void RemixRenderer::shutdownLocked() {
+  terrain_.stop();
   renderSubmissionInFlight_ = false;
   flushDeferredDestroyQueuesLocked();
   if (initialized_ && remix_.Shutdown) {
@@ -480,13 +465,12 @@ void RemixRenderer::shutdownLocked() {
 #endif
   publishedCamera_ = {};
   publishedCameraValid_ = false;
-  chunkBuildActive_ = false;
-  activeChunkBuild_ = {};
-  activeChunkBlocks_.clear();
+  gameFrameState_ = {};
+  publishedGameFrameState_ = {};
+  publishedGameFrameRevision_ = 0;
+  submittedGameFrameRevision_ = 0;
+  remixUiState_ = REMIXAPI_UI_STATE_NONE;
   chunkMeshes_.clear();
-  undergroundFrame_ = {};
-  publishedUndergroundFrame_ = {};
-  activeUndergroundFrame_ = {};
   dynamicEntityMeshes_.clear();
   dynamicEntityFrameInstances_.clear();
   dynamicEntityFrameInstanceCount_ = 0;
@@ -513,6 +497,7 @@ void RemixRenderer::shutdownLocked() {
   deferredLightDestroys_.clear();
   nextChunkMeshHash_ = 1;
   presentedFrames_ = 0;
+  outputSuspended_ = false;
   perfWindow_.reset();
   resetPerFramePerfCounters();
   lastSubmittedChunkCount_ = 0;

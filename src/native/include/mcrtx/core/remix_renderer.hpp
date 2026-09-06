@@ -1,6 +1,7 @@
 #pragma once
 
 #include <array>
+#include <atomic>
 #include <chrono>
 #include <condition_variable>
 #include <cstddef>
@@ -27,7 +28,7 @@
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/remix_renderer_frame.hpp"
 #include "mcrtx/scene/remix_renderer_scene.hpp"
-#include "mcrtx/scene/remix_underground_visibility.hpp"
+#include "mcrtx/chunks/terrain_pipeline.hpp"
 #include "mcrtx/entities/remix_renderer_dynamic.hpp"
 #include "mcrtx/particles/remix_renderer_overlay.hpp"
 
@@ -51,6 +52,9 @@ public:
 
   bool initialize(NativeWindowHandle sourceWindow, std::uint32_t width, std::uint32_t height, std::filesystem::path remixDllPath = {});
   void shutdown();
+  std::uint64_t submittedFrameCount() const noexcept {
+    return presentedFrames_.load(std::memory_order_relaxed);
+  }
 
   bool initializeTerrainMaterials();
 
@@ -195,55 +199,7 @@ public:
       std::uint32_t colorRgba,
       std::uint32_t textureKind);
   void clearWorldScene();
-  void unloadChunkSection(int originX, int originY, int originZ);
-  void setChunkSectionHidden(int originX, int originY, int originZ, bool hidden);
-  void setUndergroundCullingEnabled(bool enabled);
-  void resetUndergroundCulling();
-  std::array<std::int64_t, 5> undergroundStatistics() const;
-  void updateUndergroundTopology(const ChunkKey& key, std::shared_ptr<const UndergroundSection> section);
-  void updateUndergroundVisibility(const ChunkKey& key, std::uint64_t revision, const std::array<std::uint64_t, 64>& hidden);
-  bool beginChunkBuild(
-      int originX,
-      int originY,
-      int originZ,
-      int sizeX,
-      int sizeY,
-      int sizeZ,
-      int dirtyMinX,
-      int dirtyMinY,
-      int dirtyMinZ,
-      int dirtyMaxX,
-      int dirtyMaxY,
-      int dirtyMaxZ,
-      int renderPass);
-  void captureBlock(
-      int blockX,
-      int blockY,
-      int blockZ,
-      int blockId,
-      int blockMetadata,
-      int renderType,
-      int texture0,
-      int texture1,
-      int texture2,
-      int texture3,
-      int texture4,
-      int texture5,
-      float boundsMinX,
-      float boundsMinY,
-      float boundsMinZ,
-      float boundsMaxX,
-      float boundsMaxY,
-      float boundsMaxZ,
-      int blockColorRgb,
-      int liquidVisibilityMask,
-      float liquidHeight0,
-      float liquidHeight1,
-      float liquidHeight2,
-      float liquidHeight3,
-      float liquidFlowAngle);
-  void endChunkBuild(bool emittedGeometry, bool deferNeighborRefresh = false, bool allowNeighborRefresh = true);
-  void flushChunkNeighborRefreshes();
+  TerrainPipeline& terrain() { return terrain_; }
       void setScreenTint(float r, float g, float b, float a);
       bool drawScreenOverlay(
         const void* pixelData,
@@ -316,8 +272,9 @@ public:
   std::string lastError() const;
 
 private:
+  friend class StandaloneRenderTest;
   friend class CloudMeshTest;
-  friend class UndergroundVisibilityTest;
+  friend class TerrainPublicationTest;
   RemixRenderer() = default;
   ~RemixRenderer() = default;
   RemixRenderer(const RemixRenderer&) = delete;
@@ -330,8 +287,6 @@ private:
   bool setGameValueLocked(std::string_view key, const std::string& value, bool logChange);
   bool setGameValueFloatLocked(std::string_view key, float value, int precision, bool logChange);
   void publishWorldRenderOriginLocked(const WorldRenderOrigin& origin);
-  bool rebuildUndergroundMeshes(const ChunkKey& key, ChunkMeshData& meshData);
-  void destroyUndergroundMeshes(ChunkMeshData& meshData);
   void applyRtQualityConfigLocked();
   void applyUpscalerConfigLocked();
   void refreshFeatureAvailabilityLocked();
@@ -404,12 +359,9 @@ private:
       float colorB,
       const WorldRenderOrigin& renderOrigin);
   DynamicEntityMeshData* findOrCreateDynamicEntityMesh(const DynamicEntityBuildState& buildState);
-  bool rebuildChunkMesh(
-      const ChunkBuildState& chunkBuild,
-      const std::vector<CapturedBlockInstance>& blocks,
-      ChunkMeshData& meshData);
-  void emitChunkGeometry(const ChunkKey& chunkKey, ChunkMeshData& meshData, ChunkGeometryBuild& build);
-  bool rebuildChunkMeshFromData(const ChunkKey& chunkKey, ChunkMeshData& meshData, bool forceRebuild);
+  void publishTerrain();
+  bool publishTerrainSection(const TerrainResult& result);
+  bool createTerrainMesh(const ChunkKey& key, const ChunkGeometryBuild& build, const ChunkMeshData& previous, ChunkMeshData& next);
   bool rebuildFireMesh(const WorldRenderOrigin& renderOrigin);
   bool rebuildDestroyOverlayMesh(const WorldRenderOrigin& renderOrigin);
   bool rebuildBlockOutlineMesh(const WorldRenderOrigin& renderOrigin);
@@ -456,17 +408,15 @@ private:
   bool rebuildParticleMesh(
       const WorldRenderOrigin& renderOrigin,
       const std::vector<ParticleQuad>& particleQuads);
-  void refreshNeighborChunkMeshes(const ChunkKey& chunkKey);
-  void evictDistantChunks(int cameraChunkX, int cameraChunkZ, int evictRadiusChunks);
-  void computeFaceCoverage(ChunkMeshData& meshData);
-  bool isChunkBuried(const ChunkKey& chunkKey) const;
   bool prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bool& logNoCapturedScene);
+  bool submitGameFrameStateLocked();
   bool drawCapturedGeometry(FrameRenderSnapshot& snapshot);
   bool submitCamera(const CameraState& camera);
   WorldRenderOrigin currentRenderOriginLocked() const noexcept;
   bool startStandaloneWorker(std::filesystem::path remixDllPath);
   bool initializeStandaloneWorker(std::filesystem::path remixDllPath);
   void standaloneRenderWorkerMain(std::filesystem::path remixDllPath);
+  void renderStandaloneFrames();
 #if !defined(_WIN32)
   bool updateNativeWindowStateLocked();
   void applyNativeWindowCommandsLocked();
@@ -524,6 +474,7 @@ private:
   bool standaloneWorkerInitReady_ {false};
   bool standaloneWorkerStopRequested_ {false};
   bool standaloneWorkerPresentRequested_ {false};
+  bool outputSuspended_ {false};
   std::uint64_t standaloneWorkerThreadId_ {0};
   bool renderSubmissionInFlight_ {false};
   bool initialized_ {false};
@@ -534,25 +485,27 @@ private:
   std::uint32_t height_ {1};
   CameraState camera_ {};
   CameraState publishedCamera_ {};
-  UndergroundFrame undergroundFrame_;
-  UndergroundFrame publishedUndergroundFrame_;
-  UndergroundFrame activeUndergroundFrame_;
-  std::size_t undergroundHiddenGroups_ {0};
-  std::size_t undergroundHiddenTriangles_ {0};
-  std::size_t undergroundHiddenEntities_ {0};
-  std::size_t undergroundHiddenParticles_ {0};
-  std::size_t undergroundHiddenLights_ {0};
-  std::size_t undergroundVisibleGroups_ {0};
-  std::size_t undergroundPendingGroups_ {0};
   bool publishedCameraValid_ {false};
+  GameFrameState gameFrameState_ {};
+  GameFrameState publishedGameFrameState_ {};
+  std::uint64_t publishedGameFrameRevision_ {0};
+  std::uint64_t submittedGameFrameRevision_ {0};
+  remixapi_UIState remixUiState_ {REMIXAPI_UI_STATE_NONE};
   float viewModelFovDegrees_ {70.0f};
-  bool chunkBuildActive_ {false};
-  ChunkBuildState activeChunkBuild_ {};
-  std::vector<CapturedBlockInstance> activeChunkBlocks_ {};
+#if defined(MCRTX_TERRAIN_SYNCHRONOUS)
+  TerrainPipeline terrain_ {0};
+#else
+  TerrainPipeline terrain_;
+#endif
+  std::vector<ChunkRenderInstance> terrainSubmissions_;
+  bool terrainSubmissionsDirty_ {true};
+  std::vector<remixapi_LightHandle>* terrainRetiredLights_ {nullptr};
+  std::uint64_t terrainPublications_ {0}, terrainPublicationNanos_ {0}, terrainPublicationOverruns_ {0};
+  std::uint64_t terrainMeshCreates_ {0}, terrainTriangles_ {0};
   std::uint64_t capturedChunkBuilds_ {0};
   std::uint64_t capturedBlocks_ {0};
   std::uint64_t nextChunkMeshHash_ {1};
-  std::uint64_t presentedFrames_ {0};
+  std::atomic<std::uint64_t> presentedFrames_ {0};
   NativePerfWindow perfWindow_ {};
   std::uint64_t perfCaptureBlockCallsThisFrame_ {0};
   std::uint64_t perfChunkBuildsThisFrame_ {0};
@@ -627,7 +580,6 @@ private:
   std::size_t particleQuadCount_ {0};
   std::uint32_t lastFireAnimationFrame_ {0xFFFFFFFFu};
   std::uint64_t lastFireChunkBuildCount_ {0xFFFFFFFFFFFFFFFFull};
-  std::uint64_t lastFireVisibilityRevision_ {~std::uint64_t {0}};
   DynamicEntityBuildState activeDynamicEntity_ {};
   std::unordered_map<std::uint64_t, DynamicEntityMeshData> dynamicEntityMeshes_ {};
   std::vector<DynamicEntityFrameInstance> dynamicEntityFrameInstances_ {};
@@ -642,10 +594,7 @@ private:
   std::unordered_map<std::uint32_t, remixapi_MaterialHandle> particleMaterialHandles_ {};
   remixapi_MeshHandle particleMeshHandle_ {nullptr};
   remixapi_MeshHandle primingMeshHandle_ {nullptr};
-  int evictRadiusChunks_ {20};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
-  std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};
-  std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};
   std::unordered_map<WorldBlockPosition, TorchLightState, WorldBlockPositionHash> torchLights_ {};
   std::unordered_map<WorldBlockPosition, TorchLightPlacement, WorldBlockPositionHash> torchLightPlacements_ {};
   std::unordered_map<WorldBlockPosition, PortalLightState, WorldBlockPositionHash> portalLights_ {};

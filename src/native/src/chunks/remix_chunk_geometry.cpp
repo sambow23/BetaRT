@@ -1,6 +1,6 @@
 // Neighbor-aware chunk block geometry dispatch.
 
-#include "mcrtx/core/remix_renderer.hpp"
+#include "mcrtx/chunks/terrain_pipeline.hpp"
 #include "mcrtx/chunks/remix_chunk_build.hpp"
 #include "mcrtx/chunks/remix_block_geometry_effects.hpp"
 #include "mcrtx/chunks/remix_block_geometry_fixtures.hpp"
@@ -14,6 +14,7 @@
 #include "mcrtx/scene/remix_light_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
+#include "mcrtx/core/tracy.hpp"
 
 #include <algorithm>
 #include <array>
@@ -30,25 +31,24 @@ using namespace mcrtx::chunk;
 using namespace mcrtx::detail;
 using namespace mcrtx::geometry;
 using namespace mcrtx::light;
-void RemixRenderer::emitChunkGeometry(
-    const ChunkKey& chunkKey,
-    ChunkMeshData& meshData,
-    ChunkGeometryBuild& build) {
+void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBuild& build) {
+  const ChunkKey chunkKey {inputs.key.originX, inputs.key.originY, inputs.key.originZ, pass};
+  const auto& meshData = *inputs.sections[13];
   auto& surfacesToBuild = build.surfacesToBuild;
   auto& desiredTorchLights = build.desiredTorchLights;
   auto& desiredPortalLights = build.desiredPortalLights;
   surfacesToBuild.reserve(8);
-  std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
+  std::unordered_map<std::uint8_t, std::size_t> surfaceIndexByHandle;
 
-  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](remixapi_MaterialHandle materialHandle) -> SurfaceBuildBuffers& {
-    const std::uintptr_t materialKey = reinterpret_cast<std::uintptr_t>(materialHandle);
+  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](std::uint8_t materialClass) -> SurfaceBuildBuffers& {
+    const auto materialKey = materialClass;
     const auto it = surfaceIndexByHandle.find(materialKey);
     if (it != surfaceIndexByHandle.end()) {
       return surfacesToBuild[it->second];
     }
 
-    SurfaceBuildBuffers surface;
-    surface.materialHandle = materialHandle;
+    TerrainSurface surface;
+    surface.materialClass = materialClass;
     surface.vertices.reserve(512);
     surface.indices.reserve(768);
     const std::size_t surfaceIndex = surfacesToBuild.size();
@@ -57,7 +57,7 @@ void RemixRenderer::emitChunkGeometry(
     return surfacesToBuild.back();
   };
 
-  const auto hasFenceNeighbor = [this, &chunkKey, &meshData](int worldX, int worldY, int worldZ) -> bool {
+  const auto hasFenceNeighbor = [&inputs, &chunkKey, &meshData, pass](int worldX, int worldY, int worldZ) -> bool {
     ChunkKey neighborKey = chunkKey;
     int localX = worldX - chunkKey.originX;
     int localY = worldY - chunkKey.originY;
@@ -88,17 +88,17 @@ void RemixRenderer::emitChunkGeometry(
       localZ -= kChunkDimension;
     }
 
-    const ChunkMeshData* targetMesh = &meshData;
+    const TerrainSectionData* targetMesh = &meshData;
     if (!(neighborKey == chunkKey)) {
-      const auto neighborIt = chunkMeshes_.find(neighborKey);
-      if (neighborIt == chunkMeshes_.end() || !neighborIt->second.hasOccupancy) {
+      const auto* neighbor = inputs.neighbor(neighborKey.originX, neighborKey.originY, neighborKey.originZ);
+      if (neighbor == nullptr) {
         return false;
       }
-      targetMesh = &neighborIt->second;
+      targetMesh = neighbor;
     }
 
     const int neighborIndex = blockIndex(localX, localY, localZ);
-    if (targetMesh->occupancy[neighborIndex] == 0) {
+    if (targetMesh->occupancy[neighborIndex] == 0 || targetMesh->cells[neighborIndex].renderPass != pass) {
       return false;
     }
 
@@ -106,7 +106,7 @@ void RemixRenderer::emitChunkGeometry(
     return neighborCell.blockId == kFenceBlockId && neighborCell.renderType == kFenceBlockRenderType;
   };
 
-  const auto findWorldCell = [this, &chunkKey, &meshData](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
+  const auto findWorldCell = [&inputs, &chunkKey, &meshData, pass](int worldX, int worldY, int worldZ) -> const ChunkBlockCell* {
     ChunkKey neighborKey = chunkKey;
     int localX = worldX - chunkKey.originX;
     int localY = worldY - chunkKey.originY;
@@ -137,17 +137,17 @@ void RemixRenderer::emitChunkGeometry(
       localZ -= kChunkDimension;
     }
 
-    const ChunkMeshData* targetMesh = &meshData;
+    const TerrainSectionData* targetMesh = &meshData;
     if (!(neighborKey == chunkKey)) {
-      const auto neighborIt = chunkMeshes_.find(neighborKey);
-      if (neighborIt == chunkMeshes_.end() || !neighborIt->second.hasOccupancy) {
+      const auto* neighbor = inputs.neighbor(neighborKey.originX, neighborKey.originY, neighborKey.originZ);
+      if (neighbor == nullptr) {
         return nullptr;
       }
-      targetMesh = &neighborIt->second;
+      targetMesh = neighbor;
     }
 
     const int neighborIndex = blockIndex(localX, localY, localZ);
-    if (targetMesh->occupancy[neighborIndex] == 0) {
+    if (targetMesh->occupancy[neighborIndex] == 0 || targetMesh->cells[neighborIndex].renderPass != pass) {
       return nullptr;
     }
 
@@ -170,7 +170,7 @@ void RemixRenderer::emitChunkGeometry(
       for (int localZ = 0; localZ < kChunkDimension; ++localZ) {
         for (int localX = 0; localX < kChunkDimension; ++localX) {
         const int cellIndex = blockIndex(localX, localY, localZ);
-        if (meshData.occupancy[cellIndex] == 0) {
+        if (meshData.occupancy[cellIndex] == 0 || meshData.cells[cellIndex].renderPass != pass) {
           continue;
         }
 
@@ -181,7 +181,7 @@ void RemixRenderer::emitChunkGeometry(
 
         if (cell.renderType == kLiquidBlockRenderType
             && (materialClass == kWaterTerrainMaterialClass || materialClass == kLavaTerrainMaterialClass)) {
-          SurfaceBuildBuffers& liquidSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& liquidSurface = acquireSurface(materialClass);
           appendWaterGeometry(
               cell,
               static_cast<float>(localX),
@@ -193,7 +193,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isCrossedQuadRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& floraSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& floraSurface = acquireSurface(materialClass);
           appendCrossedQuadGeometry(
               cell,
               chunkKey.originX + localX,
@@ -208,7 +208,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isCropRenderType(cell.renderType) && isCropBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& cropSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& cropSurface = acquireSurface(materialClass);
           appendCropGeometry(
               cell,
               static_cast<float>(localX),
@@ -231,7 +231,7 @@ void RemixRenderer::emitChunkGeometry(
               chunkKey.originY + localY,
               chunkKey.originZ + localZ));
           }
-          SurfaceBuildBuffers& torchSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& torchSurface = acquireSurface(materialClass);
           appendTorchGeometry(
               cell,
               static_cast<float>(localX),
@@ -243,7 +243,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isLadderRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& ladderSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& ladderSurface = acquireSurface(materialClass);
           appendLadderGeometry(
               cell,
               static_cast<float>(localX),
@@ -282,7 +282,7 @@ void RemixRenderer::emitChunkGeometry(
               connectNorth = connectNorth || climbNorth;
               connectSouth = connectSouth || climbSouth;
 
-              SurfaceBuildBuffers& redstoneSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+              SurfaceBuildBuffers& redstoneSurface = acquireSurface(materialClass);
               appendRedstoneDustGeometry(
                 cell,
                 connectWest,
@@ -302,7 +302,7 @@ void RemixRenderer::emitChunkGeometry(
             }
 
         if (isRailRenderType(cell.renderType) && isRailBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& railSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& railSurface = acquireSurface(materialClass);
           appendRailGeometry(
               cell,
               static_cast<float>(localX),
@@ -314,7 +314,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isStairRenderType(cell.renderType) && isStairBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& stairSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& stairSurface = acquireSurface(materialClass);
           appendStairGeometry(
               cell,
               static_cast<float>(localX),
@@ -326,7 +326,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isLeverOrButtonRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& controlSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& controlSurface = acquireSurface(materialClass);
           if (isLeverBlockId(cell.blockId)) {
             appendLeverGeometry(
                 cell,
@@ -371,7 +371,7 @@ void RemixRenderer::emitChunkGeometry(
             resolvedDoorMetadata = (resolvedDoorMetadata & 3) | 4;
           }
 
-          SurfaceBuildBuffers& doorSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& doorSurface = acquireSurface(materialClass);
           appendDoorGeometry(
               cell,
               resolvedDoorMetadata,
@@ -387,7 +387,7 @@ void RemixRenderer::emitChunkGeometry(
           const int worldX = chunkKey.originX + localX;
           const int worldY = chunkKey.originY + localY;
           const int worldZ = chunkKey.originZ + localZ;
-          SurfaceBuildBuffers& fenceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& fenceSurface = acquireSurface(materialClass);
           appendFenceGeometry(
               hasFenceNeighbor(worldX - 1, worldY, worldZ),
               hasFenceNeighbor(worldX + 1, worldY, worldZ),
@@ -413,7 +413,7 @@ void RemixRenderer::emitChunkGeometry(
           const ChunkBlockCell* westCell = findWorldCell(worldX - 1, worldY, worldZ);
           const ChunkBlockCell* eastCell = findWorldCell(worldX + 1, worldY, worldZ);
 
-          SurfaceBuildBuffers& cactusSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& cactusSurface = acquireSurface(materialClass);
           appendCactusGeometry(
               belowCell == nullptr || !isSolidSupportBlock(*belowCell),
               aboveCell == nullptr || !isSolidSupportBlock(*aboveCell),
@@ -431,7 +431,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isBedRenderType(cell.renderType) && isBedBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& bedSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& bedSurface = acquireSurface(materialClass);
           appendBedGeometry(
               cell,
               static_cast<float>(localX),
@@ -443,7 +443,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isRepeaterRenderType(cell.renderType) && isRepeaterBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& repeaterSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& repeaterSurface = acquireSurface(materialClass);
           appendRepeaterGeometry(
               cell,
               static_cast<float>(localX),
@@ -455,7 +455,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isPistonBaseRenderType(cell.renderType) && isPistonBaseBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& pistonSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass);
           appendPistonBaseGeometry(
               cell,
               static_cast<float>(localX),
@@ -467,7 +467,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (isPistonHeadRenderType(cell.renderType) && isPistonHeadBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& pistonSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass);
           appendPistonHeadGeometry(
               cell,
               static_cast<float>(localX),
@@ -484,7 +484,7 @@ void RemixRenderer::emitChunkGeometry(
               chunkKey.originX + localX,
               chunkKey.originY + localY,
               chunkKey.originZ + localZ));
-          SurfaceBuildBuffers& portalSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& portalSurface = acquireSurface(materialClass);
           appendPortalGeometry(
               cell,
               static_cast<float>(localX),
@@ -496,7 +496,7 @@ void RemixRenderer::emitChunkGeometry(
         }
 
         if (cell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(cell)) {
-          SurfaceBuildBuffers& partialCubeSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& partialCubeSurface = acquireSurface(materialClass);
           appendBoxGeometry(
               static_cast<float>(localX) + cell.bounds[0],
               static_cast<float>(localY) + cell.bounds[1],
@@ -526,7 +526,7 @@ void RemixRenderer::emitChunkGeometry(
               && neighborZ >= 0 && neighborZ < kChunkDimension;
           if (neighborInsideChunk) {
             const int neighborIndex = blockIndex(neighborX, neighborY, neighborZ);
-            if (meshData.occupancy[neighborIndex] != 0) {
+            if (meshData.occupancy[neighborIndex] != 0 && meshData.cells[neighborIndex].renderPass == pass) {
               faceOccluded = shouldCullFaceAgainstNeighbor(cell, meshData.cells[neighborIndex]);
             }
           } else {
@@ -559,11 +559,11 @@ void RemixRenderer::emitChunkGeometry(
               wrappedZ -= kChunkDimension;
             }
 
-            const auto neighborIt = chunkMeshes_.find(neighborKey);
-            if (neighborIt != chunkMeshes_.end() && neighborIt->second.hasOccupancy) {
+            const auto* neighbor = inputs.neighbor(neighborKey.originX, neighborKey.originY, neighborKey.originZ);
+            if (neighbor != nullptr) {
               const int neighborIndex = blockIndex(wrappedX, wrappedY, wrappedZ);
-              if (neighborIt->second.occupancy[neighborIndex] != 0) {
-                faceOccluded = shouldCullFaceAgainstNeighbor(cell, neighborIt->second.cells[neighborIndex]);
+              if (neighbor->occupancy[neighborIndex] != 0 && neighbor->cells[neighborIndex].renderPass == pass) {
+                faceOccluded = shouldCullFaceAgainstNeighbor(cell, neighbor->cells[neighborIndex]);
               }
             }
           }
@@ -574,7 +574,7 @@ void RemixRenderer::emitChunkGeometry(
 
           glowstoneVisibleMask |= static_cast<std::uint8_t>(1 << faceIndex);
 
-          SurfaceBuildBuffers& faceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
+          SurfaceBuildBuffers& faceSurface = acquireSurface(materialClass);
             appendFaceGeometry(
               faceIndex,
               static_cast<float>(localX),
@@ -590,7 +590,7 @@ void RemixRenderer::emitChunkGeometry(
               && minecraftSide >= 2
               && minecraftSide <= 5
               && normalizeTerrainTileIndex(cell.terrainTiles[minecraftSide]) == 3) {
-            SurfaceBuildBuffers& overlaySurface = acquireSurface(terrainMaterialHandles_[kCutoutTerrainMaterialClass]);
+            SurfaceBuildBuffers& overlaySurface = acquireSurface(kCutoutTerrainMaterialClass);
             appendFaceGeometry(
                 faceIndex,
                 static_cast<float>(localX),
