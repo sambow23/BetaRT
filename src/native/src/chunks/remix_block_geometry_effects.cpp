@@ -105,6 +105,7 @@ void appendFireGeometry(
     std::vector<std::uint32_t>& indices) {
   if (hasBase) {
     const float height = 1.4f;
+    // Inner crossed sheets
     appendAnimatedFireSheet(
         localX + 0.2f,
         localY + height,
@@ -122,7 +123,7 @@ void appendFireGeometry(
         false,
         vertices,
         indices);
-      appendAnimatedFireSheet(
+    appendAnimatedFireSheet(
         localX + 0.8f,
         localY + height,
         localZ + 0.0f,
@@ -139,7 +140,7 @@ void appendFireGeometry(
         false,
         vertices,
         indices);
-      appendAnimatedFireSheet(
+    appendAnimatedFireSheet(
         localX + 1.0f,
         localY + height,
         localZ + 0.8f,
@@ -156,7 +157,7 @@ void appendFireGeometry(
         true,
         vertices,
         indices);
-      appendAnimatedFireSheet(
+    appendAnimatedFireSheet(
         localX + 0.0f,
         localY + height,
         localZ + 0.2f,
@@ -167,9 +168,78 @@ void appendFireGeometry(
         localY,
         localZ + 0.7f,
         localX + 1.0f,
+        localY + height,
+        localZ + 0.2f,
+        frameIndex,
+        true,
+        vertices,
+        indices);
 
+    // Outer side sheets (slightly rotated inwards)
+    appendAnimatedFireSheet(
+        localX + 0.1f,
         localY + height,
-        localZ + 0.2f,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY,
+        localZ + 0.0f,
+        localX + 0.1f,
+        localY + height,
+        localZ + 0.0f,
+        frameIndex,
+        true,
+        vertices,
+        indices);
+    appendAnimatedFireSheet(
+        localX + 0.9f,
+        localY + height,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.9f,
+        localY + height,
+        localZ + 1.0f,
+        frameIndex,
+        true,
+        vertices,
+        indices);
+    appendAnimatedFireSheet(
+        localX + 1.0f,
+        localY + height,
+        localZ + 0.9f,
+        localX + 1.0f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY,
+        localZ + 1.0f,
+        localX + 0.0f,
+        localY + height,
+        localZ + 0.9f,
+        frameIndex,
+        false,
+        vertices,
+        indices);
+    appendAnimatedFireSheet(
+        localX + 0.0f,
+        localY + height,
+        localZ + 0.1f,
+        localX + 0.0f,
+        localY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY,
+        localZ + 0.0f,
+        localX + 1.0f,
+        localY + height,
+        localZ + 0.1f,
         frameIndex,
         false,
         vertices,
