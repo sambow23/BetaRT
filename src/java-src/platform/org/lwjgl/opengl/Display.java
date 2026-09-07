@@ -138,6 +138,10 @@ public final class Display {
                 return requestedMode;
             }
             try {
+                if (usesActiveMacSdlWindow()) {
+                    return new DisplayMode(RemixLifecycleBridge.getOutputWindowWidth(),
+                            RemixLifecycleBridge.getOutputWindowHeight());
+                }
                 int[] windowSize = BINDINGS.getWindowSize(windowHandle);
                 return new DisplayMode(windowSize[0], windowSize[1]);
             } catch (Exception exception) {
@@ -264,10 +268,28 @@ public final class Display {
                 return;
             }
             try {
+                if (usesActiveMacSdlWindow()) {
+                    // The hidden GLFW host has no live window state to poll. Each
+                    // GLFW call otherwise queues behind a complete Remix frame on Cocoa.
+                    hideSingleNativeAwtHost();
+                    Mouse.updateWindowHeight(RemixLifecycleBridge.getOutputWindowHeight());
+                    Keyboard.pollNativeState();
+                    Mouse.pollNativeState();
+                    syncSingleNativeWindowSize();
+                    closeRequested = RemixLifecycleBridge.isOutputCloseRequested();
+                    if (closeRequested) {
+                        RemixLifecycleBridge.requestShutdown();
+                    }
+                    active = RemixLifecycleBridge.hasNativeWindowFocus();
+                    return;
+                }
                 syncCompatibilityHostVisibility();
                 syncEmbeddedParentSize();
                 restoreEmbeddedFocusIfNeeded();
-                BINDINGS.pollEvents();
+                // SDL owns Cocoa's process-wide event queue once its window is active.
+                if (!RemixBridgeNative.isMacPlatform() || !RemixLifecycleBridge.isInitialized()) {
+                    BINDINGS.pollEvents();
+                }
                 int[] windowSize = BINDINGS.getWindowSize(windowHandle);
                 Mouse.updateWindowHeight(windowSize[1]);
                 if (SINGLE_NATIVE_WINDOW_MODE) {
@@ -439,6 +461,9 @@ public final class Display {
         }
 
         try {
+            if (usesActiveMacSdlWindow()) {
+                return RemixLifecycleBridge.hasNativeWindowFocus();
+            }
             if (SINGLE_NATIVE_WINDOW_MODE) {
                 if (RemixBridgeNative.isAvailable() && RemixLifecycleBridge.hasNativeWindowFocus()) {
                     return true;
@@ -491,11 +516,16 @@ public final class Display {
     }
 
     private static boolean detectSingleNativeWindowMode() {
-        if (RemixBridgeNative.usesNativeLinuxWindow()) {
+        if (RemixBridgeNative.usesNativeSdlWindow()) {
             return true;
         }
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
         return configuredMode != null && configuredMode.equalsIgnoreCase("single-native");
+    }
+
+    private static boolean usesActiveMacSdlWindow() {
+        return SINGLE_NATIVE_WINDOW_MODE && RemixBridgeNative.isMacPlatform()
+                && RemixLifecycleBridge.isInitialized();
     }
 
     private static boolean shouldHideCompatibilityHost() {

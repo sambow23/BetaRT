@@ -277,6 +277,10 @@ void RemixRenderer::applyRtQualityConfigLocked() {
       setConfigVariableLocked("rtx.enableUnorderedEmissiveParticlesInIndirectRays", "False", true, true);
       break;
   }
+#if defined(__APPLE__)
+  // The experimental MoltenVK runtime currently requires direct light sampling.
+  setConfigVariableLocked("rtx.useRTXDI", "False", true, true);
+#endif
 }
 
 void RemixRenderer::applyUpscalerConfigLocked() {

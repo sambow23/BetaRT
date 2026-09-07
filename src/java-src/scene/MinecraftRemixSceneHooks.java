@@ -132,6 +132,12 @@ public final class MinecraftRemixSceneHooks {
     }
 
     public static boolean shouldSuppressWorldRasterDisplayLists() {
+        // Terrain is submitted separately to Remix. Replaying its legacy lists
+        // into the hidden macOS GL context can crash AppleMetalOpenGLRenderer.
+        if (mcrtx.bridge.RemixBridgeNative.isMacPlatform()
+                && mcrtx.bridge.RemixLifecycleBridge.isInitialized()) {
+            return true;
+        }
         return shouldSuppressWorldRasterVanillaDraw();
     }
 

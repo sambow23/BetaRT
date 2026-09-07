@@ -8,6 +8,18 @@ import java.lang.invoke.MethodHandle;
 import java.lang.invoke.MethodHandles;
 
 public final class GlfwBindings {
+    private static Object invokeWindow(Method method, Object... args) throws ReflectiveOperationException {
+        if (System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("mac")) {
+            if (!mcrtx.bridge.RemixBridgeNative.isAvailable()) {
+                throw new IllegalStateException(mcrtx.bridge.RemixBridgeNative.loadError());
+            }
+            return invokeOnMainThread(method, args);
+        }
+        return method.invoke(null, args);
+    }
+
+    private static native Object invokeOnMainThread(Method method, Object[] args) throws ReflectiveOperationException;
+
     public interface CallbackHandler {
         void invoke(Object[] args);
     }
@@ -152,28 +164,28 @@ public final class GlfwBindings {
     }
 
     public boolean init() throws ReflectiveOperationException {
-        return ((Boolean) glfwInit.invoke(null)).booleanValue();
+        return ((Boolean) invokeWindow(glfwInit)).booleanValue();
     }
 
     public void terminate() throws ReflectiveOperationException {
-        glfwTerminate.invoke(null);
+        invokeWindow(glfwTerminate);
     }
 
     public void defaultWindowHints() throws ReflectiveOperationException {
-        glfwDefaultWindowHints.invoke(null);
+        invokeWindow(glfwDefaultWindowHints);
     }
 
     public void windowHint(int hint, int value) throws ReflectiveOperationException {
-        glfwWindowHint.invoke(null, Integer.valueOf(hint), Integer.valueOf(value));
+        invokeWindow(glfwWindowHint, Integer.valueOf(hint), Integer.valueOf(value));
     }
 
     public long createWindow(int width, int height, String title, long monitor, long share) throws ReflectiveOperationException {
-        Object window = glfwCreateWindow.invoke(null, Integer.valueOf(width), Integer.valueOf(height), title, Long.valueOf(monitor), Long.valueOf(share));
+        Object window = invokeWindow(glfwCreateWindow, Integer.valueOf(width), Integer.valueOf(height), title, Long.valueOf(monitor), Long.valueOf(share));
         return window instanceof Number ? ((Number) window).longValue() : 0L;
     }
 
     public void destroyWindow(long window) throws ReflectiveOperationException {
-        glfwDestroyWindow.invoke(null, Long.valueOf(window));
+        invokeWindow(glfwDestroyWindow, Long.valueOf(window));
     }
 
     public void makeContextCurrent(long window) throws ReflectiveOperationException {
@@ -185,44 +197,44 @@ public final class GlfwBindings {
     }
 
     public void pollEvents() throws ReflectiveOperationException {
-        glfwPollEvents.invoke(null);
+        invokeWindow(glfwPollEvents);
     }
 
     public boolean windowShouldClose(long window) throws ReflectiveOperationException {
-        return ((Boolean) glfwWindowShouldClose.invoke(null, Long.valueOf(window))).booleanValue();
+        return ((Boolean) invokeWindow(glfwWindowShouldClose, Long.valueOf(window))).booleanValue();
     }
 
     public void setWindowShouldClose(long window, boolean shouldClose) throws ReflectiveOperationException {
-        glfwSetWindowShouldClose.invoke(null, Long.valueOf(window), Boolean.valueOf(shouldClose));
+        invokeWindow(glfwSetWindowShouldClose, Long.valueOf(window), Boolean.valueOf(shouldClose));
     }
 
     public void setWindowTitle(long window, String title) throws ReflectiveOperationException {
-        glfwSetWindowTitle.invoke(null, Long.valueOf(window), title);
+        invokeWindow(glfwSetWindowTitle, Long.valueOf(window), title);
     }
 
     public void setWindowSize(long window, int width, int height) throws ReflectiveOperationException {
-        glfwSetWindowSize.invoke(null, Long.valueOf(window), Integer.valueOf(width), Integer.valueOf(height));
+        invokeWindow(glfwSetWindowSize, Long.valueOf(window), Integer.valueOf(width), Integer.valueOf(height));
     }
 
     public int[] getWindowSize(long window) throws ReflectiveOperationException {
         int[] width = new int[1];
         int[] height = new int[1];
-        glfwGetWindowSize.invoke(null, Long.valueOf(window), width, height);
+        invokeWindow(glfwGetWindowSize, Long.valueOf(window), width, height);
         return new int[] { width[0], height[0] };
     }
 
     public boolean isFocused(long window, int focusedAttrib) throws ReflectiveOperationException {
-        Object result = glfwGetWindowAttrib.invoke(null, Long.valueOf(window), Integer.valueOf(focusedAttrib));
+        Object result = invokeWindow(glfwGetWindowAttrib, Long.valueOf(window), Integer.valueOf(focusedAttrib));
         return result instanceof Number && ((Number) result).intValue() != 0;
     }
 
     public long getPrimaryMonitor() throws ReflectiveOperationException {
-        Object monitor = glfwGetPrimaryMonitor.invoke(null);
+        Object monitor = invokeWindow(glfwGetPrimaryMonitor);
         return monitor instanceof Number ? ((Number) monitor).longValue() : 0L;
     }
 
     public int[] getVideoMode(long monitor) throws ReflectiveOperationException {
-        Object videoMode = glfwGetVideoMode.invoke(null, Long.valueOf(monitor));
+        Object videoMode = invokeWindow(glfwGetVideoMode, Long.valueOf(monitor));
         if (videoMode == null) {
             return new int[] { 854, 480, 60 };
         }
@@ -238,44 +250,44 @@ public final class GlfwBindings {
     }
 
     public void setWindowMonitor(long window, long monitor, int x, int y, int width, int height, int refreshRate) throws ReflectiveOperationException {
-        glfwSetWindowMonitor.invoke(null, Long.valueOf(window), Long.valueOf(monitor), Integer.valueOf(x), Integer.valueOf(y), Integer.valueOf(width), Integer.valueOf(height), Integer.valueOf(refreshRate));
+        invokeWindow(glfwSetWindowMonitor, Long.valueOf(window), Long.valueOf(monitor), Integer.valueOf(x), Integer.valueOf(y), Integer.valueOf(width), Integer.valueOf(height), Integer.valueOf(refreshRate));
     }
 
     public void showWindow(long window) throws ReflectiveOperationException {
-        glfwShowWindow.invoke(null, Long.valueOf(window));
+        invokeWindow(glfwShowWindow, Long.valueOf(window));
     }
 
     public void hideWindow(long window) throws ReflectiveOperationException {
-        glfwHideWindow.invoke(null, Long.valueOf(window));
+        invokeWindow(glfwHideWindow, Long.valueOf(window));
     }
 
     public long getWin32Window(long window) throws ReflectiveOperationException {
-        Object hwnd = glfwGetWin32Window.invoke(null, Long.valueOf(window));
+        Object hwnd = invokeWindow(glfwGetWin32Window, Long.valueOf(window));
         return hwnd instanceof Number ? ((Number) hwnd).longValue() : 0L;
     }
 
     public double[] getCursorPos(long window) throws ReflectiveOperationException {
         double[] x = new double[1];
         double[] y = new double[1];
-        glfwGetCursorPos.invoke(null, Long.valueOf(window), x, y);
+        invokeWindow(glfwGetCursorPos, Long.valueOf(window), x, y);
         return new double[] { x[0], y[0] };
     }
 
     public void setCursorPos(long window, double x, double y) throws ReflectiveOperationException {
-        glfwSetCursorPos.invoke(null, Long.valueOf(window), Double.valueOf(x), Double.valueOf(y));
+        invokeWindow(glfwSetCursorPos, Long.valueOf(window), Double.valueOf(x), Double.valueOf(y));
     }
 
     public void setInputMode(long window, int mode, int value) throws ReflectiveOperationException {
-        glfwSetInputMode.invoke(null, Long.valueOf(window), Integer.valueOf(mode), Integer.valueOf(value));
+        invokeWindow(glfwSetInputMode, Long.valueOf(window), Integer.valueOf(mode), Integer.valueOf(value));
     }
 
     public int getKey(long window, int key) throws ReflectiveOperationException {
-        Object value = glfwGetKey.invoke(null, Long.valueOf(window), Integer.valueOf(key));
+        Object value = invokeWindow(glfwGetKey, Long.valueOf(window), Integer.valueOf(key));
         return value instanceof Number ? ((Number) value).intValue() : 0;
     }
 
     public int getMouseButton(long window, int button) throws ReflectiveOperationException {
-        Object value = glfwGetMouseButton.invoke(null, Long.valueOf(window), Integer.valueOf(button));
+        Object value = invokeWindow(glfwGetMouseButton, Long.valueOf(window), Integer.valueOf(button));
         return value instanceof Number ? ((Number) value).intValue() : 0;
     }
 

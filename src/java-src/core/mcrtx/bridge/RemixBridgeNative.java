@@ -14,9 +14,7 @@ public final class RemixBridgeNative {
 
     private static final boolean AVAILABLE;
     private static final String LOAD_ERROR;
-    private static final boolean NATIVE_LINUX_WINDOW = System.getProperty("os.name", "")
-            .toLowerCase(Locale.ROOT)
-            .contains("linux");
+    private static final boolean NATIVE_SDL_WINDOW = usesNativeSdlPlatform(System.getProperty("os.name", ""));
 
     static {
         boolean available = false;
@@ -42,12 +40,21 @@ public final class RemixBridgeNative {
         return LOAD_ERROR;
     }
 
-    public static boolean usesNativeLinuxWindow() {
-        return NATIVE_LINUX_WINDOW && AVAILABLE;
+    static boolean usesNativeSdlPlatform(String osName) {
+        String name = osName.toLowerCase(Locale.ROOT);
+        return name.contains("linux") || name.contains("mac") || name.contains("darwin");
     }
 
-    public static boolean isLinuxPlatform() {
-        return NATIVE_LINUX_WINDOW;
+    public static boolean usesNativeSdlWindow() {
+        return NATIVE_SDL_WINDOW && AVAILABLE;
+    }
+
+    public static boolean isMacPlatform() {
+        return System.getProperty("os.name", "").toLowerCase(Locale.ROOT).contains("mac");
+    }
+
+    public static boolean isNativeSdlPlatform() {
+        return NATIVE_SDL_WINDOW;
     }
 
     private static void loadNativeLibrary() {

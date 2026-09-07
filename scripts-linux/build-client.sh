@@ -25,10 +25,11 @@ cd "$client_root"
 mapfile -t client_runtime_sources < <(rg --files src/java-src -g '*.java' |
   rg -v 'platform/org/|platform/mcrtx/lwjglshim/(GlfwBindings|LegacyARBOcclusionQuery|LegacyGL11)\.java' | sort)
 mapfile -t client_compat_sources < <(rg --files src/java-src -g '*.java' |
-  rg 'platform/org/|platform/mcrtx/lwjglshim/(GlfwBindings|LegacyARBOcclusionQuery|LegacyGL11)\.java' | sort)
+  rg 'platform/org/|platform/mcrtx/lwjglshim/(GlfwBindings|LegacyARBOcclusionQuery|LegacyGL11)\.java' |
+  rg -v 'platform/org/lwjgl/opengl/GL11\.java$' | sort)
 "$client_javac" --release 8 -Xlint:-options -cp "$client_source:$client_lwjgl:$client_lwjgl_util" \
   -d "$client_output/classes" "${client_runtime_sources[@]}"
-"$client_javac" --release 8 -Xlint:-options -cp "$client_output/classes" \
+"$client_javac" --release 8 -Xlint:-options -cp "$client_output/classes:$client_lwjgl" \
   -d "$client_output/classes" "${client_compat_sources[@]}"
 "$client_javac" -cp "$client_asm:$client_asm_tree" -d "$client_output/tool-classes" \
   src/tools-src/patcher/mcrtx/tools/ClientPatchTool.java

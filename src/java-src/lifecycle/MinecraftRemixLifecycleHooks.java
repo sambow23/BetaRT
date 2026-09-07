@@ -86,7 +86,7 @@ public final class MinecraftRemixLifecycleHooks {
             McrtxHookPerfTracker.reset();
             UiOverlayCapture.reset();
             RemixUiCapture.reset();
-            if (mcrtx.bridge.RemixBridgeNative.isLinuxPlatform()) {
+            if (mcrtx.bridge.RemixBridgeNative.isNativeSdlPlatform()) {
                 RemixLifecycleBridge.shutdown();
                 HookProfiler.flushAll();
                 return;
@@ -291,7 +291,7 @@ public final class MinecraftRemixLifecycleHooks {
     }
 
     private static boolean detectSingleNativeWindowMode() {
-        if (mcrtx.bridge.RemixBridgeNative.usesNativeLinuxWindow()) {
+        if (mcrtx.bridge.RemixBridgeNative.usesNativeSdlWindow()) {
             return true;
         }
         String configuredMode = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_WINDOW_MODE");
@@ -311,7 +311,7 @@ public final class MinecraftRemixLifecycleHooks {
     }
 
     private static boolean detectNativeInputBackend() {
-        if (mcrtx.bridge.RemixBridgeNative.usesNativeLinuxWindow()) {
+        if (mcrtx.bridge.RemixBridgeNative.usesNativeSdlWindow()) {
             return true;
         }
         String configuredBackend = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_INPUT_BACKEND");

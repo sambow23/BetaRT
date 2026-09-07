@@ -488,3 +488,60 @@ JNIEXPORT jstring JNICALL Java_mcrtx_bridge_RemixLifecycleBridge_nGetLastError(J
 }
 
 }  // extern "C"
+
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#include <pthread.h>
+
+extern "C" JNIEXPORT jobject JNICALL
+Java_mcrtx_lwjglshim_GlfwBindings_invokeOnMainThread(JNIEnv* env, jclass, jobject method, jobjectArray args) {
+  struct Invocation {
+    JavaVM* vm;
+    jobject method;
+    jobject args;
+    jobject result {};
+    jthrowable error {};
+  } invocation {};
+  env->GetJavaVM(&invocation.vm);
+  invocation.method = env->NewGlobalRef(method);
+  invocation.args = env->NewGlobalRef(args);
+  auto invoke = [](void* context) {
+    auto& call = *static_cast<Invocation*>(context);
+    JNIEnv* mainEnv = nullptr;
+    const bool attach = call.vm->GetEnv(reinterpret_cast<void**>(&mainEnv), JNI_VERSION_1_6) == JNI_EDETACHED;
+    if (attach && call.vm->AttachCurrentThreadAsDaemon(reinterpret_cast<void**>(&mainEnv), nullptr) != JNI_OK) {
+      return;
+    }
+    jclass methodClass = mainEnv->GetObjectClass(call.method);
+    jmethodID invokeMethod = mainEnv->GetMethodID(methodClass, "invoke", "(Ljava/lang/Object;[Ljava/lang/Object;)Ljava/lang/Object;");
+    jobject result = mainEnv->CallObjectMethod(call.method, invokeMethod, nullptr, call.args);
+    if (mainEnv->ExceptionCheck()) {
+      jthrowable error = mainEnv->ExceptionOccurred();
+      mainEnv->ExceptionClear();
+      call.error = static_cast<jthrowable>(mainEnv->NewGlobalRef(error));
+      mainEnv->DeleteLocalRef(error);
+    } else if (result) {
+      call.result = mainEnv->NewGlobalRef(result);
+    }
+    mainEnv->DeleteLocalRef(result);
+    mainEnv->DeleteLocalRef(methodClass);
+    if (attach) {
+      call.vm->DetachCurrentThread();
+    }
+  };
+  if (pthread_main_np()) {
+    invoke(&invocation);
+  } else {
+    dispatch_sync_f(dispatch_get_main_queue(), &invocation, invoke);
+  }
+  jobject result = env->NewLocalRef(invocation.result);
+  if (invocation.error) {
+    env->Throw(invocation.error);
+  }
+  env->DeleteGlobalRef(invocation.method);
+  env->DeleteGlobalRef(invocation.args);
+  env->DeleteGlobalRef(invocation.result);
+  env->DeleteGlobalRef(invocation.error);
+  return result;
+}
+#endif

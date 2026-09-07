@@ -19,7 +19,7 @@ public final class RemixLifecycleBridge {
     }
 
     public static synchronized boolean initializeForCurrentDisplay(int width, int height) {
-        if (RemixBridgeNative.isLinuxPlatform()) {
+        if (RemixBridgeNative.isNativeSdlPlatform()) {
             return initialize(0L, width, height);
         }
         long hwnd = MinecraftPlatformRuntime.current().resolveCurrentWindowHandle();
@@ -56,8 +56,8 @@ public final class RemixLifecycleBridge {
             report("Renderer initialization failed: " + lastError);
         } else {
             lastError = "";
-            report(RemixBridgeNative.isLinuxPlatform()
-                    ? "Renderer initialized with a native Linux window"
+            report(RemixBridgeNative.isNativeSdlPlatform()
+                    ? "Renderer initialized with a native SDL window"
                     : "Renderer initialized for hwnd=0x" + Long.toHexString(hwnd));
         }
         return initialized;

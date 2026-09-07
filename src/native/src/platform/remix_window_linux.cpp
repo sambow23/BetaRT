@@ -189,6 +189,9 @@ void RemixRenderer::applyNativeWindowCommandsLocked() {
 
 void RemixRenderer::updateNativeKeyboardStateLocked() {
   nativeVirtualKeyDown_.fill(false);
+  if (!hasWindowFocusLocked()) {
+    return;
+  }
   for (const KeyMapping& mapping : kKeyMappings) {
     if (mapping.first == 0) {
       continue;

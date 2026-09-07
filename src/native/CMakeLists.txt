@@ -110,6 +110,13 @@ add_library(mcrtx_jni SHARED
   src/lifecycle/perf_log.cpp
 )
 
+if(APPLE)
+  enable_language(OBJCXX)
+  target_sources(mcrtx_jni PRIVATE src/platform/remix_cocoa_events.mm)
+  set_source_files_properties(src/platform/remix_cocoa_events.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+  target_link_libraries(mcrtx_jni PRIVATE "-framework Cocoa")
+endif()
+
 if(WIN32)
   target_sources(mcrtx_jni PRIVATE
     src/platform/remix_window_internals.cpp
@@ -303,4 +310,21 @@ if(MCRTX_BUILD_TESTS)
     target_compile_options(mcrtx_celestial_texture_tests PRIVATE -Wall -Wextra -Wpedantic)
   endif()
   add_test(NAME mcrtx_celestial_texture_tests COMMAND mcrtx_celestial_texture_tests)
+endif()
+
+if(APPLE AND MCRTX_BUILD_TESTS)
+  option(MCRTX_BUILD_COCOA_INPUT_TESTS "Build Cocoa/SDL input integration tests (opens a test window)" OFF)
+  if(MCRTX_BUILD_COCOA_INPUT_TESTS)
+    enable_language(OBJCXX)
+    find_path(MCRTX_SDL3_INCLUDE_DIR SDL3/SDL.h
+      HINTS "${MCRTX_DXVK_REMIX_ROOT}/_deps-macos/sources/sdl3/include" REQUIRED)
+    find_library(MCRTX_SDL3_LIBRARY NAMES SDL3.0 SDL3
+      HINTS "${MCRTX_DXVK_REMIX_ROOT}/_package-macos/lib" REQUIRED)
+    add_executable(mcrtx_cocoa_input_tests tests/platform/cocoa_event_tests.mm src/platform/remix_cocoa_events.mm)
+    target_include_directories(mcrtx_cocoa_input_tests PRIVATE include ${MCRTX_SDL3_INCLUDE_DIR})
+    target_compile_options(mcrtx_cocoa_input_tests PRIVATE -fobjc-arc)
+    target_link_libraries(mcrtx_cocoa_input_tests PRIVATE "-framework Cocoa" ${MCRTX_SDL3_LIBRARY})
+    add_test(NAME mcrtx_cocoa_input_tests COMMAND mcrtx_cocoa_input_tests)
+    set_tests_properties(mcrtx_cocoa_input_tests PROPERTIES TIMEOUT 15 RUN_SERIAL TRUE)
+  endif()
 endif()

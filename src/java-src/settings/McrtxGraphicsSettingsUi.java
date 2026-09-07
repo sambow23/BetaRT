@@ -323,7 +323,7 @@ final class McrtxGraphicsSettingsUi implements McrtxSettingsCategoryUi {
     }
 
     private static boolean isNativeLinux() {
-        return RemixBridgeNative.isLinuxPlatform();
+        return RemixBridgeNative.isNativeSdlPlatform();
     }
 
     private static String describeUpscaler(int value) { if (value == McrtxGraphicsSettings.UPSCALER_TYPE_NONE) return "None"; if (value == McrtxGraphicsSettings.UPSCALER_TYPE_XESS) return "XeSS"; if (value == McrtxGraphicsSettings.UPSCALER_TYPE_TAAU) return "TAAU"; return "DLSS"; }

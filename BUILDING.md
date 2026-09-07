@@ -1,3 +1,5 @@
+For the experimental Apple Silicon build and instance deployment, see [Native macOS](docs/NativeMacOS.md).
+
 ## Building
 
 ### Requirements

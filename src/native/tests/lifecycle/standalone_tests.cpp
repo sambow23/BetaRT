@@ -148,6 +148,7 @@ public:
     renderer = &state;
     state.initialized_ = true;
     state.standaloneOutputWindow_ = true;
+    state.nativeWindowState_.focused = true;
     state.remix_.PumpEvents = pump;
     state.remix_.GetWindowState = window;
     state.remix_.PollMouseState = mouse;
@@ -169,6 +170,13 @@ public:
       state.updateNativeKeyboardStateLocked();
       require(!state.isVirtualKeyDown(mapping.first), "Text/editing key remained pressed after release");
     }
+    pressedKey = REMIXAPI_KEY_W;
+    state.updateNativeKeyboardStateLocked();
+    require(state.isVirtualKeyDown(0x57), "Focused W press was lost");
+    state.nativeWindowState_.focused = false;
+    state.updateNativeKeyboardStateLocked();
+    require(!state.isVirtualKeyDown(0x57), "Focus loss retained a pressed key");
+    pressedKey = REMIXAPI_KEY_UNKNOWN;
     state.remix_.SetupCamera = camera;
     state.remix_.Present = present;
     state.remix_.SetFogState = fog;
@@ -277,6 +285,17 @@ public:
   }
 };
 }
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#endif
 int main() {
+#if defined(__APPLE__)
+  std::thread([]() {
+    mcrtx::StandaloneRenderTest::run();
+    std::exit(0);
+  }).detach();
+  dispatch_main();
+#else
   mcrtx::StandaloneRenderTest::run();
+#endif
 }

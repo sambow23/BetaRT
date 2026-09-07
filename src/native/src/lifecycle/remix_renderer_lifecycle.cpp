@@ -9,6 +9,12 @@
 #include "mcrtx/core/runtime_config.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#include "mcrtx/platform/remix_cocoa_events.hpp"
+#include <pthread.h>
+#endif
+
 #include <chrono>
 #include <cstdlib>
 #include <functional>
@@ -25,6 +31,23 @@ using namespace mcrtx::window_detail;
 #endif
 
 namespace {
+
+void onWindowThread(const std::function<void()>& action) {
+#if defined(__APPLE__)
+  // Cocoa window operations must run on the JVM launcher's main run loop.
+  if (!pthread_main_np()) {
+    dispatch_sync_f(dispatch_get_main_queue(), const_cast<std::function<void()>*>(&action), [](void* context) {
+      withCocoaEventPump(*static_cast<std::function<void()>*>(context));
+    });
+    return;
+  }
+#endif
+#if defined(__APPLE__)
+  withCocoaEventPump(action);
+#else
+  action();
+#endif
+}
 
 constexpr auto kStandaloneIdlePollInterval = std::chrono::milliseconds(16);
 
@@ -320,6 +343,14 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
     MCRTX_TRACY_LOCK_MARK(mutex_);
     initialized_ = true;
   }
+#if defined(__APPLE__)
+  installCocoaEventPump([this]() {
+    TracyUniqueLock lock(mutex_);
+    if (initialized_) {
+      pumpOutputWindowMessages();
+    }
+  });
+#endif
   log("Remix renderer initialized in standalone mode (async worker threadId=" + std::to_string(currentThreadId()) + ")");
   return true;
 }
@@ -334,7 +365,8 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
     standaloneWorkerThreadId_ = workerThreadId;
   }
 
-  const bool initialized = initializeStandaloneWorker(std::move(remixDllPath));
+  bool initialized = false;
+  onWindowThread([&]() { initialized = initializeStandaloneWorker(std::move(remixDllPath)); });
   {
     TracyUniqueLock lock(mutex_);
     MCRTX_TRACY_LOCK_MARK(mutex_);
@@ -351,7 +383,7 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
   log("Standalone async render worker ready threadId=" + std::to_string(workerThreadId));
   renderStandaloneFrames();
 
-  {
+  onWindowThread([&]() {
     TracyUniqueLock lock(mutex_);
     MCRTX_TRACY_LOCK_MARK(mutex_);
     shutdownLocked();
@@ -360,29 +392,32 @@ void RemixRenderer::standaloneRenderWorkerMain(std::filesystem::path remixDllPat
     standaloneWorkerPresentRequested_ = false;
     standaloneWorkerThreadId_ = 0;
     standaloneWorkerActive_ = false;
-  }
+  });
   standaloneWorkerEvent_.notify_all();
   log("Standalone async render worker stopped");
 }
 
 void RemixRenderer::renderStandaloneFrames() {
   bool presentOk = true;
-  for (;;) {
-    std::string perfSummary;
-    const auto lockRequestedAt = std::chrono::steady_clock::now();
-    const auto lockCpuStart = ::mcrtx::perf::threadCpuNanoseconds();
-    TracyUniqueLock lock(mutex_);
-    const auto lockWaitNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt);
-    const auto lockCpuEnd = ::mcrtx::perf::threadCpuNanoseconds();
-    MCRTX_TRACY_LOCK_MARK(mutex_);
-    if (outputSuspended_ || !presentOk) {
-      // Java scene notifications must not turn a minimized renderer into a busy loop.
-      standaloneWorkerEvent_.wait_for(lock, kStandaloneIdlePollInterval, [this]() {
-        return standaloneWorkerStopRequested_;
+  bool stopped = false;
+  while (!stopped) {
+    onWindowThread([&]() {
+      std::string perfSummary;
+      const auto lockRequestedAt = std::chrono::steady_clock::now();
+      const auto lockCpuStart = ::mcrtx::perf::threadCpuNanoseconds();
+      TracyUniqueLock lock(mutex_);
+      const auto lockWaitNanoseconds = toNanoseconds(std::chrono::steady_clock::now() - lockRequestedAt);
+      const auto lockCpuEnd = ::mcrtx::perf::threadCpuNanoseconds();
+      MCRTX_TRACY_LOCK_MARK(mutex_);
+      if (outputSuspended_ || !presentOk) {
+        // Java scene notifications must not turn a minimized renderer into a busy loop.
+        standaloneWorkerEvent_.wait_for(lock, kStandaloneIdlePollInterval, [this]() {
+          return standaloneWorkerStopRequested_;
       });
     }
     if (standaloneWorkerStopRequested_) {
-      break;
+      stopped = true;
+      return;
     }
     standaloneWorkerPresentRequested_ = false;
     const auto previousFrames = submittedFrameCount();
@@ -399,10 +434,14 @@ void RemixRenderer::renderStandaloneFrames() {
     if (!perfSummary.empty()) {
       log(perfSummary);
     }
+    });
   }
 }
 
 void RemixRenderer::shutdownLocked() {
+#if defined(__APPLE__)
+  removeCocoaEventPump();
+#endif
   terrain_.stop();
   renderSubmissionInFlight_ = false;
   flushDeferredDestroyQueuesLocked();
