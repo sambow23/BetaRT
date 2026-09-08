@@ -6,6 +6,7 @@
 #include "mcrtx/core/runtime_config.hpp"
 
 #include <sstream>
+#include <string>
 #include <vector>
 #include <fstream>
 
@@ -138,6 +139,47 @@ std::filesystem::path RemixRenderer::resolveTerrainAtlasPath() {
   appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L"mcrtx_assets", L"terrain", preferDds);
   appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L".." / L"libraries" / L"mcrtx_assets", L"terrain", preferDds);
   appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path(), L"terrain", preferDds);
+
+  for (const auto& path : attemptedPaths) {
+    if (std::filesystem::exists(path)) {
+      return path;
+    }
+  }
+
+  return {};
+}
+
+// One atlas per detail level: terrain_lod2, terrain_lod4, terrain_lod8,
+// terrain_lod16. They share a layout -- 2048 px, 128 px slots, a 64 px content
+// window -- and differ only in how many block tiles that window holds, so the
+// UV constants are the same for all of them and only the file changes.
+//
+// Step 32 has no atlas of its own and is not meant to. The window holds
+// 64 / step block tiles, so a step-32 atlas would resample every 16 px terrain
+// tile down to two pixels -- a flat average with one bit of variation left in
+// it -- and then repeat that thirty-two times across the window. Borrowing
+// step 16's instead draws the pattern at twice its true size, which is the one
+// thing wrong with it, from between two and four kilometres away, where a cell
+// is a couple of pixels and the whole pattern is below the mip chain either
+// way. The alternative costs 22 MB of DDS in every install and every release
+// package to buy nothing anyone can see, so lodMaterialForPass's
+// nearest-level-with-an-atlas fallback is the answer here rather than a
+// shortcut around one.
+std::filesystem::path RemixRenderer::resolveLodAtlasPath(int step) {
+  std::vector<std::filesystem::path> attemptedPaths;
+  const bool preferDds = prefersDdsTerrainAtlas();
+  const std::wstring stemText = L"terrain_lod" + std::to_wstring(step);
+  const wchar_t* stem = stemText.c_str();
+
+  const std::filesystem::path moduleDirectory = getCurrentModuleDirectory();
+  if (!moduleDirectory.empty()) {
+    appendAtlasCandidatesWithCache(attemptedPaths, moduleDirectory / L"mcrtx_assets", stem, preferDds);
+    appendAtlasCandidatesWithCache(attemptedPaths, moduleDirectory, stem, preferDds);
+  }
+
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L"mcrtx_assets", stem, preferDds);
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path() / L".." / L"libraries" / L"mcrtx_assets", stem, preferDds);
+  appendAtlasCandidatesWithCache(attemptedPaths, std::filesystem::current_path(), stem, preferDds);
 
   for (const auto& path : attemptedPaths) {
     if (std::filesystem::exists(path)) {

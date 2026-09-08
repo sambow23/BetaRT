@@ -1,3 +1,4 @@
+import mcrtx.bridge.McrtxLodSettings;
 import mcrtx.bridge.RemixSceneBridge;
 import mcrtx.bridge.RemixLifecycleBridge;
 
@@ -13,6 +14,8 @@ public final class RemixFogCapture {
     // Note: Remix's composite pass remaps external linear fog using
     // rtx.externalFogLinearStartFactor (0.4) and rtx.externalFogLinearEndFactor (1.5).
     // So the effective fog range is [end*0.4, end*1.5]. Values here are pre-remap.
+    private static final float REMIX_EXTERNAL_FOG_START_FACTOR = 0.4f;
+    private static final float REMIX_EXTERNAL_FOG_END_FACTOR = 1.5f;
     // Water: end=8 -> fog starts at ~3.2 blocks, fully opaque at ~12 blocks.
     private static final float WATER_FOG_END_BLOCKS = 8.0f;
     // Lava: end=1.5 -> fog starts at ~0.6 blocks, fully opaque at ~2.25 blocks.
@@ -25,6 +28,17 @@ public final class RemixFogCapture {
 
     public static boolean isSubmergedInWater() {
         return submergedInWater;
+    }
+
+    /**
+     * Vanilla's current view distance in blocks, as handed to the fog hook.
+     * Distant terrain uses it to hand over exactly where vanilla stops drawing
+     * rather than at a fixed radius that only suits one render-distance setting.
+     */
+    private static volatile float lastViewDistanceBlocks;
+
+    static float lastViewDistanceBlocks() {
+        return lastViewDistanceBlocks;
     }
 
     public static void onFogState(
@@ -58,6 +72,7 @@ public final class RemixFogCapture {
         float fogEnd = 0.0f;
         float fogDensity = 0.0f;
         float clampedViewDistance = Math.max(0.0f, viewDistance);
+        lastViewDistanceBlocks = clampedViewDistance;
 
         boolean submerged = false;
         if (thickFog) {
@@ -74,7 +89,7 @@ public final class RemixFogCapture {
             fogScale = REMIX_LINEAR_FOG_FACTORS_SENTINEL;
         } else if (clampedViewDistance > 0.0f) {
             fogMode = D3DFOG_LINEAR;
-            float fogStart = clampedViewDistance * 0.4f;
+            float fogStart = clampedViewDistance * REMIX_EXTERNAL_FOG_START_FACTOR;
             fogEnd = clampedViewDistance;
             if (renderLayer < 0) {
                 fogStart = 0.0f;
@@ -82,8 +97,20 @@ public final class RemixFogCapture {
             } else if (forceStartAtCamera) {
                 fogStart = 0.0f;
             } else {
-                fogScale = REMIX_LINEAR_FOG_FACTORS_SENTINEL;
-                fogEnd = clampedViewDistance;
+                float distantTerrainFogEnd = distantTerrainFogEndBlocks(clampedViewDistance);
+                if (distantTerrainFogEnd > 0.0f) {
+                    // Vanilla fog turns solid at 1.5x the render distance, which
+                    // is well inside the LOD field: the distant terrain is drawn
+                    // and then painted over with fog colour. Push only the far
+                    // end out to where the field ends, so the fog still hides
+                    // the edge of the world while the terrain inside it shows.
+                    // The near half of the curve is left exactly where vanilla
+                    // put it, so close-range scenes look unchanged.
+                    fogEnd = distantTerrainFogEnd;
+                } else {
+                    fogScale = REMIX_LINEAR_FOG_FACTORS_SENTINEL;
+                    fogEnd = clampedViewDistance;
+                }
             }
 
             if (fogScale != REMIX_LINEAR_FOG_FACTORS_SENTINEL) {
@@ -111,6 +138,32 @@ public final class RemixFogCapture {
         } else {
             RemixSceneBridge.setScreenTint(0.0f, 0.0f, 0.0f, 0.0f);
         }
+    }
+
+    /**
+     * Far fog distance that lets the distant terrain field be seen, or 0 when
+     * the vanilla curve already reaches past it.
+     *
+     * <p>Only the end moves. Remix derives its own start and end from the value
+     * it is handed unless an explicit range is supplied, so the caller supplies
+     * one: vanilla's start with a far end at the edge of the LOD field.
+     */
+    private static float distantTerrainFogEndBlocks(float viewDistance) {
+        if (!RemixLodCapture.isEnabled() || !McrtxLodSettings.isLodExtendedFogEnabled()) {
+            return 0.0f;
+        }
+
+        // Nothing built means nothing to reveal, and thinning the fog would
+        // only expose the edge of the chunk field. Region residency does not
+        // flicker -- it changes when the grid moves or the world does -- so
+        // this cannot make the fog pulse.
+        if (RemixLodCapture.residentRegionCount() == 0) {
+            return 0.0f;
+        }
+
+        float vanillaFogEnd = viewDistance * REMIX_EXTERNAL_FOG_END_FACTOR;
+        float lodFieldBlocks = RemixLodCapture.getDistanceBlocks();
+        return lodFieldBlocks > vanillaFogEnd ? lodFieldBlocks : 0.0f;
     }
 
     private static float toLinearColor(float channel) {

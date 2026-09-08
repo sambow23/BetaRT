@@ -135,6 +135,10 @@ public final class MinecraftRemixLifecycleHooks {
             long renderMethodStartNanos = McrtxHookPerfTracker.renderMethodStartNanos();
             long uiRenderBeginNanos = activeUiRenderBeginNanos;
             RemixChunkCapture.flushPendingChunkRecaptures();
+            RemixLodCapture.tick(
+                    RemixChunkCapture.attachedWorld(),
+                    RemixCameraState.cameraPositionX,
+                    RemixCameraState.cameraPositionZ);
             long flushEndNanos = System.nanoTime();
             if (!loggedPresent) {
                 loggedPresent = true;

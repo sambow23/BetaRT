@@ -28,6 +28,7 @@ void RemixRenderer::rebuildMaterialDependentMeshesLocked() {
 
   destroyTerrainMaterials();
   initializeTerrainMaterials();
+  initializeLodMaterials();
 
   for (auto& [chunkKey, meshData] : chunkMeshes_) {
     if (meshData.hasOccupancy) {

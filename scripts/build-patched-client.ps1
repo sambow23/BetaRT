@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$PrismRoot,
     [string]$InstanceName = "b1.7.3",
@@ -95,10 +95,282 @@ function Resolve-JavaToolchain {
     }
 }
 
+function Get-BitmapBgraBytes {
+    param(
+        [System.Drawing.Bitmap]$Bitmap
+    )
+
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $Bitmap.Width, $Bitmap.Height)
+    $bitmapData = $Bitmap.LockBits(
+        $rect,
+        [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
+        [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+    try {
+        $rowByteCount = $Bitmap.Width * 4
+        $pixelBytes = New-Object byte[] ($Bitmap.Width * $Bitmap.Height * 4)
+        $rowBuffer = New-Object byte[] $rowByteCount
+
+        for ($y = 0; $y -lt $Bitmap.Height; $y++) {
+            $sourceRowIndex = if ($bitmapData.Stride -lt 0) { $Bitmap.Height - 1 - $y } else { $y }
+            $rowPointer = [System.IntPtr]::new($bitmapData.Scan0.ToInt64() + ($sourceRowIndex * $bitmapData.Stride))
+            [System.Runtime.InteropServices.Marshal]::Copy($rowPointer, $rowBuffer, 0, $rowByteCount)
+            [System.Array]::Copy($rowBuffer, 0, $pixelBytes, $y * $rowByteCount, $rowByteCount)
+        }
+
+        return ,$pixelBytes
+    } finally {
+        $Bitmap.UnlockBits($bitmapData)
+    }
+}
+
+function New-BitmapFromBgraBytes {
+    param(
+        [byte[]]$Bytes,
+        [int]$Width,
+        [int]$Height
+    )
+
+    $bitmap = New-Object System.Drawing.Bitmap($Width, $Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+    $rect = New-Object System.Drawing.Rectangle(0, 0, $Width, $Height)
+    $bitmapData = $bitmap.LockBits(
+        $rect,
+        [System.Drawing.Imaging.ImageLockMode]::WriteOnly,
+        [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+
+    try {
+        $rowByteCount = $Width * 4
+        for ($y = 0; $y -lt $Height; $y++) {
+            $rowPointer = [System.IntPtr]::new($bitmapData.Scan0.ToInt64() + ($y * $bitmapData.Stride))
+            [System.Runtime.InteropServices.Marshal]::Copy($Bytes, $y * $rowByteCount, $rowPointer, $rowByteCount)
+        }
+    } finally {
+        $bitmap.UnlockBits($bitmapData)
+    }
+
+    return $bitmap
+}
+
+function Initialize-MipFilter {
+    if (([System.Management.Automation.PSTypeName]'McrtxMipFilter').Type) {
+        return
+    }
+
+    # A compiled 2x2 box filter, rather than GDI+ interpolation. GDI+ treats
+    # everything outside the image as transparent black and works in
+    # premultiplied alpha, so its downscales come back with darkened, partly
+    # transparent border texels -- which on an atlas means the edge slots stop
+    # being opaque. This does the averaging exactly, in linear light so the
+    # result keeps the brightness of what it averaged.
+    Add-Type -TypeDefinition @'
+using System;
+
+public static class McrtxMipFilter {
+    private static readonly float[] SrgbToLinear = new float[256];
+
+    static McrtxMipFilter() {
+        for (int i = 0; i < 256; i++) {
+            double channel = i / 255.0;
+            SrgbToLinear[i] = (float)(channel <= 0.04045
+                ? channel / 12.92
+                : Math.Pow((channel + 0.055) / 1.055, 2.4));
+        }
+    }
+
+    private static byte LinearToSrgbByte(float linear) {
+        if (linear <= 0.0f) {
+            return 0;
+        }
+        if (linear >= 1.0f) {
+            return 255;
+        }
+        double encoded = linear <= 0.0031308
+            ? linear * 12.92
+            : 1.055 * Math.Pow(linear, 1.0 / 2.4) - 0.055;
+        int value = (int)Math.Round(encoded * 255.0);
+        return (byte)(value < 0 ? 0 : (value > 255 ? 255 : value));
+    }
+
+    // Composites every tile that has cutouts onto a darkened copy of itself,
+    // leaving the whole atlas opaque.
+    //
+    // The LOD material is deliberately not alpha tested. An alpha test makes
+    // every ray that meets the surface run the any-hit shader and sample the
+    // texture before it can say whether it hit anything, and the distant field
+    // is exactly where that cost multiplies: every shadow ray, every bounce,
+    // over ground that covers most of the screen. So the atlas has to be
+    // opaque, and what it holds where a texel is cut out is then simply what
+    // gets drawn there.
+    //
+    // Left alone, that is the transparent texel unchanged, and terrain.png
+    // stores those as black. Leaves are around forty per cent holes, so a
+    // distant wood rendered as leaves shot through with black -- the atlas
+    // background showing, exactly as if the holes were painted on.
+    //
+    // The fill is the tile's own visible colour darkened, rather than a fixed
+    // grey: leaves are tinted per biome by the vertex colour, so a neutral fill
+    // would take the tint too and there is no one grey that stays right across
+    // every pack. Darkened because a hole in a canopy is not more canopy, it is
+    // the shaded inside of one, and a wood seen from above is darker than a
+    // single leaf for that reason.
+    //
+    // Done before the atlas is halved down to the level tile size, so the box
+    // filter averages colours that are all really there. Averaging a
+    // transparent black texel into an opaque neighbour is what puts a dark
+    // fringe around every cutout, and flattening first removes that too.
+    public static byte[] FlattenCutouts(
+            byte[] source,
+            int atlasSize,
+            int tileSize,
+            float backingScale) {
+        byte[] target = (byte[])source.Clone();
+        int tilesPerAxis = atlasSize / tileSize;
+
+        for (int tileRow = 0; tileRow < tilesPerAxis; tileRow++) {
+            for (int tileColumn = 0; tileColumn < tilesPerAxis; tileColumn++) {
+                double[] visibleSum = new double[3];
+                double coverage = 0.0;
+                bool hasCutout = false;
+
+                for (int y = 0; y < tileSize; y++) {
+                    int rowBase = ((tileRow * tileSize + y) * atlasSize
+                        + tileColumn * tileSize) * 4;
+                    for (int x = 0; x < tileSize; x++) {
+                        int index = rowBase + x * 4;
+                        float alpha = source[index + 3] / 255.0f;
+                        if (alpha < 1.0f) {
+                            hasCutout = true;
+                        }
+                        for (int channel = 0; channel < 3; channel++) {
+                            visibleSum[channel] += SrgbToLinear[source[index + channel]] * alpha;
+                        }
+                        coverage += alpha;
+                    }
+                }
+
+                // A tile with nothing visible in it has no colour to darken and
+                // is not referenced by anything the field draws. Left as it is.
+                if (!hasCutout || coverage <= 0.0) {
+                    continue;
+                }
+
+                float[] backing = new float[3];
+                for (int channel = 0; channel < 3; channel++) {
+                    backing[channel] = (float)(visibleSum[channel] / coverage) * backingScale;
+                }
+
+                for (int y = 0; y < tileSize; y++) {
+                    int rowBase = ((tileRow * tileSize + y) * atlasSize
+                        + tileColumn * tileSize) * 4;
+                    for (int x = 0; x < tileSize; x++) {
+                        int index = rowBase + x * 4;
+                        float alpha = source[index + 3] / 255.0f;
+                        for (int channel = 0; channel < 3; channel++) {
+                            float blended = SrgbToLinear[source[index + channel]] * alpha
+                                + backing[channel] * (1.0f - alpha);
+                            target[index + channel] = LinearToSrgbByte(blended);
+                        }
+                        target[index + 3] = 255;
+                    }
+                }
+            }
+        }
+
+        return target;
+    }
+
+    // Builds a pre-tiled LOD atlas: a grid of slots, each holding one source
+    // tile repeated across the whole slot at targetTileSize.
+    //
+    // The repetition is what puts the block pattern back at its true size. A LOD
+    // cell is drawn as a single quad covering several blocks, so a plain tile
+    // would be stretched over all of them; a slot that already repeats the tile
+    // the right number of times shows the pattern at block scale from one quad.
+    //
+    // Scaling is nearest-neighbour, which is exact when the target tile is the
+    // same size as the source or a whole multiple of it. Downscales are done by
+    // halving the source atlas before this is called, so they get a box filter
+    // in linear light instead.
+    public static byte[] TileSlots(
+            byte[] source,
+            int sourceAtlasSize,
+            int sourceTileSize,
+            int targetTileSize,
+            int slotSize,
+            int slotsPerAxis) {
+        int atlasSize = slotSize * slotsPerAxis;
+        byte[] target = new byte[atlasSize * atlasSize * 4];
+
+        for (int y = 0; y < atlasSize; y++) {
+            int slotRow = y / slotSize;
+            int tileY = (y - slotRow * slotSize) % targetTileSize;
+            int sourceY = slotRow * sourceTileSize + (tileY * sourceTileSize) / targetTileSize;
+            int sourceRowBase = sourceY * sourceAtlasSize;
+            int targetRowBase = y * atlasSize;
+
+            for (int x = 0; x < atlasSize; x++) {
+                int slotColumn = x / slotSize;
+                int tileX = (x - slotColumn * slotSize) % targetTileSize;
+                int sourceX = slotColumn * sourceTileSize + (tileX * sourceTileSize) / targetTileSize;
+
+                int sourceIndex = (sourceRowBase + sourceX) * 4;
+                int targetIndex = (targetRowBase + x) * 4;
+                target[targetIndex] = source[sourceIndex];
+                target[targetIndex + 1] = source[sourceIndex + 1];
+                target[targetIndex + 2] = source[sourceIndex + 2];
+                target[targetIndex + 3] = source[sourceIndex + 3];
+            }
+        }
+
+        return target;
+    }
+
+    public static byte[] Halve(byte[] source, int width, int height) {
+        int targetWidth = width > 1 ? width / 2 : 1;
+        int targetHeight = height > 1 ? height / 2 : 1;
+        byte[] target = new byte[targetWidth * targetHeight * 4];
+
+        for (int y = 0; y < targetHeight; y++) {
+            int sourceY0 = Math.Min(y * 2, height - 1);
+            int sourceY1 = Math.Min(sourceY0 + 1, height - 1);
+            for (int x = 0; x < targetWidth; x++) {
+                int sourceX0 = Math.Min(x * 2, width - 1);
+                int sourceX1 = Math.Min(sourceX0 + 1, width - 1);
+
+                int a = (sourceY0 * width + sourceX0) * 4;
+                int b = (sourceY0 * width + sourceX1) * 4;
+                int c = (sourceY1 * width + sourceX0) * 4;
+                int d = (sourceY1 * width + sourceX1) * 4;
+                int destination = (y * targetWidth + x) * 4;
+
+                for (int channel = 0; channel < 3; channel++) {
+                    float sum = SrgbToLinear[source[a + channel]]
+                        + SrgbToLinear[source[b + channel]]
+                        + SrgbToLinear[source[c + channel]]
+                        + SrgbToLinear[source[d + channel]];
+                    target[destination + channel] = LinearToSrgbByte(sum * 0.25f);
+                }
+
+                int alpha = source[a + 3] + source[b + 3] + source[c + 3] + source[d + 3];
+                target[destination + 3] = (byte)((alpha + 2) / 4);
+            }
+        }
+
+        return target;
+    }
+}
+'@
+}
+
 function Convert-PngToDds {
     param(
         [string]$SourcePngPath,
-        [string]$DestinationDdsPath
+        [string]$DestinationDdsPath,
+        # Levels to write, counting the full-size image. Remix calls any
+        # replacement texture of 512x512 or more with a single level
+        # suboptimal, and samples the chain to fade texture detail out with
+        # distance instead of aliasing against it.
+        [int]$MipLevels = 1
     )
 
     $bitmap = New-Object System.Drawing.Bitmap($SourcePngPath)
@@ -118,41 +390,48 @@ function Convert-PngToDds {
             $bitmap = $null
         }
 
-        $rect = New-Object System.Drawing.Rectangle(0, 0, $convertedBitmap.Width, $convertedBitmap.Height)
-        $bitmapData = $convertedBitmap.LockBits(
-            $rect,
-            [System.Drawing.Imaging.ImageLockMode]::ReadOnly,
-            [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+        $baseWidth = $convertedBitmap.Width
+        $baseHeight = $convertedBitmap.Height
+        $levelBytes = New-Object System.Collections.Generic.List[byte[]]
+        $levelBytes.Add((Get-BitmapBgraBytes -Bitmap $convertedBitmap))
 
-        try {
-            $rowByteCount = $convertedBitmap.Width * 4
-            $pixelBytes = New-Object byte[] ($convertedBitmap.Width * $convertedBitmap.Height * 4)
-            $rowBuffer = New-Object byte[] $rowByteCount
-
-            for ($y = 0; $y -lt $convertedBitmap.Height; $y++) {
-                $sourceRowIndex = if ($bitmapData.Stride -lt 0) { $convertedBitmap.Height - 1 - $y } else { $y }
-                $rowPointer = [System.IntPtr]::new($bitmapData.Scan0.ToInt64() + ($sourceRowIndex * $bitmapData.Stride))
-                [System.Runtime.InteropServices.Marshal]::Copy($rowPointer, $rowBuffer, 0, $rowByteCount)
-                [System.Array]::Copy($rowBuffer, 0, $pixelBytes, $y * $rowByteCount, $rowByteCount)
+        if ($MipLevels -gt 1) {
+            Initialize-MipFilter
+            $levelWidth = $baseWidth
+            $levelHeight = $baseHeight
+            while ($levelBytes.Count -lt $MipLevels -and ($levelWidth -gt 1 -or $levelHeight -gt 1)) {
+                $previous = $levelBytes[$levelBytes.Count - 1]
+                $levelBytes.Add([McrtxMipFilter]::Halve($previous, $levelWidth, $levelHeight))
+                if ($levelWidth -gt 1) { $levelWidth = [int]($levelWidth / 2) }
+                if ($levelHeight -gt 1) { $levelHeight = [int]($levelHeight / 2) }
             }
-        } finally {
-            $convertedBitmap.UnlockBits($bitmapData)
         }
 
         $destinationDirectory = Split-Path $DestinationDdsPath -Parent
         New-Item -ItemType Directory -Force -Path $destinationDirectory | Out-Null
+
+        # DDSD_CAPS|HEIGHT|WIDTH|PITCH|PIXELFORMAT, plus DDSD_MIPMAPCOUNT and
+        # the COMPLEX|MIPMAP caps bits when a chain follows the base level.
+        $headerFlags = 0x100F
+        $capsFlags = 0x1000
+        if ($levelBytes.Count -gt 1) {
+            $headerFlags = $headerFlags -bor 0x20000
+            $capsFlags = $capsFlags -bor 0x400008
+        }
 
         $fileStream = [System.IO.File]::Open($DestinationDdsPath, [System.IO.FileMode]::Create, [System.IO.FileAccess]::Write, [System.IO.FileShare]::ReadWrite)
         $writer = New-Object System.IO.BinaryWriter($fileStream)
         try {
             $writer.Write([byte[]][char[]]"DDS ")
             $writer.Write([uint32]124)
-            $writer.Write([uint32]0x100F)
-            $writer.Write([uint32]$convertedBitmap.Height)
-            $writer.Write([uint32]$convertedBitmap.Width)
-            $writer.Write([uint32]($convertedBitmap.Width * 4))
+            $writer.Write([uint32]$headerFlags)
+            $writer.Write([uint32]$baseHeight)
+            $writer.Write([uint32]$baseWidth)
+            $writer.Write([uint32]($baseWidth * 4))
             $writer.Write([uint32]0)
-            $writer.Write([uint32]0)
+            # Left at zero without a chain, which is what a single-level DDS
+            # has always said here.
+            $writer.Write([uint32]$(if ($levelBytes.Count -gt 1) { $levelBytes.Count } else { 0 }))
             for ($index = 0; $index -lt 11; $index++) {
                 $writer.Write([uint32]0)
             }
@@ -166,13 +445,15 @@ function Convert-PngToDds {
             $writer.Write([uint32]0x000000FF)
             $writer.Write([uint32]4278190080)
 
-            $writer.Write([uint32]0x1000)
+            $writer.Write([uint32]$capsFlags)
             $writer.Write([uint32]0)
             $writer.Write([uint32]0)
             $writer.Write([uint32]0)
             $writer.Write([uint32]0)
 
-            $writer.Write($pixelBytes)
+            foreach ($bytes in $levelBytes) {
+                $writer.Write($bytes)
+            }
         } finally {
             $writer.Dispose()
             $fileStream.Dispose()
@@ -1269,6 +1550,113 @@ function New-PortalAtlas {
     }
 }
 
+function New-LodAtlas {
+    param(
+        [string]$TerrainPngPath,
+        [string]$LodPngPath,
+        [int]$Step = 4
+    )
+
+    # Distant terrain draws one quad per LOD cell, and a cell covers $Step blocks
+    # on a side. Mapping a 16px terrain tile across that quad renders the block
+    # texture at $Step-times scale, which reads as giant blocks. Pre-tiling the
+    # texture into a larger slot puts the repetition in the texture instead, so
+    # the same single quad shows the block pattern at its true size.
+    #
+    # Every detail level gets its own atlas, and all of them keep the same
+    # geometry: 2048px, a 16x16 grid of 128px slots, with UVs addressing the
+    # middle 64px of a slot and the pattern continuing into the 32px gutter
+    # around it so mip levels never pull in a neighbouring slot. What changes per
+    # level is only how many block tiles fit in that 64px window -- $Step of them
+    # -- so the source tile is resampled to 64/$Step pixels. Holding the atlas
+    # size fixed is what keeps memory flat at about 22 MB a level instead of
+    # quadrupling with every step; the price is that a block gets fewer texels
+    # the further out the level draws, which is exactly where they are not
+    # missed.
+    #
+    # At step 2 that resample is an upscale -- a 16px tile drawn at 32px. It is a
+    # whole-number nearest upscale, so it looks identical to the 16px tile; it
+    # simply spends memory to avoid needing its own UV window.
+    # How much of a tile's own visible colour fills its cutouts. Well under
+    # half, because a gap in a canopy shows the shaded inside of the wood rather
+    # than more canopy, and a wood from above is darker than one leaf for that
+    # reason. Bright enough that a distant forest still reads as foliage and not
+    # as a hole.
+    $lodCutoutBackingScale = 0.4
+
+    $slotSize = 128
+    $atlasTiles = 16
+    $contentPixels = 64
+    $targetTileSize = [int]($contentPixels / $Step)
+    if ($targetTileSize -lt 1) {
+        throw "LOD atlas step $Step would need a tile smaller than one pixel"
+    }
+
+    Initialize-MipFilter
+
+    $terrainSource = [System.Drawing.Image]::FromFile($TerrainPngPath)
+    $terrainBitmap = $null
+    $lodBitmap = $null
+
+    try {
+        $terrainBitmap = New-Object System.Drawing.Bitmap($terrainSource)
+        $sourceAtlasSize = $terrainBitmap.Width
+        $sourceTileSize = [int]($sourceAtlasSize / $atlasTiles)
+        $sourceBytes = Get-BitmapBgraBytes -Bitmap $terrainBitmap
+
+        # Flatten cutouts before anything else touches the pixels. The LOD
+        # material is not alpha tested -- see FlattenCutouts for why -- so a
+        # transparent texel in this atlas is drawn rather than skipped, and
+        # terrain.png stores transparent texels as black. Leaves are about forty
+        # per cent holes, which is why distant woods came out shot through with
+        # black.
+        $sourceBytes = [McrtxMipFilter]::FlattenCutouts(
+            $sourceBytes,
+            $sourceAtlasSize,
+            $sourceTileSize,
+            $lodCutoutBackingScale)
+
+        # Downscales go through the box filter rather than the nearest-neighbour
+        # sampling in TileSlots: a 4px tile picked out of a 16px one by nearest
+        # keeps one texel in sixteen, so a speckled block turns into whatever
+        # colour happened to land on the lattice. Halving the whole atlas is safe
+        # because every tile size stays even, so a 2x2 average never straddles
+        # two tiles.
+        while ($sourceTileSize -gt $targetTileSize -and ($sourceTileSize % 2) -eq 0) {
+            $sourceBytes = [McrtxMipFilter]::Halve($sourceBytes, $sourceAtlasSize, $sourceAtlasSize)
+            $sourceAtlasSize = [int]($sourceAtlasSize / 2)
+            $sourceTileSize = [int]($sourceTileSize / 2)
+        }
+
+        $atlasSize = $slotSize * $atlasTiles
+        $atlasBytes = [McrtxMipFilter]::TileSlots(
+            $sourceBytes,
+            $sourceAtlasSize,
+            $sourceTileSize,
+            $targetTileSize,
+            $slotSize,
+            $atlasTiles)
+
+        $terrainBitmap.Dispose()
+        $terrainBitmap = $null
+        $terrainSource.Dispose()
+        $terrainSource = $null
+
+        $lodBitmap = New-BitmapFromBgraBytes -Bytes $atlasBytes -Width $atlasSize -Height $atlasSize
+
+        $temporaryLodPath = "$LodPngPath.tmp"
+        $lodBitmap.Save($temporaryLodPath, [System.Drawing.Imaging.ImageFormat]::Png)
+        $lodBitmap.Dispose()
+        $lodBitmap = $null
+
+        Move-Item -Force -Path $temporaryLodPath -Destination $LodPngPath
+    } finally {
+        if ($lodBitmap -ne $null) { $lodBitmap.Dispose() }
+        if ($terrainBitmap -ne $null) { $terrainBitmap.Dispose() }
+        if ($terrainSource -ne $null) { $terrainSource.Dispose() }
+    }
+}
+
 function New-RedstoneEmissiveAtlas {
     param(
         [string]$TerrainPngPath,
@@ -1532,6 +1920,26 @@ $runtimeSourceFiles = @(
     (Join-Path $javaSourceRoot "chunks\RemixChunkRecapturePass.java"),
     (Join-Path $javaSourceRoot "chunks\RemixChunkRecaptureQueue.java"),
     (Join-Path $javaSourceRoot "chunks\RemixChunkNeighborRefresh.java"),
+    (Join-Path $javaSourceRoot "settings\McrtxLodSettingsUi.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodCell.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodTileKey.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodBlocks.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodChunkSampler.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodProvenance.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodReducer.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodTileCodec.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodStoreFile.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodWorldId.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodFragmenter.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\lod\format\LodReassembler.java"),
+    (Join-Path $javaSourceRoot "lod\LodStore.java"),
+    (Join-Path $javaSourceRoot "lod\LodClimateGrid.java"),
+    (Join-Path $javaSourceRoot "lod\LodWorldSampler.java"),
+    (Join-Path $javaSourceRoot "lod\LodRegionReader.java"),
+    (Join-Path $javaSourceRoot "lod\LodRegionFileSource.java"),
+    (Join-Path $javaSourceRoot "lod\LodSampling.java"),
+    (Join-Path $javaSourceRoot "lod\LodTileColumns.java"),
+    (Join-Path $javaSourceRoot "lod\RemixLodCapture.java"),
     (Join-Path $javaSourceRoot "scene\RemixCloudCapture.java"),
     (Join-Path $javaSourceRoot "scene\RemixFogCapture.java"),
     (Join-Path $javaSourceRoot "particles\RemixDestroyOverlayCapture.java"),
@@ -1583,6 +1991,9 @@ $runtimeSourceFiles = @(
     (Join-Path $javaSourceRoot "entities\mcrtx\bridge\RemixDynamicEntityBridge.java"),
     (Join-Path $javaSourceRoot "particles\mcrtx\bridge\RemixParticleOverlayBridge.java"),
     (Join-Path $javaSourceRoot "chunks\mcrtx\bridge\RemixChunkBridge.java"),
+    (Join-Path $javaSourceRoot "lod\mcrtx\bridge\RemixLodBridge.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxLodSettings.java"),
+    (Join-Path $javaSourceRoot "settings\mcrtx\bridge\McrtxLodSettingsNative.java"),
     (Join-Path $javaSourceRoot "core\mcrtx\bridge\HookProfiler.java"),
     (Join-Path $javaSourceRoot "platform\mcrtx\bridge\MinecraftPlatformKey.java"),
     (Join-Path $javaSourceRoot "platform\mcrtx\bridge\MinecraftPlatform.java"),
@@ -1677,6 +2088,30 @@ Replace-TerrainLiquidTiles -TerrainPngPath (Join-Path $assetsDir "terrain.png") 
 New-PortalAtlas -PortalPngPath (Join-Path $assetsDir "portal.png")
 New-RedstoneEmissiveAtlas -TerrainPngPath (Join-Path $assetsDir "terrain.png") -RedstoneEmissivePngPath (Join-Path $assetsDir "redstone_emissive.png")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "terrain.png") -DestinationDdsPath (Join-Path $assetsDir "terrain.dds")
+# One atlas per detail ring, each pre-tiled for that ring's cell width. They are
+# all 2048px with the same slot geometry, so about 22 MB apiece with mips and
+# roughly 88 MB for the set.
+#
+# Six mip levels takes the 2048px atlas down to 64px, where a 128px slot is still
+# four texels across. Going further would let a bilinear tap at a slot's content
+# edge reach into the next slot, which at LOD range shows up as a cell tinted by
+# a block it does not contain. Six is also where a slot has averaged down to
+# roughly its own flat colour, which is exactly what a distant cell should be.
+#
+# Four atlases for five detail levels. Step 32 borrows step 16's rather than
+# baking its own: the content window holds 64/step block tiles, so a step-32
+# atlas resamples every 16px terrain tile to two pixels -- a flat average with
+# one bit of variation left -- and repeats it thirty-two times. Borrowing draws
+# the pattern at twice its true size instead, which is the only thing wrong with
+# it, at a range where a cell is a couple of pixels wide and the pattern is under
+# the mip chain either way. The fifth atlas would add 22 MB to every install and
+# to the release package for that. See resolveLodAtlasPath.
+foreach ($lodStep in @(2, 4, 8, 16)) {
+    $lodAtlasPng = Join-Path $assetsDir "terrain_lod$lodStep.png"
+    $lodAtlasDds = Join-Path $assetsDir "terrain_lod$lodStep.dds"
+    New-LodAtlas -TerrainPngPath (Join-Path $assetsDir "terrain.png") -LodPngPath $lodAtlasPng -Step $lodStep
+    Convert-PngToDds -SourcePngPath $lodAtlasPng -DestinationDdsPath $lodAtlasDds -MipLevels 6
+}
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "redstone_emissive.png") -DestinationDdsPath (Join-Path $assetsDir "redstone_emissive.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "fire.png") -DestinationDdsPath (Join-Path $assetsDir "fire.dds")
 Convert-PngToDds -SourcePngPath (Join-Path $assetsDir "portal.png") -DestinationDdsPath (Join-Path $assetsDir "portal.dds")

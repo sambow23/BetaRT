@@ -8,6 +8,7 @@
 #include "mcrtx/entities/remix_renderer_dynamic.hpp"
 #include "mcrtx/particles/remix_renderer_overlay.hpp"
 #include "mcrtx/core/world_origin.hpp"
+#include "mcrtx/lod/lod_types.hpp"
 
 namespace mcrtx {
 
@@ -106,6 +107,7 @@ struct FrameRenderSnapshot {
   CameraState camera {};
   WorldRenderOrigin renderOrigin {};
   std::vector<ChunkRenderInstance> chunkMeshes {};
+  std::vector<lod::LodRenderInstance> lodRegions {};
   std::vector<DynamicEntityRenderInstance> dynamicEntities {};
   std::vector<remixapi_LightHandle> torchLights {};
   remixapi_MeshHandle cloudMeshHandle {nullptr};
@@ -136,6 +138,7 @@ struct FrameRenderSnapshot {
 
   bool hasScene() const noexcept {
     return !chunkMeshes.empty()
+        || !lodRegions.empty()
         || !dynamicEntities.empty()
         || cloudMeshHandle != nullptr
         || fireMeshHandle != nullptr

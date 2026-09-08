@@ -152,6 +152,55 @@ bool RemixRenderer::drawCapturedGeometry(FrameRenderSnapshot& snapshot) {
   }
 
   {
+    MCRTX_TRACY_SCOPE("drawCapturedGeometry.lodRegions");
+    MCRTX_TRACY_VALUE(snapshot.lodRegions.size());
+    for (const lod::LodRenderInstance& lodInstance : snapshot.lodRegions) {
+      if (lodInstance.meshHandle == nullptr) {
+        continue;
+      }
+
+      remixapi_InstanceInfoBlendEXT blendInfo {};
+      blendInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+      blendInfo.textureColorArg1Source = kRtTextureArgTexture;
+      blendInfo.textureColorArg2Source = kRtTextureArgVertexColor0;
+      blendInfo.textureColorOperation = kRtTextureOpModulate;
+      blendInfo.textureAlphaArg1Source = kRtTextureArgTexture;
+      blendInfo.textureAlphaArg2Source = kRtTextureArgNone;
+      blendInfo.textureAlphaOperation = kRtTextureOpSelectArg1;
+      blendInfo.isVertexColorBakedLighting = FALSE;
+      if (lodInstance.key.renderPass == 1) {
+        blendInfo.alphaBlendEnabled = TRUE;
+        blendInfo.srcColorBlendFactor = 6;
+        blendInfo.dstColorBlendFactor = 7;
+        blendInfo.colorBlendOp = 0;
+        blendInfo.srcAlphaBlendFactor = 1;
+        blendInfo.dstAlphaBlendFactor = 0;
+        blendInfo.alphaBlendOp = 0;
+      }
+
+      remixapi_InstanceInfo instanceInfo {};
+      instanceInfo.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+      instanceInfo.pNext = &blendInfo;
+      instanceInfo.categoryFlags = REMIXAPI_INSTANCE_CATEGORY_BIT_TERRAIN;
+      instanceInfo.mesh = lodInstance.meshHandle;
+      instanceInfo.transform = makeTranslationTransform(
+          rebaseWorldCoordinate(lodInstance.key.originX, snapshot.renderOrigin.x),
+          rebaseWorldCoordinate(0, snapshot.renderOrigin.y),
+          rebaseWorldCoordinate(lodInstance.key.originZ, snapshot.renderOrigin.z));
+      instanceInfo.doubleSided = lodInstance.key.renderPass == 1 ? TRUE : FALSE;
+
+      const remixapi_ErrorCode result = [&]() {
+        MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "DrawInstance.lod");
+        return remix_.DrawInstance(&instanceInfo);
+      }();
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
+        setError("DrawInstance(lod) failed: " + errorCodeToString(result));
+        return false;
+      }
+    }
+  }
+
+  {
     MCRTX_TRACY_SCOPE("drawCapturedGeometry.dynamicEntities");
     MCRTX_TRACY_VALUE(snapshot.dynamicEntities.size());
     std::size_t dynamicEntityBoneCount = 0;

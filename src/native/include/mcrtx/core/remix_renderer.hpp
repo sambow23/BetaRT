@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <array>
 #include <chrono>
 #include <condition_variable>
@@ -21,6 +22,7 @@
 
 #include "mcrtx/scene/celestial_textures.hpp"
 #include "mcrtx/core/world_origin.hpp"
+#include "mcrtx/lod/lod_types.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/remix_renderer_frame.hpp"
 #include "mcrtx/scene/remix_renderer_scene.hpp"
@@ -40,6 +42,18 @@ public:
   void shutdown();
 
   bool initializeTerrainMaterials();
+  bool initializeLodMaterials();
+  // Detail levels have one material each: the atlas a level samples is pre-tiled
+  // for that level's cell width, so the level a region belongs to decides which
+  // material it is meshed with.
+  remixapi_MaterialHandle lodMaterialForPass(int renderPass, int step) const;
+  bool lodAtlasActiveForStep(int step) const;
+  // Rebuilds every material the atlases feed. Takes the lock, unlike the two
+  // above, because it destroys handles a region build in flight may be holding.
+  void reloadMaterials();
+  void setLodDebugViewEnabled(bool enabled);
+  // Lets the Java side put its own diagnostics in the same log file.
+  void logPublic(const std::string& message) { log(message); }
 
   void resize(std::uint32_t width, std::uint32_t height);
   void updateCamera(const CameraState& camera);
@@ -189,6 +203,22 @@ public:
   void clearWorldScene();
   void unloadChunkSection(int originX, int originY, int originZ);
   void setChunkSectionHidden(int originX, int originY, int originZ, bool hidden);
+
+  // ---- Distant terrain LOD ------------------------------------------------
+  // A region arrives already downsampled from the Java side and is meshed and
+  // submitted in one shot; there is no per-block streaming as there is for
+  // full-detail chunks.
+  bool submitLodRegion(const lod::RegionKey& key, const std::vector<lod::LodColumn>& columns);
+  void unloadLodRegion(int originX, int originZ, int step);
+  void setLodRegionHidden(int originX, int originZ, int step, bool hidden);
+  void clearLodRegions();
+  void clearLodRegionsLocked();
+  std::size_t lodRegionCount() const;
+  std::size_t lodTriangleCount(bool visibleOnly) const;
+  // Bumped whenever the renderer drops the region meshes without being asked
+  // to by the scheduler, so the Java side can tell that what it believes is
+  // resident no longer exists and resubmit it.
+  std::uint32_t lodRebuildToken() const;
   bool beginChunkBuild(
       int originX,
       int originY,
@@ -396,6 +426,7 @@ private:
   static std::filesystem::path resolveParticleTexturePath(std::uint32_t textureKind);
   static std::filesystem::path resolveItemsEmissiveTexturePath();
   static std::filesystem::path resolveTerrainAtlasPath();
+  static std::filesystem::path resolveLodAtlasPath(int step);
   static std::filesystem::path resolveTerrainEmissiveTexturePath();
   void destroyCloudMesh();
   void destroyFireMesh();
@@ -516,6 +547,37 @@ private:
   std::uint32_t loggedPopulatedSubmissionSummaryCount_ {0};
   bool loggedLightSubmissionPath_ {false};
   std::filesystem::path terrainAtlasPath_ {};
+  // Distant-terrain materials, one pair per detail level, drawn from that
+  // level's pre-tiled atlas. Both handles are null when the level's atlas is
+  // missing, in which case regions at that level fall back to the nearest level
+  // that does have one, and to the full-detail terrain materials if none do.
+  struct LodStepMaterials {
+    std::filesystem::path atlasPath {};
+    remixapi_MaterialHandle opaque {nullptr};
+    remixapi_MaterialHandle water {nullptr};
+    // Untextured and a different colour per level, so the debug view shows not
+    // just where the field is but which ring is drawing each part of it. Works
+    // at every level and without any atlas at all.
+    remixapi_MaterialHandle debug {nullptr};
+  };
+  std::array<LodStepMaterials, lod::kLodStepCount> lodStepMaterials_ {};
+  bool lodDebugViewEnabled_ {false};
+  // Read from the Java scheduler on its own thread, written when materials are
+  // rebuilt; atomic so the two never need to agree on a lock for one counter.
+  std::atomic<std::uint32_t> lodRebuildToken_ {0};
+  // One-shot diagnostics for why distant terrain may not be reaching Remix.
+  //
+  // A refused region is the hardest failure this subsystem has, because the
+  // Java side only ever sees a bare false: it logs "native refused" and cannot
+  // say which of half a dozen returns produced it. Every one of them now names
+  // itself before returning. One-shot each, because a refusal that fires at all
+  // fires for every region in the field, and the hundredth line says nothing the
+  // first did not.
+  bool loggedLodMaterialMissing_ {false};
+  bool loggedLodFirstBuild_ {false};
+  bool loggedLodFirstMesh_ {false};
+  bool loggedLodColumnCountMismatch_ {false};
+  bool loggedLodMaterialsChangedUnderBuild_ {false};
   std::filesystem::path terrainEmissiveTexturePath_ {};
   std::filesystem::path itemsEmissiveTexturePath_ {};
   std::filesystem::path cloudTexturePath_ {};
@@ -568,6 +630,7 @@ private:
   remixapi_MeshHandle primingMeshHandle_ {nullptr};
   int evictRadiusChunks_ {20};
   std::unordered_map<ChunkKey, ChunkMeshData, ChunkKeyHash> chunkMeshes_ {};
+  std::unordered_map<lod::RegionKey, lod::RegionMeshData, lod::RegionKeyHash> lodRegions_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> pendingNeighborRefresh_ {};
   std::unordered_set<ChunkKey, ChunkKeyHash> recentlyRebuiltChunks_ {};
   std::unordered_map<WorldBlockPosition, TorchLightState, WorldBlockPositionHash> torchLights_ {};
@@ -642,6 +705,9 @@ private:
   float aerialPerspectiveViewDistanceBlocks_ {256.0f};
   int rtQuality_ {kRtQualityHigh};
   std::vector<remixapi_MeshHandle> deferredMeshDestroys_ {};
+  // Hands one region mesh to the deferred queue instead of destroying it here.
+  // Callers must hold mutex_.
+  void deferLodMeshDestroy(remixapi_MeshHandle& meshHandle);
   std::vector<remixapi_LightHandle> deferredLightDestroys_ {};
   std::unordered_map<std::string, std::string> appliedRemixConfigValues_ {};
   std::unordered_map<std::string, std::string> appliedGameStateValues_ {};

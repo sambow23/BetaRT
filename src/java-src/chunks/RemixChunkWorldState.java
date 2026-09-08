@@ -1,6 +1,8 @@
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Set;
 import mcrtx.bridge.RemixChunkBridge;
 import mcrtx.bridge.RemixSceneBridge;
@@ -10,6 +12,14 @@ final class RemixChunkWorldState {
     private static final Set<Long> KNOWN_CHUNK_SECTIONS = new HashSet<Long>();
     private static final Set<Long> HAS_NATIVE_MESH_SECTIONS = new HashSet<Long>();
     private static final Set<Long> RESIDENT_CHUNK_SECTIONS = new HashSet<Long>();
+
+    /**
+     * How many sections of each chunk column currently have native geometry.
+     * Distant terrain uses this to decide when real chunks have actually taken
+     * over an area, so the LOD covering it can be hidden without leaving a hole
+     * while the chunk meshes are still building.
+     */
+    private static final Map<Long, Integer> MESHED_SECTIONS_PER_COLUMN = new HashMap<Long, Integer>();
 
     private static fd attachedWorld;
     private static boolean loggedWorldListenerAttach;
@@ -27,8 +37,30 @@ final class RemixChunkWorldState {
 
     static void markSectionResident(int originX, int originY, int originZ) {
         Long key = Long.valueOf(RemixChunkSectionKey.encode(originX, originY, originZ));
-        HAS_NATIVE_MESH_SECTIONS.add(key);
+        if (HAS_NATIVE_MESH_SECTIONS.add(key)) {
+            addColumnMesh(originX >> 4, originZ >> 4, 1);
+        }
         RESIDENT_CHUNK_SECTIONS.add(key);
+    }
+
+    /** True once any section of this chunk column has native geometry. */
+    static boolean columnHasNativeMesh(int chunkX, int chunkZ) {
+        return MESHED_SECTIONS_PER_COLUMN.containsKey(columnKey(chunkX, chunkZ));
+    }
+
+    private static void addColumnMesh(int chunkX, int chunkZ, int delta) {
+        Long key = columnKey(chunkX, chunkZ);
+        Integer current = MESHED_SECTIONS_PER_COLUMN.get(key);
+        int next = (current == null ? 0 : current.intValue()) + delta;
+        if (next <= 0) {
+            MESHED_SECTIONS_PER_COLUMN.remove(key);
+        } else {
+            MESHED_SECTIONS_PER_COLUMN.put(key, Integer.valueOf(next));
+        }
+    }
+
+    private static Long columnKey(int chunkX, int chunkZ) {
+        return Long.valueOf(((long) chunkX << 32) | (chunkZ & 0xFFFFFFFFL));
     }
 
     static void onChunkSectionUnload(int originX, int originY, int originZ) {
@@ -47,6 +79,7 @@ final class RemixChunkWorldState {
         KNOWN_CHUNK_SECTIONS.clear();
         HAS_NATIVE_MESH_SECTIONS.clear();
         RESIDENT_CHUNK_SECTIONS.clear();
+        MESHED_SECTIONS_PER_COLUMN.clear();
         RemixSceneBridge.clearWorldScene();
         RemixChunkBridge.resetCaptureState();
         RemixCaveCulling.clear();
@@ -115,7 +148,9 @@ final class RemixChunkWorldState {
     private static void forgetSection(int originX, int originY, int originZ) {
         Long key = Long.valueOf(RemixChunkSectionKey.encode(originX, originY, originZ));
         KNOWN_CHUNK_SECTIONS.remove(key);
-        HAS_NATIVE_MESH_SECTIONS.remove(key);
+        if (HAS_NATIVE_MESH_SECTIONS.remove(key)) {
+            addColumnMesh(originX >> 4, originZ >> 4, -1);
+        }
         RESIDENT_CHUNK_SECTIONS.remove(key);
     }
 }

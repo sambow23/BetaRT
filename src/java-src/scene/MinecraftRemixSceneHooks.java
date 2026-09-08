@@ -56,6 +56,7 @@ public final class MinecraftRemixSceneHooks {
         long __perf = HookProfiler.begin();
         try {
             RemixChunkCapture.onWorldChanged(world);
+            RemixLodCapture.onWorldChanged();
         } finally {
             HookProfiler.endHook("hook.onWorldChanged", __perf);
         }

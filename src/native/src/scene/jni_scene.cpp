@@ -111,7 +111,7 @@ JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixSceneBridge_nClearWorldScene(JNIEn
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixSceneBridge_nReloadMaterials(
     JNIEnv*, jclass) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Jni, "nReloadMaterials");
-  RemixRenderer::instance().initializeTerrainMaterials();
+  RemixRenderer::instance().reloadMaterials();
 }
 
 JNIEXPORT void JNICALL Java_mcrtx_bridge_RemixSceneBridge_nSetScreenTint(

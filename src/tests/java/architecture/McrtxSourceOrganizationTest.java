@@ -34,6 +34,55 @@ public final class McrtxSourceOrganizationTest {
     requireFile("src/tests/java/entities/SheepWoolColorTest.java");
     requireMissingFile("src/java-src/MinecraftRemixHooks.java");
 
+    // The LOD format package is linked by three separate builds -- the patched
+    // client, the server plugin and the offline bake tool -- by these exact
+    // paths, and it must stay free of Minecraft imports so the latter two can
+    // compile it without the game jar. Moving or contaminating it breaks builds
+    // that live outside this repository, where nothing else would catch it.
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodCell.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodTileKey.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodBlocks.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodChunkSampler.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodProvenance.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodReducer.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodTileCodec.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodStoreFile.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodWorldId.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodFragmenter.java");
+    requireFile("src/java-src/lod/mcrtx/lod/format/LodReassembler.java");
+    requireFile("src/tests/java/lod/LodFormatTest.java");
+    requireFile("src/tests/java/lod/LodChunkSamplerTest.java");
+
+    // The client half of the tile pipeline: one store, one sampler, one adapter
+    // onto the native side.
+    requireFile("src/java-src/lod/LodStore.java");
+    requireFile("src/java-src/lod/LodWorldSampler.java");
+    requireFile("src/java-src/lod/LodSampling.java");
+    requireFile("src/java-src/lod/LodTileColumns.java");
+
+    // The second producer, reading the world's own save. The reader is kept
+    // clear of the world so that it can be pointed at a save directory offline,
+    // which is the only way its NBT handling gets checked against real bytes;
+    // LodRegionFileSource is where the world, and so the untestable half, lives.
+    requireFile("src/java-src/lod/LodRegionReader.java");
+    requireFile("src/java-src/lod/LodRegionFileSource.java");
+    requireFile("src/java-src/lod/LodClimateGrid.java");
+    requireNotContains(
+        read("src/java-src/lod/LodRegionReader.java"),
+        "LodStore",
+        "region reader stays independent of the store so it can run offline");
+    requireContains(
+        read("src/java-src/lod/LodRegionFileSource.java"),
+        "dimension != 0",
+        "region reads stay out of the Nether, whose ceiling is not a surface");
+
+    // Superseded by the tile store. The per-chunk cache keyed itself on the
+    // save's path, which is exactly what stopped a cache file being shareable,
+    // and the extractor re-sampled the world per region at every detail level.
+    requireMissingFile("src/java-src/lod/RemixLodCache.java");
+    requireMissingFile("src/java-src/lod/RemixLodExtractor.java");
+    requireFormatPackageIsPortable();
+
     String lifecycleHooks = read("src/java-src/lifecycle/MinecraftRemixLifecycleHooks.java");
     requireContains(lifecycleHooks, "public static void onDisplayCreated", "display-created hook ABI");
     requireContains(lifecycleHooks, "public static String onScreenshot", "screenshot hook ABI");
@@ -608,6 +657,47 @@ public final class McrtxSourceOrganizationTest {
 
   private static String read(String path) throws Exception {
     return new String(Files.readAllBytes(Paths.get(path)), StandardCharsets.UTF_8);
+  }
+
+  /**
+   * Every import in the LOD format package must come from the JDK.
+   *
+   * <p>The package is compiled by the server plugin and the offline bake tool,
+   * neither of which has the Minecraft jar on its classpath, so a single import
+   * reaching back into the client breaks builds that live in other repositories
+   * where nothing would catch it. This checks the realistic mistake -- an import
+   * added for convenience. It cannot prove the package compiles standalone,
+   * because Minecraft's own classes sit in the default package and need no
+   * import to be referenced; compiling the package on its own is what proves
+   * that, and both downstream builds do exactly that.
+   */
+  private static void requireFormatPackageIsPortable() throws Exception {
+    Path root = Paths.get("src/java-src/lod/mcrtx/lod/format");
+    if (!Files.isDirectory(root)) {
+      throw new AssertionError("LOD format package missing: " + root);
+    }
+
+    try (DirectoryStream<Path> entries = Files.newDirectoryStream(root, "*.java")) {
+      for (Path entry : entries) {
+        for (String line : Files.readAllLines(entry, StandardCharsets.UTF_8)) {
+          String trimmed = line.trim();
+          if (!trimmed.startsWith("import ")) {
+            continue;
+          }
+          String imported = trimmed.substring("import ".length()).trim();
+          if (imported.startsWith("static ")) {
+            imported = imported.substring("static ".length()).trim();
+          }
+          if (!imported.startsWith("java.")) {
+            throw new AssertionError(
+                "LOD format package must import only the JDK, but "
+                    + entry.getFileName()
+                    + " imports "
+                    + imported);
+          }
+        }
+      }
+    }
   }
 
   private static void requireFile(String path) {

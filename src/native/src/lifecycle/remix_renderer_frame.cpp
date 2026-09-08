@@ -121,6 +121,26 @@ bool RemixRenderer::prepareFrameSnapshotLocked(FrameRenderSnapshot& snapshot, bo
   }
 
   {
+    // LOD regions are deliberately not frustum culled. Distant terrain still
+    // drives sky occlusion, reflections and GI in a path tracer, and the whole
+    // field is a couple of hundred instances, so culling buys nothing worth
+    // the artifacts.
+    MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectLodRegions");
+    MCRTX_TRACY_VALUE(lodRegions_.size());
+    snapshot.lodRegions.reserve(lodRegions_.size());
+    for (const auto& [regionKey, meshData] : lodRegions_) {
+      if (meshData.meshHandle == nullptr || meshData.hidden) {
+        continue;
+      }
+
+      lod::LodRenderInstance renderInstance;
+      renderInstance.key = regionKey;
+      renderInstance.meshHandle = meshData.meshHandle;
+      snapshot.lodRegions.push_back(renderInstance);
+    }
+  }
+
+  {
     MCRTX_TRACY_SCOPE("prepareFrameSnapshot.collectDynamicEntities");
     MCRTX_TRACY_VALUE(dynamicEntityFrameInstanceCount_);
     snapshot.dynamicEntities.reserve(dynamicEntityFrameInstanceCount_);

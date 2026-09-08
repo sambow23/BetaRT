@@ -14,6 +14,8 @@ public final class McrtxSettingsStore {
     public static final int CATEGORY_GRAPHICS = 1;
     public static final int CATEGORY_DEBUG = 2;
     public static final int CATEGORY_MATERIAL = 3;
+    public static final int CATEGORY_LOD = 4;
+    public static final int CATEGORY_COUNT = CATEGORY_LOD + 1;
     public static final int DEFAULT_CATEGORY = CATEGORY_GAMEPLAY;
 
     private static final String QUICK_SETTINGS_CATEGORY_KEY = "MCRTX_QUICK_SETTINGS_CATEGORY";
@@ -56,16 +58,17 @@ public final class McrtxSettingsStore {
         McrtxGameplaySettings.loadLocked(fileValues);
         McrtxGraphicsSettings.loadLocked(fileValues);
         McrtxDebugSettings.loadLocked(fileValues);
+        boolean lodMigrationNeeded = McrtxLodSettings.loadLocked(fileValues);
         boolean materialMigrationNeeded = McrtxMaterialSettings.loadLocked(fileValues);
         quickSettingsCategory = McrtxRuntimeSettingParser.readIntSetting(
                 fileValues,
                 QUICK_SETTINGS_CATEGORY_KEY,
                 DEFAULT_CATEGORY,
                 CATEGORY_GAMEPLAY,
-                CATEGORY_MATERIAL);
+                CATEGORY_COUNT - 1);
         loaded = true;
 
-        if (materialMigrationNeeded) {
+        if (materialMigrationNeeded || lodMigrationNeeded) {
             saveLocked();
         }
     }
@@ -76,13 +79,17 @@ public final class McrtxSettingsStore {
         McrtxGraphicsSettings.writeLocked(fileValues);
         McrtxDebugSettings.writeLocked(fileValues);
         McrtxMaterialSettings.writeLocked(fileValues);
+        McrtxLodSettings.writeLocked(fileValues);
         fileValues.put(QUICK_SETTINGS_CATEGORY_KEY, Integer.toString(quickSettingsCategory));
         writeFileValues(fileValues);
         settingsSnapshot = fileValues;
     }
 
     private static int normalizeCategory(int category) {
-        if (category < CATEGORY_GAMEPLAY || category > CATEGORY_MATERIAL) {
+        // Bounded by the count rather than by whichever category happens to be
+        // last, so the next category added is reachable without this and the
+        // screen's wrap having to be found and bumped again.
+        if (category < CATEGORY_GAMEPLAY || category >= CATEGORY_COUNT) {
             return DEFAULT_CATEGORY;
         }
         return category;

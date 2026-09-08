@@ -54,6 +54,7 @@ add_library(mcrtx_jni SHARED
   src/settings/jni_settings_gameplay.cpp
   src/settings/jni_settings_graphics.cpp
   src/settings/jni_settings_debug.cpp
+  src/settings/jni_settings_lod.cpp
   src/settings/jni_settings_material.cpp
   src/scene/celestial_textures.cpp
   src/scene/remix_cloud_mode.cpp
@@ -82,6 +83,10 @@ add_library(mcrtx_jni SHARED
   src/chunks/remix_chunk_geometry.cpp
   src/chunks/remix_chunk_submission.cpp
   src/chunks/remix_chunk_residency.cpp
+  src/lod/lod_geometry.cpp
+  src/lod/remix_lod_terrain.cpp
+  src/lod/remix_lod_materials.cpp
+  src/lod/jni_lod.cpp
   src/materials/remix_materials.cpp
   src/materials/remix_material_paths.cpp
   src/materials/remix_material_terrain.cpp
