@@ -24,7 +24,7 @@ public final class McrtxQuickSettingsScreen extends da {
     private static final int CLOSE_BUTTON_ID = 309;
 
     private static int activeCategory = McrtxSettingsStore.DEFAULT_CATEGORY;
-    private static final int[] categoryScrollOffsets = new int[4];
+    private static final int[] categoryScrollOffsets = new int[McrtxSettingsStore.CATEGORY_COUNT];
 
     private static final class OptionSelectorRow {
         final ke prevButton;
@@ -319,7 +319,8 @@ public final class McrtxQuickSettingsScreen extends da {
     }
 
     private void cycleCategory(int delta) {
-        activeCategory = (activeCategory + delta + 4) % 4;
+        int count = McrtxSettingsStore.CATEGORY_COUNT;
+        activeCategory = (activeCategory + delta + count) % count;
         McrtxSettingsStore.setQuickSettingsCategory(activeCategory);
     }
 

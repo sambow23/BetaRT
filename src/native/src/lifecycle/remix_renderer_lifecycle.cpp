@@ -1,6 +1,8 @@
 // Renderer initialization, standalone worker, shutdown, and runtime loading.
 
 #include "mcrtx/core/remix_renderer.hpp"
+
+#include <fstream>
 #include "mcrtx/lifecycle/remix_renderer_timing.hpp"
 #include "mcrtx/platform/remix_window_internals.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
@@ -8,6 +10,7 @@
 #include "mcrtx/lifecycle/perf_log.hpp"
 
 #include <chrono>
+#include <cstdio>
 #include <cstdlib>
 #include <iostream>
 #include <string_view>
@@ -27,7 +30,44 @@ std::string describeRequestedWindowMode() {
   return configuredWindowMode.empty() ? std::string("<default>") : configuredWindowMode;
 }
 
+// Diagnostics also go to a file. The launcher keeps game output in a console
+// window that is gone the moment the game closes, so without this nothing
+// survives a session and a problem can only be caught by watching it live.
+std::mutex g_diagnosticLogMutex;
+std::ofstream g_diagnosticLogStream;
+bool g_diagnosticLogOpened = false;
 
+// Truncated once per process: a log covering one session is far easier to read
+// than one that accumulates every run.
+std::ofstream* diagnosticLogStreamLocked() {
+  if (!g_diagnosticLogOpened) {
+    g_diagnosticLogOpened = true;
+
+    std::filesystem::path logPath = getRuntimeConfigPath();
+    if (logPath.empty()) {
+      logPath = std::filesystem::path("mcrtx.log");
+    } else {
+      logPath.replace_filename("mcrtx.log");
+    }
+    g_diagnosticLogStream.open(logPath, std::ios::out | std::ios::trunc);
+  }
+  return g_diagnosticLogStream.is_open() ? &g_diagnosticLogStream : nullptr;
+}
+
+std::string localTimestamp() {
+  SYSTEMTIME now {};
+  GetLocalTime(&now);
+  char buffer[16] {};
+  std::snprintf(
+      buffer,
+      sizeof(buffer),
+      "%02u:%02u:%02u.%03u",
+      now.wHour,
+      now.wMinute,
+      now.wSecond,
+      now.wMilliseconds);
+  return std::string(buffer);
+}
 
 }  // namespace
 
@@ -165,6 +205,7 @@ bool RemixRenderer::initialize(
   applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
+  initializeLodMaterials();
   createPrimingMesh();
 
   initialized_ = true;
@@ -253,6 +294,7 @@ bool RemixRenderer::initializeStandaloneWorker(std::filesystem::path remixDllPat
   applyRemixConfigPostStartupLocked();
 
   initializeTerrainMaterials();
+  initializeLodMaterials();
   createPrimingMesh();
   {
     TracyUniqueLock lock(mutex_);
@@ -515,6 +557,16 @@ void RemixRenderer::setError(std::string message) {
 void RemixRenderer::log(const std::string& message) {
   OutputDebugStringA(("[mcrtx] " + message + "\n").c_str());
   std::cerr << "[mcrtx] " << message << std::endl;
+
+  std::scoped_lock lock(g_diagnosticLogMutex);
+  std::ofstream* stream = diagnosticLogStreamLocked();
+  if (stream == nullptr) {
+    return;
+  }
+  // Flushed per line: diagnostics are rare, and a log that loses its last
+  // lines to a crash is worth nothing.
+  *stream << localTimestamp() << " [mcrtx] " << message << '\n';
+  stream->flush();
 }
 
 

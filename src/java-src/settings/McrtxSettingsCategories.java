@@ -5,6 +5,7 @@ final class McrtxSettingsCategories {
     private static final McrtxSettingsCategoryUi GRAPHICS = new McrtxGraphicsSettingsUi();
     private static final McrtxSettingsCategoryUi DEBUG = new McrtxDebugSettingsUi();
     private static final McrtxSettingsCategoryUi MATERIAL = new McrtxMaterialSettingsUi();
+    private static final McrtxSettingsCategoryUi LOD = new McrtxLodSettingsUi();
 
     private McrtxSettingsCategories() {
     }
@@ -13,6 +14,7 @@ final class McrtxSettingsCategories {
         if (category == McrtxSettingsStore.CATEGORY_GRAPHICS) return GRAPHICS;
         if (category == McrtxSettingsStore.CATEGORY_DEBUG) return DEBUG;
         if (category == McrtxSettingsStore.CATEGORY_MATERIAL) return MATERIAL;
+        if (category == McrtxSettingsStore.CATEGORY_LOD) return LOD;
         return GAMEPLAY;
     }
 
@@ -21,5 +23,6 @@ final class McrtxSettingsCategories {
         DEBUG.applySavedSettings();
         MATERIAL.applySavedSettings();
         GRAPHICS.applySavedSettings();
+        LOD.applySavedSettings();
     }
 }
