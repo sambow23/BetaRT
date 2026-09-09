@@ -62,15 +62,16 @@ WorldRenderOrigin RemixRenderer::currentRenderOriginLocked() const noexcept {
 }
 
 bool RemixRenderer::submitGameFrameStateLocked() {
-  if (!standaloneOutputWindow_ || submittedGameFrameRevision_ == publishedGameFrameRevision_) {
+  if (!standaloneOutputWindow_) {
     return true;
   }
   // Present serializes the runtime API; consume Java's updates only between native frames.
   const auto& frame = publishedGameFrameState_;
-  if (frame.atmosphere) {
+  const bool changed = submittedGameFrameRevision_ != publishedGameFrameRevision_;
+  if (changed && frame.atmosphere) {
     updateAtmosphereConfigLocked(frame.atmosphere->celestialAngle, frame.atmosphere->forceDark);
   }
-  if (frame.fog && remix_.SetFogState != nullptr) {
+  if (changed && frame.fog && remix_.SetFogState != nullptr) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetFogState.frame");
     const auto result = remix_.SetFogState(&*frame.fog);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
@@ -78,7 +79,7 @@ bool RemixRenderer::submitGameFrameStateLocked() {
       return false;
     }
   }
-  if (frame.tint && remix_.SetScreenTint != nullptr) {
+  if (changed && frame.tint && remix_.SetScreenTint != nullptr) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SetScreenTint.frame");
     const auto& tint = *frame.tint;
     const auto result = remix_.SetScreenTint(tint[0], tint[1], tint[2], tint[3]);
@@ -87,19 +88,23 @@ bool RemixRenderer::submitGameFrameStateLocked() {
       return false;
     }
   }
-  if (frame.ui && remix_.SubmitUIDrawList != nullptr) {
+  // UI is consumed by each Present. Replay the published list even when Java has
+  // not produced another snapshot, including an empty list when UI is cleared.
+  if (remix_.SubmitUIDrawList != nullptr) {
     MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Remix, "SubmitUIDrawList.frame");
     remixapi_UIDrawList list {};
     list.sType = REMIXAPI_STRUCT_TYPE_UI_DRAW_LIST;
-    list.displayWidth = frame.ui->displayWidth;
-    list.displayHeight = frame.ui->displayHeight;
-    list.pVertices = frame.ui->vertices.data();
-    list.vertexCount = static_cast<std::uint32_t>(frame.ui->vertices.size());
-    list.pIndices = frame.ui->indices.data();
-    list.indexCount = static_cast<std::uint32_t>(frame.ui->indices.size());
-    list.pCommands = frame.ui->commands.data();
-    list.commandCount = static_cast<std::uint32_t>(frame.ui->commands.size());
-    const auto result = remix_.SubmitUIDrawList(&list);
+    if (frame.ui) {
+      list.displayWidth = frame.ui->displayWidth;
+      list.displayHeight = frame.ui->displayHeight;
+      list.pVertices = frame.ui->vertices.data();
+      list.vertexCount = static_cast<std::uint32_t>(frame.ui->vertices.size());
+      list.pIndices = frame.ui->indices.data();
+      list.indexCount = static_cast<std::uint32_t>(frame.ui->indices.size());
+      list.pCommands = frame.ui->commands.data();
+      list.commandCount = static_cast<std::uint32_t>(frame.ui->commands.size());
+    }
+    const auto result = remix_.SubmitUIDrawList(frame.ui ? &list : nullptr);
     if (result != REMIXAPI_ERROR_CODE_SUCCESS) {
       setError("SubmitUIDrawList failed: " + errorCodeToString(result));
       return false;

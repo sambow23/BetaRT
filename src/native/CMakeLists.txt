@@ -1,5 +1,5 @@
 set(MCRTX_DXVK_REMIX_ROOT "${PROJECT_SOURCE_DIR}/../dxvk-remix-gmod" CACHE PATH "Path to the dxvk-remix-gmod checkout")
-set(MCRTX_STB_INCLUDE_DIR "${MCRTX_DXVK_REMIX_ROOT}/submodules/FidelityFX-SDK/framework/cauldron/framework/libs/stb")
+set(MCRTX_STB_INCLUDE_DIR "${MCRTX_DXVK_REMIX_ROOT}/third_party/image" CACHE PATH "Path to stb_image.h")
 
 if(MCRTX_BUILD_JNI)
 
@@ -161,7 +161,7 @@ if(MCRTX_TERRAIN_SYNCHRONOUS)
   target_compile_definitions(mcrtx_jni PUBLIC MCRTX_TERRAIN_SYNCHRONOUS)
 endif()
 find_package(Threads REQUIRED)
-target_link_libraries(mcrtx_jni PRIVATE Threads::Threads)
+target_link_libraries(mcrtx_jni PUBLIC Threads::Threads)
 target_compile_features(mcrtx_jni PRIVATE cxx_std_20)
 
 if(WIN32 AND JAVA_AWT_LIBRARY)

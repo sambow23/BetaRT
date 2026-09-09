@@ -20,6 +20,7 @@ class StandaloneRenderTest {
   inline static std::mutex apiMutex;
   inline static int fogCalls {0};
   inline static int uiCalls {0};
+  inline static bool uiSubmitted {false};
   inline static float fogEnd {0};
   inline static float uiVertex {0};
   inline static bool failUi {false};
@@ -75,6 +76,12 @@ class StandaloneRenderTest {
   static remixapi_ErrorCode REMIXAPI_CALL ui(const remixapi_UIDrawList* list) {
     std::scoped_lock lock(apiMutex);
     ++uiCalls;
+    uiSubmitted = true;
+    if (list && list->vertexCount) {
+      require(list->indexCount == 1 && list->pIndices[0] == 0
+          && list->commandCount == 1 && list->pCommands[0].indexCount == 1,
+        "Published UI index/command arrays were not retained");
+    }
     uiVertex = list != nullptr && list->vertexCount != 0 ? list->pVertices[0].x : -1.0f;
     return failUi ? REMIXAPI_ERROR_CODE_GENERAL_FAILURE : REMIXAPI_ERROR_CODE_SUCCESS;
   }
@@ -105,6 +112,9 @@ class StandaloneRenderTest {
     command.indexCount = 100;
   }
   static remixapi_ErrorCode REMIXAPI_CALL present(const remixapi_PresentInfo*) {
+    // Emulate Remix's per-present UI lifetime while native frames outpace Java capture.
+    require(uiSubmitted, "A native Present did not receive the cached UI list");
+    uiSubmitted = false;
     if (probePublisher.exchange(false)) {
       // Simulate Present holding Remix's API lock while it waits for the GPU.
       std::scoped_lock apiLock(apiMutex);
@@ -183,8 +193,16 @@ public:
     require(state.submitGameFrameStateLocked(), "Published frame submission failed");
     require(fogEnd == 1 && uiVertex == 1, "Published frame did not own a consistent copy");
     require(fogCalls == 1 && uiCalls == 1, "Fog calls were not coalesced");
-    require(state.submitGameFrameStateLocked() && fogCalls == 1 && uiCalls == 1,
-      "A repeated native frame resubmitted unchanged game state");
+    for (int i = 0; i < 5; ++i) {
+      require(state.submitGameFrameStateLocked() && fogCalls == 1
+          && uiCalls == i + 2 && uiVertex == 1,
+        "A repeated native frame lost UI or reapplied persistent state");
+    }
+    failUi = true;
+    require(!state.submitGameFrameStateLocked(), "Failed cached UI replay was accepted");
+    failUi = false;
+    require(state.submitGameFrameStateLocked() && uiVertex == 1 && fogCalls == 1,
+      "Cached UI was not retained after replay failure");
     state.present();
     capture(state, 3);
     state.present();
@@ -198,6 +216,12 @@ public:
     require(state.submitUiDrawList(nullptr), "Empty UI capture failed");
     state.present();
     require(state.submitGameFrameStateLocked() && uiVertex == -1, "Explicit empty UI was lost");
+    const auto clearCalls = uiCalls;
+    require(state.submitGameFrameStateLocked() && uiVertex == -1 && uiCalls == clearCalls + 1,
+      "Empty UI was not replayed on the next native frame");
+    capture(state, 4);
+    state.present();
+    require(state.submitGameFrameStateLocked() && uiVertex == 4, "UI did not return after a clear");
     const auto start = std::chrono::steady_clock::now();
     std::thread worker([&] { state.renderStandaloneFrames(); });
     waitFor([&] { return state.submittedFrameCount() >= 60; });

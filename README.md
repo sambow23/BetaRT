@@ -29,6 +29,8 @@ A mod that brings Path Tracing to Minecraft Beta 1.7.3 using RTX Remix, aiming t
 
 ## Installation
 Download the latest release, import the .zip file into PrismLauncher (`Add Instance > Import`), Run the game.
+
+For the native unlit renderer, see [raster performance and frame counters](docs/RasterPerformance.md).
 <img width="1437" height="300" alt="image" src="https://github.com/user-attachments/assets/b5f9b958-a87d-4ea5-afb4-87aea1549676" />
 
 ### PBR Texture packs:

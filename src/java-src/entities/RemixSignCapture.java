@@ -7,10 +7,7 @@ import mcrtx.bridge.RemixDynamicEntityBridge;
 import org.lwjgl.opengl.GL11;
 
 final class RemixSignCapture {
-    private static final float FONT_GLYPH_SIZE = 7.99f;
-    private static final float FONT_ATLAS_SIZE = 128.0f;
-    private static final float FONT_GLYPH_TEXEL_SIZE = 8.0f;
-    private static final float SIGN_TEXT_DEPTH_OFFSET = -0.30f;
+    private static final RemixSignTextMesh TEXT_MESH_CACHE = new RemixSignTextMesh();
     private static final String SIGN_TEXT_TEXTURE_PATH = "/mcrtx_alias/sign_text/font/default.png";
     private static final String SIGN_TEXTURE_PATH = "/item/sign.png";
     private static final Map<ps, RemixDynamicModelCapture.CachedMesh> MODEL_MESH_CACHE =
@@ -108,9 +105,10 @@ final class RemixSignCapture {
             int textureId = resolveSignTextTextureId();
             RemixDynamicModelCapture.TextureAlpha alpha =
                     RemixDynamicModelCapture.textureAlpha(textureId);
-            boolean canCapturePerPixel = alpha.width == 128
-                    && alpha.height == 128
-                    && alpha.hasPixels();
+            float[] vertices = TEXT_MESH_CACHE.resolve(text, x, y, characterWidths, alpha);
+            if (vertices.length == 0) {
+                return;
+            }
 
             float[] modelView = RemixDynamicModelCapture.captureModelViewMatrix();
             if (modelView == null) {
@@ -125,49 +123,8 @@ final class RemixSignCapture {
             }
             RemixDynamicEntitySession.submitBoneTransform(boneIndex, modelToWorld);
 
-            float cursorX = x;
-            for (int index = 0; index < text.length(); index++) {
-                while (text.length() > index + 1 && text.charAt(index) == '\u00a7') {
-                    index += 2;
-                    if (index >= text.length()) {
-                        return;
-                    }
-                }
-
-                int glyphIndex = fp.a.indexOf(text.charAt(index));
-                if (glyphIndex < 0) {
-                    continue;
-                }
-                int glyphId = glyphIndex + 32;
-                if (glyphId < 0 || glyphId >= characterWidths.length) {
-                    continue;
-                }
-
-                float glyphMinX = cursorX;
-                float glyphMaxX = cursorX + FONT_GLYPH_SIZE;
-                float glyphMinY = y;
-                float glyphMaxY = y + FONT_GLYPH_SIZE;
-                float atlasX = (glyphId % 16) * 8.0f;
-                float atlasY = (glyphId / 16) * 8.0f;
-                float u0 = atlasX / FONT_ATLAS_SIZE;
-                float v0 = atlasY / FONT_ATLAS_SIZE;
-                float u1 = (atlasX + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
-                float v1 = (atlasY + FONT_GLYPH_SIZE) / FONT_ATLAS_SIZE;
-
-                if (canCapturePerPixel) {
-                    captureSignGlyph(
-                            glyphMinX, glyphMinY, atlasX, atlasY,
-                            sanitizedColor, boneIndex, alpha);
-                } else {
-                    RemixDynamicEntityBridge.captureDynamicEntityQuad(
-                            glyphMinX, glyphMaxY, SIGN_TEXT_DEPTH_OFFSET, u0, v1,
-                            glyphMaxX, glyphMaxY, SIGN_TEXT_DEPTH_OFFSET, u1, v1,
-                            glyphMaxX, glyphMinY, SIGN_TEXT_DEPTH_OFFSET, u1, v0,
-                            glyphMinX, glyphMinY, SIGN_TEXT_DEPTH_OFFSET, u0, v0,
-                            sanitizedColor, false, boneIndex);
-                }
-                cursorX += characterWidths[glyphId];
-            }
+            RemixDynamicEntityBridge.captureDynamicEntityQuadBatch(
+                    vertices, vertices.length / 20, sanitizedColor, false, boneIndex);
         } catch (RuntimeException exception) {
             RemixDynamicEntitySession.handleFailure(exception);
         }
@@ -216,39 +173,6 @@ final class RemixSignCapture {
             }
         }
         return cachedFontTextureId > 0 ? cachedFontTextureId : boundTextureId;
-    }
-
-    private static void captureSignGlyph(
-            float glyphMinX,
-            float glyphMinY,
-            float atlasX,
-            float atlasY,
-            int colorRgba,
-            int boneIndex,
-            RemixDynamicModelCapture.TextureAlpha alpha) {
-        float pixelSpan = FONT_GLYPH_SIZE / FONT_GLYPH_TEXEL_SIZE;
-        int atlasPixelBaseX = Math.round(atlasX);
-        int atlasPixelBaseY = Math.round(atlasY);
-        for (int pixelY = 0; pixelY < 8; pixelY++) {
-            for (int pixelX = 0; pixelX < 8; pixelX++) {
-                if (!alpha.isTexturePixelOpaque(
-                        atlasPixelBaseX + pixelX, atlasPixelBaseY + pixelY)) {
-                    continue;
-                }
-                float quadMinX = glyphMinX + pixelX * pixelSpan;
-                float quadMaxX = quadMinX + pixelSpan;
-                float quadMinY = glyphMinY + pixelY * pixelSpan;
-                float quadMaxY = quadMinY + pixelSpan;
-                float centerU = (atlasPixelBaseX + pixelX + 0.5f) / FONT_ATLAS_SIZE;
-                float centerV = (atlasPixelBaseY + pixelY + 0.5f) / FONT_ATLAS_SIZE;
-                RemixDynamicEntityBridge.captureDynamicEntityQuad(
-                        quadMinX, quadMaxY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
-                        quadMaxX, quadMaxY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
-                        quadMaxX, quadMinY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
-                        quadMinX, quadMinY, SIGN_TEXT_DEPTH_OFFSET, centerU, centerV,
-                        colorRgba, false, boneIndex);
-            }
-        }
     }
 
     private static boolean captureCachedSignModel(

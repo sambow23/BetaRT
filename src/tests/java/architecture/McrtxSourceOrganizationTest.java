@@ -440,7 +440,7 @@ public final class McrtxSourceOrganizationTest {
     requireContains(chunkPolicy, "materialClassForBlock", "chunk policy owns material classification");
     requireContains(chunkPolicy, "shouldCullFaceAgainstNeighbor", "chunk policy owns neighbor culling");
     requireContains(geometryCommon, "appendFaceGeometry", "common geometry owns terrain faces");
-    requireContains(geometryCommon, "appendDoubleSidedTexturedQuad", "common geometry owns textured quads");
+    requireContains(geometryCommon, "appendTexturedQuad", "common geometry owns textured quads");
     requireContains(naturalBlockGeometry, "appendCrossedQuadGeometry", "natural geometry owns crossed plants");
     requireContains(naturalBlockGeometry, "appendCropGeometry", "natural geometry owns crops");
     requireContains(naturalBlockGeometry, "appendCactusGeometry", "natural geometry owns cactus");
@@ -574,7 +574,7 @@ public final class McrtxSourceOrganizationTest {
     requireContains(windowInput, "RemixRenderer::setNativeCursorPosition", "input owner positions cursor");
     requireContains(windowInput, "window_detail::syncNativeCursorVisibility", "input owner implements shared cursor visibility");
     requireContains(rendererLifecycle, "#include \"mcrtx/platform/remix_window_internals.hpp\"", "renderer lifecycle consumes window contract");
-    requireContains(lifecycleJni, "mcrtx::window_detail::g_outputWindowCloseRequested", "lifecycle JNI consumes window state");
+    requireContains(lifecycleJni, "RemixRenderer::instance().isOutputCloseRequested()", "lifecycle JNI consumes window state");
   }
 
   private static String read(String path) throws Exception {
