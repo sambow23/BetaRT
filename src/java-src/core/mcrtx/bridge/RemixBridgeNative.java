@@ -53,7 +53,7 @@ public final class RemixBridgeNative {
     private static void loadNativeLibrary() {
         StringBuilder attempts = new StringBuilder();
 
-        String explicitPath = System.getenv("MCRTX_JNI_PATH");
+        String explicitPath = McrtxRuntimeConfig.getEnvironmentValue("MCRTX_JNI_PATH");
         if (tryLoadAbsolute(explicitPath, attempts)) {
             return;
         }

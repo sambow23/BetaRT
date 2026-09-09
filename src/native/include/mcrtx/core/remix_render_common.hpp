@@ -105,56 +105,7 @@ constexpr std::uint8_t kLiquidAnimationFrameCount = 32;
 constexpr std::uint8_t kLiquidAnimationFramesPerSecond = 20;
 constexpr std::uint8_t kPortalAnimationFrameCount = 32;
 constexpr std::uint8_t kPortalAnimationFramesPerSecond = 20;
-constexpr float kFireEmissiveIntensity = 1.35f;
-inline constexpr remixapi_Float3D kFireEmissiveColor = {1.0f, 1.0f, 1.0f};
-constexpr float kLavaEmissiveIntensity = 3.0f;
-inline constexpr remixapi_Float3D kLavaEmissiveColor = {1.0f, 1.0f, 1.0f};
-constexpr float kPortalEmissiveIntensity = 0.85f;
-inline constexpr remixapi_Float3D kPortalEmissiveColor = {1.0f, 1.0f, 1.0f};
-constexpr float kTerrainEmissiveIntensity = 5.0f;
-inline constexpr remixapi_Float3D kTerrainEmissiveColor = {1.0f, 1.0f, 1.0f};
-
-// Translucent material physics parameters
-inline constexpr remixapi_Float3D kWaterTransmittanceColor = {0.74f, 0.9f, 1.0f};
-constexpr float kWaterMinTransmittanceColor = 0.01f;
-constexpr float kWaterMaxTransmittanceColor = 1.0f;
-constexpr float kWaterTransmittanceDistance = 1.5f;
-constexpr float kWaterMinTransmittanceDistance = 0.01f;
-constexpr float kWaterMaxTransmittanceDistance = 25.0f;
-constexpr float kWaterRefractiveIndex = 1.333f;
-constexpr float kWaterMinRefractiveIndex = 1.0f;
-constexpr float kWaterMaxRefractiveIndex = 3.0f;
-constexpr bool kWaterUseDiffuseLayer = true;
-constexpr float kWaterDiffuseLayerScale = 1.0f;
-constexpr float kWaterMinDiffuseLayerScale = 0.0f;
-constexpr float kWaterMaxDiffuseLayerScale = 1.0f;
-constexpr float kWaterThinWallThickness = 0.001f;
-constexpr float kWaterDefaultThinWallThickness = 1.0f;
-constexpr float kWaterMaxThinWallThickness = 5.0f;
-
-inline constexpr remixapi_Float3D kPortalTransmittanceColor = {0.5f, 0.2f, 0.8f};
-constexpr float kPortalTransmittanceDistance = 0.5f;
-constexpr float kPortalRefractiveIndex = 1.1f;
-
-inline constexpr remixapi_Float3D kIceTransmittanceColor = {0.78f, 0.9f, 1.0f};
-constexpr float kIceTransmittanceDistance = 0.45f;
-constexpr float kIceRefractiveIndex = 1.31f;
-
 constexpr float kFaceOverlayBias = 0.001f;
-constexpr std::uint64_t kOpaqueTerrainMaterialHash = 0x4D435254584F5041ull;
-constexpr std::uint64_t kCutoutTerrainMaterialHash = 0x4D43525458435554ull;
-constexpr std::uint64_t kWaterTerrainMaterialHash = 0x4D43525458575452ull;
-constexpr std::uint64_t kLavaTerrainMaterialHash = 0x4D435254584C4156ull;
-constexpr std::uint64_t kPoweredRedstoneTerrainMaterialHash = 0x4D43525458524453ull;
-constexpr std::uint64_t kPortalTerrainMaterialHash = 0x4D43525458505254ull;
-constexpr std::uint64_t kIceTerrainMaterialHash = 0x4D43525458494345ull;
-constexpr std::uint64_t kUnlitRedstoneOreTerrainMaterialHash = 0x4D4352545855524Full;
-constexpr std::uint64_t kDestroyOverlayMaterialHash = 0x4D43525458444F4Dull;
-constexpr std::uint64_t kBlockOutlineGlowMaterialHash = 0x4D4352545842474Cull;
-constexpr std::uint64_t kBlockOutlineRgbMaterialHashSeed = 0x4D43525458425200ull;
-constexpr std::uint64_t kCloudMaterialHash = 0x4D43525458434C44ull;
-constexpr std::uint64_t kFireMaterialHash = 0x4D43525458464952ull;
-constexpr std::uint64_t kParticleMaterialHashSeed = 0x4D43525458505443ull;
 constexpr std::uint32_t kDefaultVertexColor = 0xFFFFFFFFu;
 
 inline constexpr float kFaceVertexOffsets[6][4][3] = {

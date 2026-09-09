@@ -1,100 +1,53 @@
-import mcrtx.bridge.RemixChunkBridge;
+import mcrtx.bridge.DirectTerrainBridge;
 
 public final class TerrainQueueTest {
-    private static void check(boolean value, String message) {
-        if (!value) { throw new AssertionError(message); }
-    }
-    private static void drain() {
-        for (int i = 0; i < 1000; ++i) {
-            RemixChunkRecaptureQueue.flush();
-            if (RemixChunkRecaptureQueue.lastPendingQueueDepthAfterFlush() == 0) { return; }
+    private static long now;
+    private static void check(boolean value,String message){if(!value)throw new AssertionError(message);}
+    private static void scan(){DirectSectionResidency.scan(0,0,3,now+=200_000_000L);}
+    private static void drain() throws Exception {
+        for(int i=0;i<2000;++i){
+            DirectSectionUpdates.flush();
+            if(DirectSectionUpdates.lastPendingQueueDepthAfterFlush()==0)return;
+            if(i%100==99)Thread.sleep(55);
         }
         throw new AssertionError("queue did not drain");
     }
-    public static void main(String[] args) throws Exception {
-        final fd world = new fd();
-        RemixChunkWorldState.onWorldChanged(world);
-        dk section = new dk(world, 0, 0, 0);
-        RemixChunkWorldState.position(section);
-        world.loaded = false;
-        RemixChunkRecaptureQueue.flush();
-        check(world.reads == 0, "unavailable world was read/generated");
-        check(RemixChunkRecaptureQueue.lastPendingQueueDepthAfterFlush() == 1, "unavailable section lost dirty work");
-        world.loaded = true;
-        Thread.sleep(60);
-        RemixChunkBridge.accept = false;
-        for (int i = 0; i < 30; ++i) { RemixChunkRecaptureQueue.flush(); }
-        check(RemixChunkBridge.updates > 0, "snapshot never attempted admission");
-        check(RemixChunkRecaptureQueue.lastPendingQueueDepthAfterFlush() == 1, "backpressure lost dirty work");
-        int reads = world.reads;
-        RemixChunkRecaptureQueue.flush();
-        check(world.reads == reads, "backpressure repeated snapshot work");
-        RemixChunkBridge.accept = true;
+    public static void main(String[] args)throws Exception {
+        final fd world=new fd();DirectSectionResidency.attach(world);scan();
+        check(DirectSectionResidency.residentCount()==200,"loaded chunks did not allocate all sections");
+        world.loaded=false;DirectSectionUpdates.flush();
+        check(world.reads==0,"unavailable chunk was read/generated");
+        check(DirectSectionUpdates.lastPendingQueueDepthAfterFlush()==200,"unavailable section lost work");
+        world.loaded=true;Thread.sleep(60);DirectTerrainBridge.accept=false;
+        for(int i=0;i<30;++i)DirectSectionUpdates.flush();
+        check(DirectTerrainBridge.updates>0,"terrain never attempted admission");
+        int reads=world.reads;DirectSectionUpdates.flush();
+        check(world.reads==reads,"backpressure repeated collection");
+        check(DirectSectionUpdates.lastPendingQueueDepthAfterFlush()==200,"backpressure lost work");
+        DirectTerrainBridge.accept=true;drain();
+        check(DirectTerrainBridge.lastRecords.length==4096*DirectTerrainBridge.RECORD_WORDS,"initial section was partial");
+        int updates=DirectTerrainBridge.updates;scan();drain();
+        check(updates==DirectTerrainBridge.updates,"unchanged residency dirtied terrain");
+        world.blocks[273]=1;DirectSectionUpdates.queueRegion(1,1,1,1,1,1);
+        RemixChunkBlockCapture.duringCapture=()->{world.blocks[273]=0;DirectSectionUpdates.queueRegion(1,1,1,1,1,1);};
         drain();
-        check(RemixChunkBridge.lastRecords.length == 4096 * RemixChunkBridge.RECORD_WORDS, "initial snapshot is not full");
-        int updates = RemixChunkBridge.updates;
-        RemixChunkWorldState.position(section);
+        check(DirectTerrainBridge.lastRecords.length==27*DirectTerrainBridge.RECORD_WORDS,"partial bounds were lost");
+        for(int i=0;i<27;++i)check(DirectTerrainBridge.lastRecords[i*DirectTerrainBridge.RECORD_WORDS]==0,"invalidated collection published stale data");
+        long before=DirectSectionResidency.lifetime(RemixChunkSectionKey.encode(0,0,0));
+        world.hole=true;scan();
+        check(DirectSectionResidency.residentCount()==192&&DirectTerrainBridge.removals==8,"unloaded chunk retained sections");
+        check(DirectSectionResidency.lifetime(RemixChunkSectionKey.encode(0,0,0))==0,"unloaded lifetime retained");
+        world.hole=false;scan();
+        check(DirectSectionResidency.lifetime(RemixChunkSectionKey.encode(0,0,0))>before,"coordinate reuse retained lifetime");
         drain();
-        check(RemixChunkBridge.updates == updates, "unchanged allocation or camera rotation dirtied terrain");
-        world.blocks[0] = 1;
-        RemixChunkRecaptureQueue.queueRegion(0, 0, 0, 0, 0, 0);
-        RemixChunkBlockCapture.duringCapture = new Runnable() {
-            public void run() {
-                world.blocks[0] = 0;
-                RemixChunkRecaptureQueue.queueRegion(0, 0, 0, 0, 0, 0);
-            }
-        };
+        world.blocks[0]=1;DirectSectionUpdates.queueSection(0,0,0);
+        final fd next=new fd();
+        RemixChunkBlockCapture.duringCapture=()->{DirectSectionResidency.attach(next);scan();};
         drain();
-        check(RemixChunkBridge.lastRecords[0] == 0, "invalidated snapshot published stale data");
-        check(RemixChunkBridge.lastRecords.length == 8 * RemixChunkBridge.RECORD_WORDS, "partial bounds were lost");
-        long before = RemixChunkWorldState.lifetime(RemixChunkSectionKey.encode(0, 0, 0));
-        section.c = 16;
-        RemixChunkWorldState.position(section);
-        check(RemixChunkWorldState.lifetime(RemixChunkSectionKey.encode(0, 0, 0)) == 0, "reposition did not release residency");
-        check(RemixChunkBridge.removals == 1, "reposition failed to notify unload");
-        section.c = 0;
-        RemixChunkWorldState.position(section);
-        check(RemixChunkWorldState.lifetime(RemixChunkSectionKey.encode(0, 0, 0)) > before, "coordinate reuse did not change lifetime");
-        RemixChunkWorldState.clearSections();
-        drain();
-        check(RemixChunkWorldState.lifetime(RemixChunkSectionKey.encode(0, 0, 0)) == 0, "world reset retained residency");
-        for (int i = 0; i < 200; ++i) {
-            RemixChunkWorldState.position(new dk(world, i * 16, 0, 0));
-        }
-        RemixChunkRecaptureQueue.queueRegion(0, 0, 0, 200 * 16, 15, 15);
-        RemixChunkBridge.accept = false;
-        RemixChunkRecaptureQueue.flush();
-        check(RemixChunkRecaptureQueue.lastPendingQueueDepthAfterFlush() == 200, "large dirty region was truncated");
-        RemixChunkBridge.accept = true;
-        drain();
-        RemixChunkWorldState.clearSections();
-        final dk reused = new dk(world, 0, 0, 0);
-        RemixChunkWorldState.position(reused);
-        world.blocks[0] = 1;
-        updates = RemixChunkBridge.updates;
-        RemixChunkBlockCapture.duringCapture = new Runnable() {
-            public void run() {
-                RemixChunkWorldState.unload(reused);
-                world.blocks[0] = 0;
-                RemixChunkWorldState.position(reused);
-            }
-        };
-        drain();
-        check(RemixChunkBridge.updates == updates + 1 && RemixChunkBridge.lastRecords[0] == 0,
-                "capture crossed a section lifetime or removed its successor");
-        world.blocks[0] = 1;
-        RemixChunkRecaptureQueue.queueSection(0, 0, 0);
-        updates = RemixChunkBridge.updates;
-        final fd nextWorld = new fd();
-        RemixChunkBlockCapture.duringCapture = new Runnable() {
-            public void run() {
-                RemixChunkWorldState.onWorldChanged(nextWorld);
-                RemixChunkWorldState.position(new dk(nextWorld, 0, 0, 0));
-            }
-        };
-        drain();
-        check(RemixChunkBridge.updates == updates + 1 && RemixChunkBridge.lastRecords[0] == 0,
-                "capture crossed worlds or removed the new world's dirty work");
-        System.out.println("Terrain residency, lossless queue, backpressure and snapshot restart checks passed");
+        check(DirectSectionResidency.attachedWorld()==next,"world change lost");
+        for(int value:DirectTerrainBridge.lastRecords)check(value==0,"collection crossed worlds");
+        DirectSectionResidency.attach(null);drain();
+        check(DirectSectionResidency.residentCount()==0,"world unload retained residency");
+        System.out.println("Direct terrain residency, partial updates, backpressure, invalidation and world changes passed");
     }
 }

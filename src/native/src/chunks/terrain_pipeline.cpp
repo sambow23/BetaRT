@@ -61,8 +61,7 @@ TerrainResult buildTerrainGeometry(TerrainInputs inputs) {
   const auto start = std::chrono::steady_clock::now();
   TerrainResult result;
   result.inputs = std::move(inputs);
-  result.bytes = sizeof(TerrainResult) + sizeof(TerrainSectionData)
-      + result.inputs.sections[13]->fireCellIndices.capacity() * sizeof(std::uint16_t);
+  result.bytes = sizeof(TerrainResult) + sizeof(TerrainSectionData);
   try {
     for (int pass = 0; pass < 2; ++pass) {
       emitTerrainGeometry(result.inputs, pass, result.passes[pass]);
@@ -71,10 +70,7 @@ TerrainResult buildTerrainGeometry(TerrainInputs inputs) {
         result.bytes += surface.vertices.capacity() * sizeof(remixapi_HardcodedVertex)
                       + surface.indices.capacity() * sizeof(std::uint32_t);
       }
-      const auto& build = result.passes[pass];
-      result.bytes += build.desiredTorchLights.capacity() * sizeof(TorchLightPlacement)
-                    + build.desiredPortalLights.capacity() * sizeof(PortalLightPlacement)
-                    + build.desiredGlowstoneLights.capacity() * sizeof(GlowstoneLightPlacement);
+
     }
     for (const auto& cell : result.inputs.sections[13]->cells) {
       if (cell.blockId != 0) {
@@ -274,12 +270,6 @@ bool TerrainPipeline::update(const ChunkKey& key, std::uint64_t world, std::uint
   if (affected == 0) {
     ++m_statistics.unchanged;
     return true;
-  }
-  data->fireCellIndices.clear();
-  for (int i = 0; i < 4096; ++i) {
-    if (data->occupancy[i] && chunk::isFireRenderType(data->cells[i].renderType)) {
-      data->fireCellIndices.push_back(static_cast<std::uint16_t>(i));
-    }
   }
   section.data = std::move(data);
   for (int i = 0; i < 27; ++i) {

@@ -180,7 +180,7 @@ void fairnessAndReset() {
 void geometryReference() {
   const int shapes[][3] = {{1,0,0}, {2,0,0}, {8,4,1}, {10,4,0}, {18,0,0}, {20,0,0}, {79,0,1}, {90,0,1},
     {85,11,0}, {55,5,0}, {37,1,0}, {59,6,0}, {50,2,0}, {65,8,0}, {66,9,0}, {53,10,0}, {69,12,0},
-    {77,12,0}, {64,7,0}, {81,13,0}, {26,14,0}, {93,15,0}, {29,16,0}, {34,17,0}, {89,0,0}, {51,3,0}};
+    {77,12,0}, {64,7,0}, {81,13,0}, {26,14,0}, {93,15,0}, {29,16,0}, {34,17,0}, {89,0,0}};
   std::mt19937 random(12345);
   TerrainInputs inputs;
   inputs.key = {-16, 16, -16, 0};
@@ -246,32 +246,36 @@ void geometryReference() {
         require(std::memcmp(&a.vertices[j], &b.vertices[j], sizeof(remixapi_HardcodedVertex)) == 0, "vertex/UV/color changed");
       }
     }
-    require(built.desiredTorchLights.size() == expected.desiredTorchLights.size(), "torch placements changed");
-    require(built.desiredPortalLights.size() == expected.desiredPortalLights.size(), "portal placements changed");
-    require(built.desiredGlowstoneLights.size() == expected.desiredGlowstoneLights.size(), "glowstone placements changed");
-    const auto comparePlacement = [](const auto& a, const auto& b) {
-      require(a.blockPosition == b.blockPosition && a.lightX == b.lightX && a.lightY == b.lightY && a.lightZ == b.lightZ
-          && a.radiance.x == b.radiance.x && a.radiance.y == b.radiance.y && a.radiance.z == b.radiance.z,
-          "light position or radiance changed");
-    };
-    for (std::size_t i = 0; i < built.desiredTorchLights.size(); ++i) {
-      comparePlacement(built.desiredTorchLights[i], expected.desiredTorchLights[i]);
-    }
-    for (std::size_t i = 0; i < built.desiredPortalLights.size(); ++i) {
-      comparePlacement(built.desiredPortalLights[i], expected.desiredPortalLights[i]);
-      require(built.desiredPortalLights[i].isZAxis == expected.desiredPortalLights[i].isZAxis, "portal orientation changed");
-    }
-    for (std::size_t i = 0; i < built.desiredGlowstoneLights.size(); ++i) {
-      require(built.desiredGlowstoneLights[i].blockPosition == expected.desiredGlowstoneLights[i].blockPosition
-          && built.desiredGlowstoneLights[i].visibleFacesMask == expected.desiredGlowstoneLights[i].visibleFacesMask,
-          "glowstone faces changed");
+
+  }
+}
+void directFireGeometry() {
+  TerrainInputs inputs;
+  auto section = std::make_shared<TerrainSectionData>();
+  section->cells[0] = cell(1, 0, 0);
+  section->cells[256] = cell(51, 3, 0);
+  section->occupancy[0] = section->occupancy[256] = 1;
+  inputs.sections[13] = section;
+  ChunkGeometryBuild result;
+  emitTerrainGeometry(inputs, 0, result);
+  bool found = false;
+  for (const auto &surface : result.surfacesToBuild) {
+    if (surface.materialClass != 1) continue;
+    found = !surface.indices.empty();
+    for (const auto &vertex : surface.vertices) {
+      require(vertex.texcoord[0] >= 15.f / 16 && vertex.texcoord[0] <= 1,
+          "fire does not use vanilla atlas column");
+      require(vertex.texcoord[1] >= 1.f / 16 && vertex.texcoord[1] <= 3.f / 16,
+          "fire does not use vanilla animated atlas rows");
     }
   }
+  require(found, "fire above a solid block emitted no geometry");
 }
 }
 int main() {
   try {
     geometryReference();
+    directFireGeometry();
     ownershipAndRevisions();
     neighborAndLifetimes();
     pressureAndShutdown();

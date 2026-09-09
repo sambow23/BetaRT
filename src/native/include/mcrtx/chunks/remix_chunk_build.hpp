@@ -3,7 +3,7 @@
 #include <vector>
 
 #include "mcrtx/core/remix_geometry_common.hpp"
-#include "mcrtx/scene/remix_renderer_scene.hpp"
+#include "mcrtx/chunks/terrain_types.hpp"
 
 namespace mcrtx {
 
@@ -14,9 +14,6 @@ struct TerrainSurface : geometry::SurfaceBuildBuffers {
 struct ChunkGeometryBuild {
   std::uint64_t fingerprint {0};
   std::vector<TerrainSurface> surfacesToBuild;
-  std::vector<TorchLightPlacement> desiredTorchLights;
-  std::vector<PortalLightPlacement> desiredPortalLights;
-  std::vector<GlowstoneLightPlacement> desiredGlowstoneLights;
 };
 
 }  // namespace mcrtx

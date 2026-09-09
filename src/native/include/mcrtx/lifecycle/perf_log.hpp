@@ -13,7 +13,7 @@ enum class Side : std::uint8_t {
   Hook,    // Java-side entry point
   Call,    // Java-side JNI call site
   Jni,     // JNI export function (jni_bridge.cpp)
-  Native,  // RemixRenderer method
+  Native,  // Native renderer method
   Remix,   // remix_.X API call
 };
 

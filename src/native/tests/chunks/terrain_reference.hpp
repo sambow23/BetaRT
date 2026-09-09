@@ -9,9 +9,6 @@ struct ReferenceTerrainSection {
 };
 struct ReferenceTerrainBuild {
   std::vector<geometry::SurfaceBuildBuffers> surfacesToBuild;
-  std::vector<TorchLightPlacement> desiredTorchLights;
-  std::vector<PortalLightPlacement> desiredPortalLights;
-  std::vector<GlowstoneLightPlacement> desiredGlowstoneLights;
 };
 class ReferenceTerrainEmitter {
 public:

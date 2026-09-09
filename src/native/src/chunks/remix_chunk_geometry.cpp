@@ -11,7 +11,6 @@
 #include "mcrtx/chunks/remix_block_geometry_structures.hpp"
 #include "mcrtx/chunks/remix_chunk_policy.hpp"
 #include "mcrtx/core/remix_geometry_common.hpp"
-#include "mcrtx/scene/remix_light_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/tracy.hpp"
@@ -30,13 +29,10 @@ using namespace mcrtx::block_geometry;
 using namespace mcrtx::chunk;
 using namespace mcrtx::detail;
 using namespace mcrtx::geometry;
-using namespace mcrtx::light;
 void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBuild& build) {
   const ChunkKey chunkKey {inputs.key.originX, inputs.key.originY, inputs.key.originZ, pass};
   const auto& meshData = *inputs.sections[13];
   auto& surfacesToBuild = build.surfacesToBuild;
-  auto& desiredTorchLights = build.desiredTorchLights;
-  auto& desiredPortalLights = build.desiredPortalLights;
   surfacesToBuild.reserve(8);
   std::unordered_map<std::uint8_t, std::size_t> surfaceIndexByHandle;
 
@@ -220,17 +216,25 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isFireRenderType(cell.renderType)) {
+          auto &fire = acquireSurface(kCutoutTerrainMaterialClass);
+          const auto begin = fire.vertices.size();
+          const int x = chunkKey.originX + localX, y = chunkKey.originY + localY, z = chunkKey.originZ + localZ;
+          appendFireGeometry(x, y, z, hasSolidSupport(x, y - 1, z),
+              hasSolidSupport(x - 1, y, z), hasSolidSupport(x + 1, y, z),
+              hasSolidSupport(x, y, z - 1), hasSolidSupport(x, y, z + 1), hasSolidSupport(x, y + 1, z),
+              float(localX), float(localY), float(localZ), 0, fire.vertices, fire.indices);
+          // The direct client animates vanilla terrain tiles 31/47 on the CPU.
+          // Convert the former 16-frame fire-sheet coordinates to these atlas tiles.
+          for (std::size_t i = begin; i < fire.vertices.size(); ++i) {
+            auto &vertex = fire.vertices[i];
+            const float row = vertex.texcoord[1] >= .5f ? 1.f : 0.f;
+            vertex.texcoord[0] = (15.f + vertex.texcoord[0] * 16.f) / 16.f;
+            vertex.texcoord[1] = (1.f + row + (vertex.texcoord[1] * 2.f - row)) / 16.f;
+          }
           continue;
         }
 
         if (isTorchRenderType(cell.renderType)) {
-          if (cell.blockId == kTorchBlockId || cell.blockId == kRedstoneTorchOnBlockId) {
-            desiredTorchLights.push_back(makeTorchLightPlacement(
-              cell,
-              chunkKey.originX + localX,
-              chunkKey.originY + localY,
-              chunkKey.originZ + localZ));
-          }
           SurfaceBuildBuffers& torchSurface = acquireSurface(materialClass);
           appendTorchGeometry(
               cell,
@@ -479,11 +483,6 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (cell.blockId == kNetherPortalBlockId) {
-          desiredPortalLights.push_back(makePortalLightPlacement(
-              cell,
-              chunkKey.originX + localX,
-              chunkKey.originY + localY,
-              chunkKey.originZ + localZ));
           SurfaceBuildBuffers& portalSurface = acquireSurface(materialClass);
           appendPortalGeometry(
               cell,
@@ -511,7 +510,6 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
           continue;
         }
 
-        std::uint8_t glowstoneVisibleMask = 0;
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
           const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
@@ -572,7 +570,6 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
             continue;
           }
 
-          glowstoneVisibleMask |= static_cast<std::uint8_t>(1 << faceIndex);
 
           SurfaceBuildBuffers& faceSurface = acquireSurface(materialClass);
             appendFaceGeometry(
@@ -604,16 +601,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
           }
         }
 
-        if (cell.blockId == kGlowstoneBlockId) {
-          if (glowstoneVisibleMask != 0) {
-            build.desiredGlowstoneLights.push_back(light::makeGlowstoneLightPlacement(
-                cell,
-                chunkKey.originX + localX,
-                chunkKey.originY + localY,
-                chunkKey.originZ + localZ,
-                glowstoneVisibleMask));
-          }
-        }
+
       }
     }
   }

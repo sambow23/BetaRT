@@ -1,5 +1,3 @@
-import mcrtx.bridge.RemixChunkBridge;
-
 final class RemixChunkBlockCapture {
     private static final int WATER_STILL_BLOCK_ID = 8;
     private static final int WATER_FLOWING_BLOCK_ID = 9;

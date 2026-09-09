@@ -5,7 +5,7 @@
 
 #include <remix/remix_c.h>
 
-#include "mcrtx/scene/remix_renderer_scene.hpp"
+#include "mcrtx/chunks/terrain_types.hpp"
 
 namespace mcrtx::block_geometry {
 

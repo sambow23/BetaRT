@@ -1,6 +1,5 @@
 #include "mcrtx/lifecycle/perf_log.hpp"
 
-#include "mcrtx/core/remix_renderer.hpp"
 #include "mcrtx/core/runtime_config.hpp"
 
 #include <algorithm>
@@ -219,17 +218,6 @@ void openLogStreamLocked() {
                 << "  fields=t,frames,side,site,calls,avgUs,maxUs\n";
     g_logStream.flush();
     g_logStreamReady = true;
-  }
-}
-
-void openTraceStreamLocked() {
-  if (g_traceStreamReady || g_shutdown) {
-    return;
-  }
-  const std::filesystem::path path = resolveLogPath("MCRTX_PERF_TRACE_LOG", "mcrtx-perf-trace.jsonl");
-  g_traceStream.open(path, std::ios::out | std::ios::trunc);
-  if (g_traceStream.is_open()) {
-    g_traceStreamReady = true;
   }
 }
 

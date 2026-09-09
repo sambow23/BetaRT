@@ -6,7 +6,7 @@
 #include <vector>
 
 #include "mcrtx/core/remix_geometry_common.hpp"
-#include "mcrtx/scene/remix_renderer_scene.hpp"
+#include "mcrtx/chunks/terrain_types.hpp"
 
 namespace mcrtx::chunk {
 

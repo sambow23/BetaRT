@@ -1,306 +1,76 @@
-set(MCRTX_DXVK_REMIX_ROOT "${PROJECT_SOURCE_DIR}/../dxvk-remix-gmod" CACHE PATH "Path to the dxvk-remix-gmod checkout")
-set(MCRTX_STB_INCLUDE_DIR "${MCRTX_DXVK_REMIX_ROOT}/third_party/image" CACHE PATH "Path to stb_image.h")
+set(MCRTX_DXVK_REMIX_ROOT "${PROJECT_SOURCE_DIR}/../dxvk-remix-gmod" CACHE PATH "Remix raster SDK checkout")
+option(MCRTX_TERRAIN_SYNCHRONOUS "Build terrain on the submitting worker for comparisons" OFF)
+option(MCRTX_ENABLE_TRACY "Enable optional native Tracy profiling" OFF)
+set(MCRTX_TRACY_PORT "8087" CACHE STRING "Tracy TCP port")
+find_package(Threads REQUIRED)
 
-if(MCRTX_BUILD_JNI)
-
-option(MCRTX_TERRAIN_SYNCHRONOUS "Run the same terrain emitter synchronously for comparisons" OFF)
-
-option(MCRTX_ENABLE_TRACY "Enable Tracy profiling in the native JNI bridge" OFF)
-set(MCRTX_TRACY_PORT "8087" CACHE STRING "Default Tracy port for mc-rtx native profiling")
-
-find_package(Git QUIET)
-
-set(MCRTX_BUILD_ID "unknown")
-if(GIT_FOUND)
-  execute_process(
-    COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}" describe --tags --exact-match
-    RESULT_VARIABLE MCRTX_GIT_TAG_RESULT
-    OUTPUT_VARIABLE MCRTX_BUILD_ID
-    OUTPUT_STRIP_TRAILING_WHITESPACE
-    ERROR_QUIET
-  )
-
-  if(NOT MCRTX_GIT_TAG_RESULT EQUAL 0 OR MCRTX_BUILD_ID STREQUAL "")
-    execute_process(
-      COMMAND "${GIT_EXECUTABLE}" -C "${PROJECT_SOURCE_DIR}" rev-parse --short=12 HEAD
-      RESULT_VARIABLE MCRTX_GIT_COMMIT_RESULT
-      OUTPUT_VARIABLE MCRTX_BUILD_ID
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-    )
-
-    if(NOT MCRTX_GIT_COMMIT_RESULT EQUAL 0 OR MCRTX_BUILD_ID STREQUAL "")
-      set(MCRTX_BUILD_ID "unknown")
-    endif()
-  endif()
-endif()
-
-configure_file(
-  "${CMAKE_CURRENT_SOURCE_DIR}/include/mcrtx/core/build_version.hpp.in"
-  "${CMAKE_CURRENT_BINARY_DIR}/generated/mcrtx/core/build_version.hpp"
-  @ONLY
-)
-
-if(MCRTX_ENABLE_TRACY AND NOT MCRTX_TRACY_PORT MATCHES "^[0-9]+$")
-  message(FATAL_ERROR "MCRTX_TRACY_PORT must be a numeric TCP port")
-endif()
-
-find_package(JNI REQUIRED)
-
-add_library(mcrtx_jni SHARED
-  src/lifecycle/jni_lifecycle.cpp
-  src/lifecycle/jni_perf.cpp
-  src/scene/jni_scene.cpp
-  src/ui/jni_ui.cpp
-  src/entities/jni_dynamic_entity.cpp
-  src/particles/jni_particle_overlay.cpp
-  src/chunks/jni_chunk.cpp
-  src/settings/jni_settings_gameplay.cpp
-  src/settings/jni_settings_graphics.cpp
-  src/settings/jni_settings_debug.cpp
-  src/settings/jni_settings_material.cpp
-  src/scene/celestial_textures.cpp
-  src/scene/remix_cloud_mode.cpp
-  src/scene/remix_cloud_geometry.cpp
-  src/scene/remix_cloud_mask.cpp
-  src/scene/remix_aerial_perspective.cpp
-  src/lifecycle/remix_renderer_frame.cpp
-  src/lifecycle/remix_renderer_present.cpp
-  src/scene/remix_renderer_scene.cpp
-  src/lifecycle/remix_renderer_lifecycle.cpp
-  src/ui/remix_renderer_ui.cpp
-  src/core/remix_renderer_resources.cpp
-  src/settings/remix_settings_gameplay.cpp
-  src/settings/remix_settings_graphics.cpp
-  src/settings/remix_settings_debug.cpp
-  src/settings/remix_settings_material.cpp
-  src/chunks/remix_chunk_policy.cpp
-  src/core/remix_geometry_common.cpp
-  src/chunks/remix_block_geometry_natural.cpp
-  src/chunks/remix_block_geometry_structures.cpp
-  src/chunks/remix_block_geometry_fluids.cpp
-  src/chunks/remix_block_geometry_effects.cpp
-  src/chunks/remix_block_geometry_fixtures.cpp
-  src/chunks/remix_block_geometry_redstone.cpp
-  src/chunks/remix_block_geometry_pistons.cpp
+add_library(mcrtx_terrain STATIC
   src/chunks/terrain_pipeline.cpp
   src/chunks/remix_chunk_geometry.cpp
-  src/chunks/remix_chunk_submission.cpp
-  src/chunks/remix_chunk_residency.cpp
-  src/materials/remix_materials.cpp
-  src/materials/remix_material_paths.cpp
-  src/materials/remix_material_terrain.cpp
-  src/particles/remix_material_block_outline.cpp
-  src/entities/remix_material_dynamic.cpp
-  src/particles/remix_material_particles.cpp
-  src/core/remix_subsystem_meshes.cpp
-  src/scene/remix_subsystem_config.cpp
-  src/entities/remix_subsystem_dynamic.cpp
-  src/scene/remix_subsystem_lights.cpp
-  src/particles/remix_overlay_destroy.cpp
-  src/particles/remix_overlay_outline.cpp
-  src/particles/remix_overlay_light_level.cpp
-  src/particles/remix_overlay_fire.cpp
-  src/particles/remix_overlay_particles.cpp
-  src/scene/remix_subsystem_world.cpp
-  src/core/runtime_config.cpp
+  src/chunks/remix_chunk_policy.cpp
+  src/chunks/remix_block_geometry_effects.cpp
+  src/chunks/remix_block_geometry_fixtures.cpp
+  src/chunks/remix_block_geometry_fluids.cpp
+  src/chunks/remix_block_geometry_natural.cpp
+  src/chunks/remix_block_geometry_pistons.cpp
+  src/chunks/remix_block_geometry_redstone.cpp
+  src/chunks/remix_block_geometry_structures.cpp
+  src/core/remix_geometry_common.cpp
   src/core/remix_render_utils.cpp
-  src/scene/remix_light_common.cpp
-  src/core/world_origin.cpp
+  src/core/runtime_config.cpp
   src/lifecycle/perf_log.cpp
 )
-
-if(WIN32)
-  target_sources(mcrtx_jni PRIVATE
-    src/platform/remix_window_internals.cpp
-    src/platform/remix_window_output.cpp
-    src/platform/remix_window_input.cpp
-  )
-else()
-  target_sources(mcrtx_jni PRIVATE
-    src/platform/remix_window_linux.cpp
-  )
-endif()
-
-target_include_directories(mcrtx_jni
-  PRIVATE
-    ${JNI_INCLUDE_DIRS}
-    ${CMAKE_CURRENT_SOURCE_DIR}/include
-    ${CMAKE_CURRENT_BINARY_DIR}/generated
-    ${MCRTX_DXVK_REMIX_ROOT}/public/include
-)
-target_include_directories(mcrtx_jni SYSTEM PRIVATE ${MCRTX_STB_INCLUDE_DIR})
-
-if(MCRTX_ENABLE_TRACY)
-  target_sources(mcrtx_jni PRIVATE
-    third_party/tracy/public/TracyClient.cpp
-  )
-  target_include_directories(mcrtx_jni PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tracy/public
-  )
-endif()
-
-if(WIN32)
-  target_compile_definitions(mcrtx_jni
-    PRIVATE
-      WIN32_LEAN_AND_MEAN
-      NOMINMAX
-  )
-endif()
-
-if(MCRTX_ENABLE_TRACY)
-  target_compile_definitions(mcrtx_jni
-    PRIVATE
-      MCRTX_ENABLE_TRACY
-      TRACY_ENABLE
-      TRACY_PORT=${MCRTX_TRACY_PORT}
-  )
-endif()
-
+set_target_properties(mcrtx_terrain PROPERTIES POSITION_INDEPENDENT_CODE ON)
+target_include_directories(mcrtx_terrain PUBLIC
+  ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
+target_link_libraries(mcrtx_terrain PUBLIC Threads::Threads ${CMAKE_DL_LIBS})
 if(MCRTX_TERRAIN_SYNCHRONOUS)
-  target_compile_definitions(mcrtx_jni PUBLIC MCRTX_TERRAIN_SYNCHRONOUS)
+  target_compile_definitions(mcrtx_terrain PUBLIC MCRTX_TERRAIN_SYNCHRONOUS)
 endif()
-find_package(Threads REQUIRED)
-target_link_libraries(mcrtx_jni PUBLIC Threads::Threads)
-target_compile_features(mcrtx_jni PRIVATE cxx_std_20)
-
-if(WIN32 AND JAVA_AWT_LIBRARY)
-  target_link_libraries(mcrtx_jni PRIVATE ${JAVA_AWT_LIBRARY})
-endif()
-
-if(WIN32)
-  target_link_libraries(mcrtx_jni PRIVATE ws2_32)
-else()
-  target_link_libraries(mcrtx_jni PRIVATE ${CMAKE_DL_LIBS})
+if(MCRTX_ENABLE_TRACY)
+  if(NOT MCRTX_TRACY_PORT MATCHES "^[0-9]+$")
+    message(FATAL_ERROR "MCRTX_TRACY_PORT must be numeric")
+  endif()
+  target_sources(mcrtx_terrain PRIVATE third_party/tracy/public/TracyClient.cpp)
+  target_include_directories(mcrtx_terrain PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/third_party/tracy/public)
+  target_compile_definitions(mcrtx_terrain PRIVATE MCRTX_ENABLE_TRACY TRACY_ENABLE TRACY_PORT=${MCRTX_TRACY_PORT})
+  if(WIN32)
+    target_link_libraries(mcrtx_terrain PUBLIC ws2_32 dbghelp)
+  endif()
 endif()
 
-if(MSVC)
-  set_property(TARGET mcrtx_jni PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+if(MCRTX_BUILD_JNI)
+  find_package(JNI REQUIRED)
+  add_library(mcrtx_jni SHARED
+    src/direct/submission.cpp src/direct/protocol.cpp src/direct/runtime.cpp
+    src/direct/jni.cpp src/direct/jni_terrain.cpp src/lifecycle/jni_perf.cpp)
+  target_include_directories(mcrtx_jni PRIVATE ${JNI_INCLUDE_DIRS})
+  target_link_libraries(mcrtx_jni PRIVATE mcrtx_terrain)
+  set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
+  install(TARGETS mcrtx_jni RUNTIME DESTINATION . LIBRARY DESTINATION .)
 endif()
 
-if(MSVC)
-  target_compile_options(mcrtx_jni PRIVATE /W4 /EHsc)
-else()
-  target_compile_options(mcrtx_jni PRIVATE -Wall -Wextra -Wpedantic)
-endif()
-
-set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
-
-install(TARGETS mcrtx_jni
-  RUNTIME DESTINATION .
-  LIBRARY DESTINATION .
-)
-endif()
+foreach(target mcrtx_terrain mcrtx_jni)
+  if(TARGET ${target})
+    target_compile_features(${target} PRIVATE cxx_std_20)
+    if(WIN32)
+      target_compile_definitions(${target} PRIVATE WIN32_LEAN_AND_MEAN NOMINMAX)
+    endif()
+    if(MSVC)
+      target_compile_options(${target} PRIVATE /W4 /EHsc)
+      set_property(TARGET ${target} PROPERTY MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+    else()
+      target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    endif()
+  endif()
+endforeach()
 
 if(MCRTX_BUILD_TESTS)
-  add_executable(mcrtx_cloud_geometry_tests
-    src/chunks/remix_chunk_policy.cpp
-    src/scene/remix_cloud_geometry.cpp
-    src/scene/remix_cloud_mask.cpp
-    src/core/remix_geometry_common.cpp
-    src/core/remix_render_utils.cpp
-    tests/scene/remix_cloud_geometry_tests.cpp
-  )
-  target_include_directories(mcrtx_cloud_geometry_tests PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-  target_include_directories(mcrtx_cloud_geometry_tests SYSTEM PRIVATE ${MCRTX_STB_INCLUDE_DIR})
-  target_compile_features(mcrtx_cloud_geometry_tests PRIVATE cxx_std_20)
-  add_test(NAME mcrtx_cloud_geometry_tests COMMAND mcrtx_cloud_geometry_tests)
-
-  if(MCRTX_BUILD_JNI)
-    add_executable(mcrtx_terrain_tests tests/chunks/terrain_pipeline_tests.cpp tests/chunks/terrain_reference.cpp)
-    target_include_directories(mcrtx_terrain_tests PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-    target_link_libraries(mcrtx_terrain_tests PRIVATE mcrtx_jni)
-    target_compile_features(mcrtx_terrain_tests PRIVATE cxx_std_20)
-    add_test(NAME mcrtx_terrain_tests COMMAND mcrtx_terrain_tests)
-    add_executable(mcrtx_terrain_publication_tests tests/chunks/terrain_publication_tests.cpp)
-    target_include_directories(mcrtx_terrain_publication_tests PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-    target_link_libraries(mcrtx_terrain_publication_tests PRIVATE mcrtx_jni)
-    target_compile_features(mcrtx_terrain_publication_tests PRIVATE cxx_std_20)
-    add_test(NAME mcrtx_terrain_publication_tests COMMAND mcrtx_terrain_publication_tests)
-    if(NOT WIN32)
-      add_executable(mcrtx_standalone_tests tests/lifecycle/standalone_tests.cpp)
-      target_include_directories(mcrtx_standalone_tests PRIVATE
-        ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-      target_link_libraries(mcrtx_standalone_tests PRIVATE mcrtx_jni)
-      target_compile_features(mcrtx_standalone_tests PRIVATE cxx_std_20)
-      add_test(NAME mcrtx_standalone_tests COMMAND mcrtx_standalone_tests)
-      set_tests_properties(mcrtx_standalone_tests PROPERTIES TIMEOUT 10)
-    endif()
-    add_executable(mcrtx_cloud_lifetime_tests tests/scene/remix_cloud_lifetime_tests.cpp)
-    target_include_directories(mcrtx_cloud_lifetime_tests PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include ${MCRTX_DXVK_REMIX_ROOT}/public/include)
-    target_link_libraries(mcrtx_cloud_lifetime_tests PRIVATE mcrtx_jni)
-    target_compile_features(mcrtx_cloud_lifetime_tests PRIVATE cxx_std_20)
-    if(WIN32)
-      set_target_properties(mcrtx_jni PROPERTIES WINDOWS_EXPORT_ALL_SYMBOLS ON)
-    endif()
-    add_test(NAME mcrtx_cloud_lifetime_tests COMMAND mcrtx_cloud_lifetime_tests)
-  endif()
-
-  add_executable(mcrtx_world_origin_tests
-    src/core/world_origin.cpp
-    tests/core/world_origin_tests.cpp
-  )
-  target_include_directories(mcrtx_world_origin_tests
-    PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
-  target_compile_features(mcrtx_world_origin_tests PRIVATE cxx_std_20)
-  if(MSVC)
-    target_compile_options(mcrtx_world_origin_tests PRIVATE /W4 /EHsc)
-  else()
-    target_compile_options(mcrtx_world_origin_tests PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
-  add_test(NAME mcrtx_world_origin_tests COMMAND mcrtx_world_origin_tests)
-
-  add_executable(mcrtx_remix_cloud_mode_tests
-    src/scene/remix_cloud_mode.cpp
-    tests/scene/remix_cloud_mode_tests.cpp
-  )
-  target_include_directories(mcrtx_remix_cloud_mode_tests
-    PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
-  target_compile_features(mcrtx_remix_cloud_mode_tests PRIVATE cxx_std_20)
-  if(MSVC)
-    target_compile_options(mcrtx_remix_cloud_mode_tests PRIVATE /W4 /EHsc)
-  else()
-    target_compile_options(mcrtx_remix_cloud_mode_tests PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
-  add_test(NAME mcrtx_remix_cloud_mode_tests COMMAND mcrtx_remix_cloud_mode_tests)
-
-  add_executable(mcrtx_remix_aerial_perspective_tests
-    src/scene/remix_aerial_perspective.cpp
-    tests/scene/remix_aerial_perspective_tests.cpp
-  )
-  target_include_directories(mcrtx_remix_aerial_perspective_tests
-    PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
-  target_compile_features(mcrtx_remix_aerial_perspective_tests PRIVATE cxx_std_20)
-  if(MSVC)
-    target_compile_options(mcrtx_remix_aerial_perspective_tests PRIVATE /W4 /EHsc)
-  else()
-    target_compile_options(mcrtx_remix_aerial_perspective_tests PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
-  add_test(NAME mcrtx_remix_aerial_perspective_tests COMMAND mcrtx_remix_aerial_perspective_tests)
-
-  add_executable(mcrtx_celestial_texture_tests
-    src/scene/celestial_textures.cpp
-    tests/scene/celestial_textures_tests.cpp
-  )
-  target_include_directories(mcrtx_celestial_texture_tests
-    PRIVATE
-      ${CMAKE_CURRENT_SOURCE_DIR}/include
-  )
-  target_compile_features(mcrtx_celestial_texture_tests PRIVATE cxx_std_20)
-  if(MSVC)
-    target_compile_options(mcrtx_celestial_texture_tests PRIVATE /W4 /EHsc)
-  else()
-    target_compile_options(mcrtx_celestial_texture_tests PRIVATE -Wall -Wextra -Wpedantic)
-  endif()
-  add_test(NAME mcrtx_celestial_texture_tests COMMAND mcrtx_celestial_texture_tests)
+  add_executable(mcrtx_direct_submission_tests src/direct/submission.cpp src/direct/protocol.cpp tests/direct/submission_tests.cpp)
+  target_include_directories(mcrtx_direct_submission_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(mcrtx_direct_submission_tests PRIVATE Threads::Threads)
+  add_test(NAME mcrtx_direct_submission_tests COMMAND mcrtx_direct_submission_tests)
+  add_executable(mcrtx_terrain_tests tests/chunks/terrain_pipeline_tests.cpp tests/chunks/terrain_reference.cpp)
+  target_link_libraries(mcrtx_terrain_tests PRIVATE mcrtx_terrain)
+  add_test(NAME mcrtx_terrain_tests COMMAND mcrtx_terrain_tests)
 endif()

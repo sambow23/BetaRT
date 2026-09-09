@@ -11,7 +11,6 @@
 #include "mcrtx/chunks/remix_block_geometry_structures.hpp"
 #include "mcrtx/chunks/remix_chunk_policy.hpp"
 #include "mcrtx/core/remix_geometry_common.hpp"
-#include "mcrtx/scene/remix_light_common.hpp"
 #include "mcrtx/core/remix_render_common.hpp"
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/tracy.hpp"
@@ -30,14 +29,11 @@ using namespace mcrtx::block_geometry;
 using namespace mcrtx::chunk;
 using namespace mcrtx::detail;
 using namespace mcrtx::geometry;
-using namespace mcrtx::light;
 void ReferenceTerrainEmitter::emit(
     const ChunkKey& chunkKey,
     ReferenceTerrainSection& meshData,
     ReferenceTerrainBuild& build) {
   auto& surfacesToBuild = build.surfacesToBuild;
-  auto& desiredTorchLights = build.desiredTorchLights;
-  auto& desiredPortalLights = build.desiredPortalLights;
   surfacesToBuild.reserve(8);
   std::unordered_map<std::uintptr_t, std::size_t> surfaceIndexByHandle;
 
@@ -225,13 +221,6 @@ void ReferenceTerrainEmitter::emit(
         }
 
         if (isTorchRenderType(cell.renderType)) {
-          if (cell.blockId == kTorchBlockId || cell.blockId == kRedstoneTorchOnBlockId) {
-            desiredTorchLights.push_back(makeTorchLightPlacement(
-              cell,
-              chunkKey.originX + localX,
-              chunkKey.originY + localY,
-              chunkKey.originZ + localZ));
-          }
           SurfaceBuildBuffers& torchSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendTorchGeometry(
               cell,
@@ -480,11 +469,6 @@ void ReferenceTerrainEmitter::emit(
         }
 
         if (cell.blockId == kNetherPortalBlockId) {
-          desiredPortalLights.push_back(makePortalLightPlacement(
-              cell,
-              chunkKey.originX + localX,
-              chunkKey.originY + localY,
-              chunkKey.originZ + localZ));
           SurfaceBuildBuffers& portalSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
           appendPortalGeometry(
               cell,
@@ -512,7 +496,6 @@ void ReferenceTerrainEmitter::emit(
           continue;
         }
 
-        std::uint8_t glowstoneVisibleMask = 0;
 
         for (int faceIndex = 0; faceIndex < 6; ++faceIndex) {
           const int minecraftSide = kNativeFaceToMinecraftSide[faceIndex];
@@ -573,7 +556,6 @@ void ReferenceTerrainEmitter::emit(
             continue;
           }
 
-          glowstoneVisibleMask |= static_cast<std::uint8_t>(1 << faceIndex);
 
           SurfaceBuildBuffers& faceSurface = acquireSurface(terrainMaterialHandles_[materialClass]);
             appendFaceGeometry(
@@ -605,16 +587,7 @@ void ReferenceTerrainEmitter::emit(
           }
         }
 
-        if (cell.blockId == kGlowstoneBlockId) {
-          if (glowstoneVisibleMask != 0) {
-            build.desiredGlowstoneLights.push_back(light::makeGlowstoneLightPlacement(
-                cell,
-                chunkKey.originX + localX,
-                chunkKey.originY + localY,
-                chunkKey.originZ + localZ,
-                glowstoneVisibleMask));
-          }
-        }
+
       }
     }
   }

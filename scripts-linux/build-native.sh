@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 
 set -euo pipefail
+export CC=${CC:-clang}
+export CXX=${CXX:-clang++}
 
 if [[ $# -gt 3 ]]; then
   echo "usage: $0 [BUILD_DIRECTORY] [DXVK_REMIX_ROOT] [BUILD_TYPE]" >&2
@@ -19,12 +21,12 @@ fi
 
 script_directory=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
 source_directory=$(realpath "$script_directory/..")
-build_directory=$(realpath -m "${1:-$source_directory/build-linux}")
+build_directory=$(realpath -m "${1:-$source_directory/_build-direct}")
 remix_root=$(realpath -m "${2:-$source_directory/../dxvk-remix-gmod}")
 build_type=${3:-Release}
 
 if [[ ! -f "$remix_root/public/include/remix/remix_c.h" ]]; then
-  echo "DXVK Remix headers were not found under $remix_root" >&2
+  echo "Remix SDK headers were not found under $remix_root" >&2
   exit 1
 fi
 

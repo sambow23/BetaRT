@@ -1,142 +1,71 @@
-## Building
+# Building the direct client
 
-### Requirements
+Use Linux x64, Clang, CMake 3.24+, Ninja, a JDK supporting `javac --release 8`,
+and Java 8 for running Minecraft. Build the companion `dxvk-remix-gmod` raster
+runtime with SDL3/Vulkan first. No shader compiler or RTX dependency is needed.
 
-- CMake 3.24 or newer
-- JDK 9 or newer containing `java`, `javac`, and `jar`, **JDK 21 recommended**
-- PrismLauncher with an existing vanilla Beta 1.7.3 instance
-- [`dxvk-remix-gmod`](https://github.com/sambow23/dxvk-remix-gmod/tree/betart-numos3) next to the mc-rtx repository
-
-Windows builds additionally require Visual Studio 2022 with the **Desktop
-development with C++** workload and the Windows SDK. Linux builds require an
-x86-64 host, Clang or GCC with C++20 support, Ninja, and a Vulkan-capable NVIDIA
-driver. Only x86-64 native binaries are supported.
-
-The scripts default to `%APPDATA%\PrismLauncher` and the `b1.7.3` instance. They
-resolve the Minecraft, LWJGL, and ASM jars from PrismLauncher's library tree.
-The Java toolchain is selected from `-JavaHome`, `JAVA_HOME`, or the first
-complete JDK containing `javac` on `PATH`, in that order. The source is compiled
-with `--release 8` so the patched client remains compatible with Java 8.
-
-
-Tracy instrumentation is disabled by default. Configure with `-DMCRTX_ENABLE_TRACY=ON` to enable Tracy; it uses port
-`8087` by default, or the port selected with `-DMCRTX_TRACY_PORT=<port>`.
-
-### Build the Windows native bridge
-
-From a Developer PowerShell prompt in the repository root:
-
-```powershell
-cmake -S . -B build `
-  -G "Visual Studio 17 2022" `
-  -A x64
+```sh
+export JAVA_HOME=/path/to/compiler-jdk
+scripts-linux/build-native.sh /tmp/betart-direct /path/to/dxvk-remix-gmod Release
+scripts-linux/build-client.sh /path/to/minecraft-b1.7.3-client.jar \
+  /path/to/lwjgl-2.9.4.jar /path/to/lwjgl_util-2.9.4.jar \
+  /path/to/asm-9.9.jar /path/to/asm-tree-9.9.jar /tmp/betart-client
 ```
 
-### Build the native bridge
+The two LWJGL 2 JARs supply compile-time declarations only. They must not be on
+the installed runtime classpath. The final build audits all client class constant
+pools for OpenGL/GLFW dependencies; only the SDL-backed `Display` and `DisplayMode`
+compatibility class names remain. Patching modifies original bytecode and adds
+adapters; decompiled Minecraft source is not redistributed.
 
-```powershell
-cmake --build build --config Release --target mcrtx_jni
+In a separate Prism instance, install the resulting client as its custom main
+JAR. Place `libmcrtx_jni.so`, `libremix.so.0` (and its real file/symlinks), and
+`libSDL3.so.0` next to that JAR. Alternatively set `MCRTX_JNI_PATH` and
+`MCRTX_REMIX_PATH` in `minecraft/mcrtx-runtime.env` to absolute library paths.
+Keep LWJGL 3 **core and OpenAL only**, with their Linux natives, for audio. Remove
+LWJGL OpenGL/GLFW modules and the old LWJGL 2 component. Standard Prism assets and
+Java 8 still apply. Back up the original instance before replacing its files.
+
+Generate the audio-only component from Prism's cached metadata:
+
+```sh
+python3 scripts-linux/prism-audio-component.py \
+  /path/to/PrismLauncher/meta/org.lwjgl3/3.3.3.json \
+  /path/to/instance/patches/org.lwjgl3.json
 ```
 
-The resulting DLL is written to `build/native/Release/mcrtx_jni.dll`.
+The output must not already exist. This keeps core/OpenAL natives while removing
+the graphics modules; it does not change shared launcher metadata.
 
-### Build the Linux native bridge and renderer
+`scripts-linux/package-native.sh BUILD_DIRECTORY REMIX_PACKAGE_DIRECTORY NEW_OUTPUT_DIRECTORY`
+combines the JNI library with the runtime's packaged SDL3/Remix libraries and
+license notices. It requires a fresh output directory. The system Vulkan loader
+and a Vulkan graphics driver are required on the target.
 
-The Linux build uses the native Remix renderer. It does not build or load D3D9,
-Wine, or the 32-bit bridge. First build and package the pinned renderer
-dependencies from the adjacent `dxvk-remix-gmod` checkout:
+Optional environment settings: `MCRTX_VSYNC=0` disables VSync (or use the debug
+panel), `MCRTX_PERF=1` enables detailed timings, and `MCRTX_PERF_LOG` selects the
+log file. `MCRTX_GAMEPLAY_FOV` and `MCRTX_VIEWMODEL_FOV` retain camera FOV controls (30–120 degrees, default 70). Detailed profiling affects throughput. Old RTX, capture, lighting and
+vanilla-suppression settings have no effect and should be removed.
 
-```bash
-DXVK_REMIX_ROOT=../dxvk-remix-gmod
-"$DXVK_REMIX_ROOT/scripts-linux/build-dependencies.sh" out/remix-deps
-"$DXVK_REMIX_ROOT/scripts-linux/build-remix.sh" \
-  out/remix-build out/remix-deps/prefix
-"$DXVK_REMIX_ROOT/scripts-linux/package-remix.sh" \
-  out/remix-build out/remix-deps/prefix out/remix-runtime
+## Verification
+
+```sh
+CC=clang CXX=clang++ cmake -S . -B /tmp/betart-tests -G Ninja \
+  -DMCRTX_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Release
+cmake --build /tmp/betart-tests
+ctest --test-dir /tmp/betart-tests --output-on-failure
+python3 src/tests/python/test_prism_audio_component.py
+scripts-linux/test-java.sh PATCHED_JAR /path/to/java8/bin/java NEW_TEST_DIRECTORY
 ```
 
-Build the JNI bridge against that checkout, then assemble the colocated native
-runtime directory:
+Set `MCRTX_TEST_GPU=1`, `MCRTX_JNI_PATH` and `MCRTX_REMIX_PATH` to include Java/JNI,
+real vanilla menu/model/startup and in-memory world tests. `SDL_VIDEODRIVER=offscreen`
+works with a compatible software Vulkan driver. Enable `REMIX_VULKAN_VALIDATION=1`
+and synchronization validation with the installed validation layer for GPU tests.
+The test classpath excludes all LWJGL modules; local audio therefore uses the
+vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
 
-```bash
-./scripts-linux/build-native.sh build-linux "$DXVK_REMIX_ROOT" Release
-./scripts-linux/package-native.sh \
-  build-linux out/remix-runtime out/linux-native
-```
-
-`out/linux-native/` contains `libmcrtx_jni.so`, `libremix.so.0`, the pinned SDL3
-shared library, and the pinned NVIDIA NGX feature libraries for DLSS Super
-Resolution, Ray Reconstruction, and Frame Generation. The renderer uses an
-`$ORIGIN` runpath, so these files can remain together without installing them
-system-wide. Vulkan and the NGX driver components are loaded from the host's
-NVIDIA driver. Feature availability still depends on the installed driver and
-GPU; unsupported controls are disabled in BetaRT's graphics settings.
-
-Place `libmcrtx_jni.so` next to the patched client jar, add its directory to
-`java.library.path`, or set `MCRTX_JNI_PATH` to its absolute path. Keep the
-other shared libraries beside it; alternatively, set `MCRTX_REMIX_DLL` to the
-absolute `libremix.so.0` path. On Linux, Remix owns the SDL3 window and BetaRT
-forwards that window's size, focus, keyboard, mouse, cursor-grab, fullscreen,
-and close state to the legacy LWJGL-facing Java hooks.
-
-The patched client jar is platform-independent. On Linux, build it without
-regenerating imported textures using existing dependency jars from PrismLauncher:
-
-```bash
-JAVA_HOME=/path/to/jdk-21 bash scripts-linux/build-client.sh \
-  /path/to/minecraft-b1.7.3-client.jar \
-  /path/to/lwjgl.jar /path/to/lwjgl_util.jar \
-  /path/to/asm.jar /path/to/asm-tree.jar \
-  out/linux-client
-```
-
-Use the original vanilla Minecraft jar as input, not a previously patched jar.
-The output directory must not already exist. Deploy the resulting
-`minecraft-b1.7.3-client-mcrtx.jar` with the contents of `out/linux-native/`.
-The deployment scripts below remain PowerShell/Windows workflows.
-
-See [Underground culling](docs/UndergroundCulling.md) for the opt-in culling
-controls, regression tests, and private-instance profiling workflow.
-
-### Build the patched client bundle
-
-After building the native bridge:
-
-```powershell
-.\scripts\build-patched-client.ps1 -Configuration Release
-```
-
-This compiles the Java bridge for Java 8, patches the Beta 1.7.3 client jar,
-generates the runtime texture assets, and stages the jar and native DLL under
-`out/patched-client/`.
-
-For a non-default PrismLauncher location, instance, or JDK:
-
-```powershell
-.\scripts\build-patched-client.ps1 `
-  -Configuration Release `
-  -PrismRoot "D:\PrismLauncher" `
-  -InstanceName "b1.7.3" `
-  -JavaHome "C:\Program Files\Java\jdk-21"
-```
-
-The individual dependency and Java executable parameters remain available for
-unusual layouts.
-
-### Build and deploy to PrismLauncher
-
-Once the CMake build directory has been configured, the development deployment
-script builds both parts and installs them into a PrismLauncher instance:
-
-```powershell
-.\scripts\deploy-test-build.ps1 -Configuration Release -Build
-```
-
-Use `-PrismRoot`, `-InstanceName`, or `-JavaHome` with the deployment command in
-the same way. `-InstanceRoot` and `-MinecraftLibraryJar` remain available for
-nonstandard layouts. The script keeps a one-time vanilla jar backup under
-`out/deploy-state/`; restore it with:
-
-```powershell
-.\scripts\deploy-test-build.ps1 -Restore
-```
+The private JNI protocol is versioned independently of the public Remix SDK.
+Use client and JNI artifacts from the same build and the companion runtime with
+`remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
+calls are outside this Linux migration.

@@ -8,7 +8,7 @@ public final class Sys {
     }
 
     public static String getVersion() {
-        return "mcrtx-lwjgl3-compat";
+        return "mcrtx-sdl-remix";
     }
 
     public static boolean openURL(String url) {

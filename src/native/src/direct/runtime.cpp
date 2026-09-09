@@ -1,0 +1,553 @@
+#include "mcrtx/direct/runtime.hpp"
+#include <algorithm>
+#include <bit>
+#include <cstdio>
+#include <sstream>
+#include "mcrtx/lifecycle/perf_log.hpp"
+#include "mcrtx/core/runtime_config.hpp"
+
+namespace mcrtx::direct {
+namespace {
+template<class T> T handle(std::uint64_t id) { return reinterpret_cast<T>(std::uintptr_t(id)); }
+template<class T> T function(remixapi_HMODULE library, const char *name) {
+#if defined(_WIN32)
+  auto result = reinterpret_cast<T>(GetProcAddress(library, name));
+#else
+  auto result = reinterpret_cast<T>(dlsym(library, name));
+#endif
+  if (!result) throw std::runtime_error(std::string("Missing native extension: ") + name);
+  return result;
+}
+std::filesystem::path texturePath(std::uint64_t texture) {
+  std::ostringstream stream;
+  stream << "0x" << std::hex << texture;
+  return stream.str();
+}
+}
+
+Runtime &Runtime::instance() { static Runtime runtime; return runtime; }
+Runtime::~Runtime() { stop(); perf::shutdown(); }
+void Runtime::check(remixapi_ErrorCode error) {
+  if (error != REMIXAPI_ERROR_CODE_SUCCESS)
+    throw std::runtime_error("Remix API failed: " + std::to_string(unsigned(error)));
+}
+void Runtime::setError(const std::string &error) {
+  std::lock_guard lock(m_mutex);
+  m_error = error;
+}
+std::string Runtime::error() const { std::lock_guard lock(m_mutex); return m_error; }
+
+bool Runtime::start(const std::filesystem::path &library, unsigned width, unsigned height) {
+  if (!width || !height || width > 16384 || height > 16384) return false;
+  stop();
+  m_mailbox.reset();
+  m_terrain.clear();
+  m_stop = false;
+  m_ready = false;
+  m_presented = m_fresh = 0;
+  m_lastSequence = m_pendingSequence = 0;
+  m_grabRequested = m_grabApplied = m_debugVisible = false;
+  m_origin = {}; m_view = {}; m_projection = {};
+  {
+    std::lock_guard lock(m_mutex);
+    m_error.clear();
+    m_window = {};
+    m_metrics = {};
+  }
+  m_worker = std::thread(&Runtime::run, this, library, width, height);
+  std::unique_lock lock(m_mutex);
+  m_started.wait(lock, [&] { return m_ready; });
+  return m_running;
+}
+
+void Runtime::stop() {
+  m_stop = true;
+  m_mailbox.stop();
+  if (m_worker.joinable()) m_worker.join();
+  m_running = false;
+}
+
+bool Runtime::submit(Bytes resources, Bytes frame) {
+  if (!m_running) return false;
+  try {
+    validatePacket(resources, true);
+    validatePacket(frame, false);
+    return m_mailbox.publish(std::move(resources), std::move(frame));
+  } catch (const std::exception &exception) {
+    setError(exception.what());
+    return false;
+  }
+}
+
+std::array<std::uint64_t, 4> Runtime::counts() const {
+  return {m_mailbox.published(), m_fresh.load(), m_presented.load(), m_mailbox.replaced()};
+}
+
+bool Runtime::control(unsigned operation, int value, float x, float y, std::string text) {
+  std::lock_guard lock(m_mutex);
+  if (!m_running || m_controls.size() >= 1024 || !std::isfinite(x) || !std::isfinite(y)) return false;
+  if (operation < 1 || operation > 7) return false;
+  m_controls.push_back([this, operation, value, x, y, text = std::move(text)] {
+    switch (operation) {
+    case 1: m_grabRequested = value != 0; break;
+    case 2: check(m_api.SetFullscreen(value != 0)); break;
+    case 3: check(m_textInput(value != 0)); break;
+    case 4: check(m_api.SetUIState((value < 0 ? m_api.GetUIState() == REMIXAPI_UI_STATE_NONE : value != 0)
+      ? REMIXAPI_UI_STATE_ADVANCED : REMIXAPI_UI_STATE_NONE)); break;
+    case 5: check(m_api.SetCursorPosition(x, y)); break;
+    case 6: check(m_api.RequestPresentedScreenshot(text.c_str())); break;
+    case 7: check(m_api.SetConfigVariable("rtx.native.vsync", value ? "True" : "False")); break;
+    }
+  });
+  return true;
+}
+
+std::vector<std::uint32_t> Runtime::poll(unsigned maxEvents) {
+  std::lock_guard lock(m_mutex);
+  const auto count = std::min<std::size_t>({m_input.size(), maxEvents, 4096});
+  std::vector<std::uint32_t> values(9 + count * 8);
+  values[0] = m_metrics.logicalWidth; values[1] = m_metrics.logicalHeight;
+  values[2] = m_metrics.drawableWidth; values[3] = m_metrics.drawableHeight;
+  values[4] = m_window.focused; values[5] = m_window.closeRequested || (!m_running && m_ready);
+  values[6] = m_window.minimized;
+  values[7] = m_window.guiWantsKeyboard | (m_window.guiWantsMouse << 1) | (unsigned(m_debugVisible) << 2);
+  values[8] = static_cast<std::uint32_t>(count);
+  for (std::size_t i = 0; i < count; ++i) {
+    std::memcpy(values.data() + 9 + i * 8, &m_input.front(), 32);
+    m_input.pop_front();
+  }
+  return values;
+}
+
+bool Runtime::events() {
+  const bool debug = m_api.GetUIState() != REMIXAPI_UI_STATE_NONE;
+  const bool grabbed = m_grabRequested && !debug;
+  if (grabbed != m_grabApplied) {
+    check(m_api.SetMouseGrabbed(grabbed));
+    m_grabApplied = grabbed;
+  }
+  {
+    std::lock_guard lock(m_mutex);
+    if (debug != m_debugVisible) {
+      m_input.clear();
+      remixapi_InputEvent reset = {};
+      reset.type = REMIXAPI_INPUT_RESET;
+      m_input.push_back(reset);
+      m_debugVisible = debug;
+    }
+  }
+  check(m_api.PumpEvents());
+  remixapi_WindowState state = {};
+  remixapi_WindowMetrics metrics = {};
+  check(m_api.GetWindowState(&state));
+  check(m_getMetrics(&metrics));
+  std::array<remixapi_InputEvent, 256> events;
+  std::uint32_t count;
+  bool changed = false;
+  do {
+    check(m_poll(events.data(), events.size(), &count));
+    std::lock_guard lock(m_mutex);
+    changed |= state.drawableWidth != m_window.drawableWidth || state.drawableHeight != m_window.drawableHeight ||
+               state.minimized != m_window.minimized;
+    m_window = state;
+    m_metrics = metrics;
+    for (unsigned i = 0; i < count; ++i) {
+      if (m_input.size() >= 4096) {
+        m_input.clear();
+        remixapi_InputEvent reset = {};
+        reset.type = REMIXAPI_INPUT_RESET;
+        m_input.push_back(reset);
+      }
+      m_input.push_back(events[i]);
+    }
+  } while (count == events.size());
+  return changed;
+}
+
+void Runtime::run(std::filesystem::path library, unsigned width, unsigned height) {
+  try {
+    check(remixapi_lib_loadRemixDllAndInitialize(library.c_str(), &m_api, &m_library));
+    m_poll = function<PFN_remixapi_PollInputEvents>(m_library, "remixapi_PollInputEvents");
+    m_getMetrics = function<PFN_remixapi_GetWindowMetrics>(m_library, "remixapi_GetWindowMetrics");
+    m_textInput = function<PFN_remixapi_SetTextInputEnabled>(m_library, "remixapi_SetTextInputEnabled");
+    m_presentCount = function<PFN_remixapi_GetPresentationCount>(m_library, "remixapi_GetPresentationCount");
+    remixapi_StartupInfo startup = {};
+    startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
+#if !defined(_WIN32)
+    startup.windowTitle = "BetaRT";
+    startup.windowWidth = width;
+    startup.windowHeight = height;
+#else
+    (void)width; (void)height;
+#endif
+    check(m_api.Startup(&startup));
+    const auto vsync = detail::readEnvironmentVariable("MCRTX_VSYNC");
+    if (!vsync.empty()) check(m_api.SetConfigVariable("rtx.native.vsync", detail::isTruthyEnvValue(vsync.c_str()) ? "True" : "False"));
+    events();
+    {
+      std::lock_guard lock(m_mutex);
+      m_running = true;
+      m_ready = true;
+    }
+    m_started.notify_all();
+    auto lastPresent = std::chrono::steady_clock::now();
+    while (!m_stop) {
+      auto next = m_mailbox.take(std::chrono::milliseconds(8));
+      if (m_stop) break;
+      bool redraw = events();
+      std::deque<std::function<void()>> controls;
+      remixapi_WindowState state;
+      {
+        std::lock_guard lock(m_mutex);
+        controls.swap(m_controls);
+        state = m_window;
+      }
+      redraw |= !controls.empty();
+      for (auto &command : controls) {
+        // An unavailable optional control (e.g. screenshot format) does not stop gameplay.
+        try { command(); } catch (const std::exception &error) {
+          std::fprintf(stderr, "Optional Remix control failed: %s\n", error.what());
+        }
+      }
+      if (state.closeRequested) break;
+      if (next.frame) {
+        for (const auto &resources : next.resources) resourcePacket(resources);
+        m_lastFrame = std::move(next.frame);
+        m_pendingSequence = next.sequence;
+      }
+      const bool terrainChanged = terrainPublish();
+      const auto now = std::chrono::steady_clock::now();
+      redraw |= m_api.GetUIState() != REMIXAPI_UI_STATE_NONE &&
+        now - lastPresent >= std::chrono::microseconds(16667);
+      if (state.minimized || !state.drawableWidth || !state.drawableHeight) continue;
+      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw)) {
+        MCRTX_PERF_CPU_SCOPE(perf::Side::Native, "direct.frame");
+        framePacket(*m_lastFrame);
+        drawTerrain();
+        std::uint64_t before = 0, after = 0;
+        check(m_presentCount(&before));
+        check(m_api.Present(nullptr));
+        check(m_presentCount(&after));
+        if (after == before) continue;
+        ++m_presented;
+        const bool fresh = m_pendingSequence != m_lastSequence;
+        if (fresh) {
+          ++m_fresh;
+          m_lastSequence = m_pendingSequence;
+        }
+        perf::recordCount(perf::Side::Native, "direct.fresh", fresh ? 1 : 0);
+        perf::onFramePresented();
+        lastPresent = now;
+      }
+    }
+  } catch (const std::exception &exception) {
+    setError(exception.what());
+  } catch (...) {
+    setError("Native renderer failed");
+  }
+  m_running = false;
+  m_mailbox.stop();
+  m_terrain.clear();
+  if (m_library) remixapi_lib_shutdownAndUnloadRemixDll(&m_api, m_library);
+  m_library = nullptr;
+  m_api = {};
+  m_materials.clear();
+  m_chunks.clear();
+  m_lastFrame.reset();
+  {
+    std::lock_guard lock(m_mutex);
+    m_controls.clear();
+    m_input.clear();
+    m_ready = true;
+    m_window.closeRequested = true;
+  }
+  m_started.notify_all();
+}
+
+void Runtime::material(std::uint64_t id) {
+  const auto &source = m_materials.at(id);
+  const auto path = texturePath(source.texture);
+  remixapi_MaterialInfoOpaqueEXT opaque = {};
+  opaque.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
+  opaque.albedoConstant = {1, 1, 1};
+  opaque.opacityConstant = 1;
+  opaque.alphaTestType = 7;
+  opaque.useDrawCallAlphaState = 1;
+  remixapi_MaterialInfo info = {};
+  info.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
+  info.hash = id;
+  info.pNext = &opaque;
+  info.albedoTexture = source.texture ? path.c_str() : nullptr;
+  info.filterMode = source.filter;
+  info.wrapModeU = source.wrapU;
+  info.wrapModeV = source.wrapV;
+  remixapi_MaterialHandle result;
+  check(m_api.CreateMaterial(&info, &result));
+}
+
+void Runtime::resourcePacket(const Bytes &bytes) {
+  MCRTX_PERF_SCOPE(perf::Side::Native, "direct.resources");
+  perf::recordCount(perf::Side::Native, "direct.resourceBytes", bytes.size());
+  if (bytes.empty()) return;
+  Reader stream(bytes);
+  stream.header();
+  while (stream.remaining()) {
+    const auto op = static_cast<Op>(stream.read<std::uint32_t>());
+    auto data = stream.slice(stream.read<std::uint32_t>());
+    const auto id = data.read<std::uint64_t>();
+    switch (op) {
+    case Op::Texture: {
+      remixapi_TextureInfo info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_TEXTURE_INFO;
+      info.hash = id;
+      info.width = data.read<std::uint32_t>();
+      info.height = data.read<std::uint32_t>();
+      info.depth = info.mipLevels = 1;
+      info.format = REMIXAPI_FORMAT_R8G8B8A8_SRGB;
+      info.data = data.data();
+      info.dataSize = data.remaining();
+      remixapi_TextureHandle result;
+      check(m_api.CreateTexture(&info, &result));
+      check(m_api.RegisterUITexture(id, info.width, info.height, info.format, info.data, info.dataSize));
+      for (const auto &[materialId, source] : m_materials) {
+        if (source.texture == id) material(materialId);
+      }
+      break;
+    }
+    case Op::Material: {
+      Material value;
+      value.texture = data.read<std::uint64_t>();
+      value.filter = data.read<std::uint32_t>();
+      value.wrapU = data.read<std::uint32_t>();
+      value.wrapV = data.read<std::uint32_t>();
+      m_materials[id] = value;
+      material(id);
+      break;
+    }
+    case Op::Mesh: {
+      remixapi_MeshInfoSurfaceTriangles surface = {};
+      surface.material = handle<remixapi_MaterialHandle>(data.read<std::uint64_t>());
+      surface.vertices_count = data.read<std::uint32_t>();
+      surface.indices_count = data.read<std::uint32_t>();
+      std::vector<remixapi_HardcodedVertex> vertices(surface.vertices_count);
+      std::vector<std::uint32_t> indices(surface.indices_count);
+      for (auto &vertex : vertices) {
+        for (float &position : vertex.position) position = data.read<float>();
+        vertex.texcoord[0] = data.read<float>(); vertex.texcoord[1] = data.read<float>();
+        vertex.color = data.read<std::uint32_t>();
+        vertex.normal[1] = 1;
+      }
+      for (auto &index : indices) index = data.read<std::uint32_t>();
+      surface.vertices_values = vertices.data(); surface.indices_values = indices.data();
+      remixapi_MeshInfo info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+      info.hash = id; info.surfaces_count = 1; info.surfaces_values = &surface;
+      remixapi_MeshHandle result;
+      check(m_api.CreateMesh(&info, &result));
+      break;
+    }
+    case Op::DestroyTexture:
+      check(m_api.DestroyTexture(handle<remixapi_TextureHandle>(id)));
+      check(m_api.FreeUITexture(id));
+      break;
+    case Op::DestroyMaterial:
+      check(m_api.DestroyMaterial(handle<remixapi_MaterialHandle>(id)));
+      m_materials.erase(id);
+      break;
+    case Op::DestroyMesh: check(m_api.DestroyMesh(handle<remixapi_MeshHandle>(id))); break;
+    default: throw std::invalid_argument("Unexpected resource opcode");
+    }
+  }
+}
+
+void Runtime::framePacket(const Bytes &bytes) {
+  perf::recordCount(perf::Side::Native, "direct.frameBytes", bytes.size());
+  Reader stream(bytes);
+  stream.header();
+  check(m_api.SubmitUIDrawList(nullptr));
+  remixapi_InstanceRasterStateEXT rasterState = {};
+  rasterState.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_RASTER_STATE_EXT;
+  bool hasRasterState = false;
+  while (stream.remaining()) {
+    const auto op = static_cast<Op>(stream.read<std::uint32_t>());
+    auto data = stream.slice(stream.read<std::uint32_t>());
+    switch (op) {
+    case Op::Camera: {
+      remixapi_CameraInfo info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_CAMERA_INFO;
+      info.type = static_cast<remixapi_CameraType>(data.read<std::uint32_t>());
+      for (auto &column : info.view) for (float &v : column) v = data.read<float>();
+      for (auto &column : info.projection) for (float &v : column) v = data.read<float>();
+      if (info.type == REMIXAPI_CAMERA_TYPE_WORLD) std::memcpy(m_projection.data(), info.projection, sizeof(info.projection));
+      check(m_api.SetupCamera(&info));
+      break;
+    }
+    case Op::Draw: {
+      remixapi_InstanceInfo info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+      info.mesh = handle<remixapi_MeshHandle>(data.read<std::uint64_t>());
+      for (auto &row : info.transform.matrix) for (float &v : row) v = data.read<float>();
+      info.categoryFlags = data.read<std::uint32_t>();
+      info.doubleSided = data.read<std::uint32_t>();
+      remixapi_InstanceInfoBlendEXT blend = {};
+      blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+      blend.pNext = hasRasterState ? &rasterState : nullptr;
+      blend.tFactor = data.read<std::uint32_t>();
+      blend.alphaTestCompareOp = data.read<std::uint32_t>();
+      blend.alphaTestReferenceValue = data.read<std::uint32_t>();
+      blend.alphaTestEnabled = blend.alphaTestCompareOp != 7;
+      blend.alphaBlendEnabled = data.read<std::uint32_t>();
+      blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = data.read<std::uint32_t>();
+      blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = data.read<std::uint32_t>();
+      const bool vertexColor = data.read<std::uint32_t>() != 0;
+      blend.textureColorArg1Source = blend.textureAlphaArg1Source = 1; // texture
+      blend.textureColorArg2Source = blend.textureAlphaArg2Source = vertexColor ? 2 : 3;
+      blend.textureColorOperation = blend.textureAlphaOperation = 3; // modulation
+      info.pNext = &blend;
+      check(m_api.DrawInstance(&info));
+      break;
+    }
+    case Op::Ui: {
+      remixapi_UIDrawList info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_UI_DRAW_LIST;
+      info.displayWidth = data.read<std::uint32_t>(); info.displayHeight = data.read<std::uint32_t>();
+      info.vertexCount = data.read<std::uint32_t>(); info.indexCount = data.read<std::uint32_t>();
+      info.commandCount = data.read<std::uint32_t>();
+      std::vector<remixapi_UIVertex> vertices(info.vertexCount);
+      std::vector<std::uint32_t> indices(info.indexCount);
+      std::vector<remixapi_UIDrawCommand> commands(info.commandCount);
+      for (auto &vertex : vertices) {
+        vertex.x = data.read<float>(); vertex.y = data.read<float>(); vertex.z = data.read<float>();
+        vertex.u = data.read<float>(); vertex.v = data.read<float>(); vertex.color = data.read<std::uint32_t>();
+      }
+      for (auto &index : indices) index = data.read<std::uint32_t>();
+      for (auto &cmd : commands) {
+        cmd.textureId = data.read<std::uint64_t>(); cmd.indexCount = data.read<std::uint32_t>();
+        cmd.indexOffset = data.read<std::uint32_t>(); cmd.vertexOffset = data.read<std::int32_t>();
+        cmd.flags = data.read<std::uint32_t>();
+      }
+      info.pVertices = vertices.data(); info.pIndices = indices.data(); info.pCommands = commands.data();
+      check(m_api.SubmitUIDrawList(&info));
+      break;
+    }
+    case Op::TerrainView:
+      for (auto &v : m_origin) v = data.read<double>();
+      for (auto &v : m_view) v = data.read<float>();
+      break;
+    case Op::RasterState:
+      rasterState.depthTest = data.read<std::uint32_t>();
+      rasterState.depthWrite = data.read<std::uint32_t>();
+      rasterState.depthCompare = data.read<std::uint32_t>();
+      rasterState.disableColorWrites = data.read<std::uint32_t>();
+      hasRasterState = true;
+      break;
+    default: throw std::invalid_argument("Unexpected frame opcode");
+    }
+  }
+}
+
+bool Runtime::terrainPublish() {
+  m_terrain.pump(m_origin);
+  bool changed = false;
+  for (const auto &key : m_terrain.takeResidencyChanges()) {
+    const auto found = m_chunks.find(key);
+    if (found != m_chunks.end() && found->second.lifetime != m_terrain.lifetime(key)) {
+      for (const auto mesh : found->second.handles) if (mesh) check(m_api.DestroyMesh(mesh));
+      m_chunks.erase(found);
+      changed = true;
+    }
+  }
+  const auto started = std::chrono::steady_clock::now();
+  std::size_t bytes = 0;
+  for (unsigned count = 0; count < 4 && bytes < 8 * 1024 * 1024; ++count) {
+    auto result = m_terrain.takeCompleted();
+    if (!result) break;
+    if (result->failed) { m_terrain.retry(std::move(result)); break; }
+    TerrainMesh next;
+    next.lifetime = result->inputs.lifetime;
+    const auto previous = m_chunks.find(result->inputs.key);
+    std::array<bool, 2> reused = {};
+    for (unsigned pass = 0; pass < 2; ++pass) {
+      next.fingerprints[pass] = result->passes[pass].fingerprint;
+      if (previous != m_chunks.end() && previous->second.lifetime == next.lifetime &&
+          previous->second.fingerprints[pass] == next.fingerprints[pass]) {
+        next.handles[pass] = previous->second.handles[pass];
+        reused[pass] = true;
+        continue;
+      }
+      std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
+      for (const auto &source : result->passes[pass].surfacesToBuild) {
+        if (source.indices.empty()) continue;
+        // Reserved material IDs 1..8 describe the eight existing terrain classes.
+        if (!m_materials.count(1 + source.materialClass)) {
+          for (unsigned p = 0; p < 2; ++p) if (next.handles[p] && !reused[p]) check(m_api.DestroyMesh(next.handles[p]));
+          m_terrain.retry(std::move(result));
+          return changed;
+        }
+        remixapi_MeshInfoSurfaceTriangles surface = {};
+        surface.vertices_values = source.vertices.data(); surface.vertices_count = source.vertices.size();
+        surface.indices_values = source.indices.data(); surface.indices_count = source.indices.size();
+        surface.material = handle<remixapi_MaterialHandle>(1 + source.materialClass);
+        surfaces.push_back(surface);
+      }
+      next.fingerprints[pass] = result->passes[pass].fingerprint;
+      if (surfaces.empty()) continue;
+      remixapi_MeshInfo info = {};
+      info.sType = REMIXAPI_STRUCT_TYPE_MESH_INFO;
+      info.hash = m_nextTerrainId++;
+      info.surfaces_values = surfaces.data(); info.surfaces_count = surfaces.size();
+      check(m_api.CreateMesh(&info, &next.handles[pass]));
+    }
+    bytes += result->bytes;
+    bool committed = m_terrain.finish(*result, [&] {
+      auto &previous = m_chunks[result->inputs.key];
+      std::swap(previous, next);
+    });
+    // Destroy discarded allocations or the previous committed section after swapping.
+    for (unsigned p = 0; p < 2; ++p) if (next.handles[p] && !reused[p]) check(m_api.DestroyMesh(next.handles[p]));
+    changed |= committed;
+    if (std::chrono::steady_clock::now() - started > std::chrono::milliseconds(1)) break;
+  }
+  return changed;
+}
+
+void Runtime::drawTerrain() {
+  for (const auto &[key, chunk] : m_chunks) {
+    remixapi_InstanceInfo draw = {};
+    draw.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    const double position[3] = {key.originX - m_origin[0], key.originY - m_origin[1], key.originZ - m_origin[2]};
+    for (unsigned row = 0; row < 3; ++row) {
+      for (unsigned col = 0; col < 3; ++col) draw.transform.matrix[row][col] = m_view[col * 4 + row];
+      draw.transform.matrix[row][3] = static_cast<float>(m_view[12 + row] +
+        m_view[row] * position[0] + m_view[4 + row] * position[1] + m_view[8 + row] * position[2]);
+    }
+    unsigned outside = 63;
+    for (unsigned corner = 0; corner < 8; ++corner) {
+      float view[4] = {0, 0, 0, 1}, clip[4] = {};
+      for (unsigned row = 0; row < 3; ++row) {
+        view[row] = draw.transform.matrix[row][3];
+        for (unsigned col = 0; col < 3; ++col)
+          view[row] += draw.transform.matrix[row][col] * ((corner & (1u << col)) ? 16.5f : -.5f);
+      }
+      for (unsigned row = 0; row < 4; ++row)
+        for (unsigned col = 0; col < 4; ++col) clip[row] += m_projection[col * 4 + row] * view[col];
+      outside &= unsigned(clip[0] < -clip[3]) | unsigned(clip[0] > clip[3]) << 1 |
+          unsigned(clip[1] < -clip[3]) << 2 | unsigned(clip[1] > clip[3]) << 3 |
+          unsigned(clip[2] < 0) << 4 | unsigned(clip[2] > clip[3]) << 5;
+    }
+    if (outside) continue;
+    draw.doubleSided = 1;
+    remixapi_InstanceInfoBlendEXT blend = {};
+    blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+    blend.alphaTestEnabled = 1; blend.alphaTestCompareOp = 4; blend.alphaTestReferenceValue = 1;
+    blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = 6;
+    blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = 7;
+    draw.pNext = &blend;
+    for (unsigned pass = 0; pass < 2; ++pass) {
+      draw.mesh = chunk.handles[pass];
+      blend.alphaBlendEnabled = pass != 0;
+      if (draw.mesh) check(m_api.DrawInstance(&draw));
+    }
+  }
+}
+}
