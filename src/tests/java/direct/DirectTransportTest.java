@@ -32,7 +32,7 @@ public final class DirectTransportTest {
             for (int matrix = 0; matrix < 2; ++matrix)
                 for (int i = 0; i < 16; ++i) frame.number(i % 5 == 0 ? 1f : 0f);
             frame.end(at);
-            at = frame.command(17); frame.id(101);
+            at = frame.command(17); frame.id(101); frame.id(201); frame.integer(1); frame.integer(1);
             for (int row = 0; row < 3; ++row)
                 for (int column = 0; column < 4; ++column) frame.number(row == column ? 1f : 0f);
             frame.integer(0); frame.integer(1); frame.integer(0xffff0000);

@@ -1,5 +1,9 @@
 # Direct renderer verification — 2026-09-08
 
+This report records the earlier direct-renderer migration baseline. The subsequent
+optional path tracer, current paired hashes and tracing measurements are documented
+in [PathTracing.md](PathTracing.md) and its linked runtime verification report.
+
 The Linux client uses direct Remix rendering throughout. The patched JAR has no
 OpenGL or GLFW classpath dependency; SDL owns the window/input and Vulkan renders
 world geometry, materials, vanilla models, effects and UI. The public Remix 0.1003

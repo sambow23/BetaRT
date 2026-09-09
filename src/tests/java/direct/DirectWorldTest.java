@@ -10,9 +10,27 @@ public final class DirectWorldTest {
         World(){super(new wy(),"DirectTest",xa.a(0),1L);}
         public cl b(){return new uv(this);}
     }
+    private static void benchmark(Minecraft game,World world,File directory)throws Exception {
+        java.util.ArrayList<sn> animated=new java.util.ArrayList<sn>();
+        for(int i=0;i<144;++i){sn entity=jc.a(i%2==0?"Pig":"Zombie",world);entity.c(-10+i%12*2,64,7+i/12*2,0,0);world.b(entity);animated.add(entity);}
+        long warmup=Long.getLong("mcrtx.test.warmupMs",45000L),duration=Long.getLong("mcrtx.test.measureMs",60000L);
+        long start=System.nanoTime(),measureStart=0,measureEnd=0;long[] before=null,after=null;
+        while((System.nanoTime()-start)/1000000<warmup+duration){
+            double t=(System.nanoTime()-start)*1e-9;
+            for(int i=0;i<animated.size();++i){sn entity=animated.get(i);entity.aM=entity.bl=-10+i%12*2+Math.sin(t*2+i)*.4;}
+            game.p.a();game.t.a();game.t.b(.5f);Display.update();
+            if(!DirectBridge.error().isEmpty())throw new AssertionError(DirectBridge.error());
+            if(before==null&&(System.nanoTime()-start)/1000000>=warmup){before=DirectBridge.counts();measureStart=System.currentTimeMillis();}
+        }
+        after=DirectBridge.counts();measureEnd=System.currentTimeMillis();
+        String report="{\"start_ms\":"+measureStart+",\"end_ms\":"+measureEnd+",\"warmup_ms\":"+warmup+
+            ",\"published\":"+(after[0]-before[0])+",\"fresh\":"+(after[1]-before[1])+",\"presented\":"+(after[2]-before[2])+"}";
+        java.nio.file.Files.write(new File(directory,"measurement.json").toPath(),report.getBytes("UTF-8"));
+        System.out.println("Benchmark: "+report);
+    }
     public static void main(String[] args)throws Exception {
         File directory=new File(args[0]);directory.mkdirs();Minecraft.af=directory;
-        Minecraft game=new Minecraft(null,null,null,640,480,false){public void a(mh report){throw new AssertionError(report.a,report.b);}};
+        Minecraft game=new Minecraft(null,null,null,Integer.getInteger("mcrtx.test.width",640),Integer.getInteger("mcrtx.test.height",480),false){public void a(mh report){throw new AssertionError(report.a,report.b);}};
         game.k=new gr("DirectTest","0");
         try{
             game.a();game.z.e=3;game.z.z=false;game.z.j=false;game.z.i=0;
@@ -29,6 +47,7 @@ public final class DirectWorldTest {
             String[] entities={"Pig","Sheep","Creeper","Zombie","Skeleton","Cow","Chicken","Wolf","Spider","Slime","Boat","Minecart"};
             for(int i=0;i<entities.length;++i){sn entity=jc.a(entities[i],world);if(entity!=null){entity.c(3+i%6*2,64,8+i/6*3,0,0);world.b(entity);}}
             game.g.a("smoke",8,65,10,0,0,0);game.g.a("flame",9,65,10,0,0,0);
+            if(Boolean.getBoolean("mcrtx.test.benchmark")) benchmark(game,world,directory);
             for(int i=0;i<180;++i){
                 game.p.a();game.t.a();game.t.b(.5f);Display.update();Thread.sleep(8);
                 if(!DirectBridge.error().isEmpty())throw new AssertionError(DirectBridge.error());

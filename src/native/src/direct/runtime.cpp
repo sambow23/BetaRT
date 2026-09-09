@@ -3,6 +3,8 @@
 #include <bit>
 #include <cstdio>
 #include <sstream>
+#include <fstream>
+#include <iomanip>
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/runtime_config.hpp"
 
@@ -47,7 +49,7 @@ bool Runtime::start(const std::filesystem::path &library, unsigned width, unsign
   m_presented = m_fresh = 0;
   m_lastSequence = m_pendingSequence = 0;
   m_grabRequested = m_grabApplied = m_debugVisible = false;
-  m_origin = {}; m_view = {}; m_projection = {};
+  m_origin = {}; m_floatingOrigin = {}; m_view = {}; m_projection = {};
   {
     std::lock_guard lock(m_mutex);
     m_error.clear();
@@ -171,6 +173,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     m_getMetrics = function<PFN_remixapi_GetWindowMetrics>(m_library, "remixapi_GetWindowMetrics");
     m_textInput = function<PFN_remixapi_SetTextInputEnabled>(m_library, "remixapi_SetTextInputEnabled");
     m_presentCount = function<PFN_remixapi_GetPresentationCount>(m_library, "remixapi_GetPresentationCount");
+    m_traceStats = function<PFN_remixapi_GetTracingStatisticsEXT>(m_library, "remixapi_GetTracingStatisticsEXT");
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -183,6 +186,24 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     check(m_api.Startup(&startup));
     const auto vsync = detail::readEnvironmentVariable("MCRTX_VSYNC");
     if (!vsync.empty()) check(m_api.SetConfigVariable("rtx.native.vsync", detail::isTruthyEnvValue(vsync.c_str()) ? "True" : "False"));
+    const auto backend = detail::readEnvironmentVariable("MCRTX_RENDER_BACKEND");
+    if (!backend.empty()) {
+      const auto result = m_api.SetConfigVariable("rtx.native.backend", backend.c_str());
+      if (result == REMIXAPI_ERROR_CODE_FEATURE_UNAVAILABLE) std::fprintf(stderr, "Requested path tracing unavailable; using raster (see Remix capability log).\n");
+      else check(result);
+    }
+    for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
+        {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"}, {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}}) {
+      auto value = detail::readEnvironmentVariable(environment);
+      if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
+    }
+    remixapi_LightInfoDistantEXT distant = {};
+    distant.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
+    distant.direction = {-.423999f, -.847998f, -.317999f};
+    remixapi_LightInfo daylight = {};
+    daylight.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO; daylight.pNext = &distant;
+    daylight.hash = 0x6fffffffffffffffull; daylight.radiance = {3.14159265f, 3.14159265f, 3.14159265f};
+    check(m_api.CreateLight(&daylight, &m_daylight));
     events();
     {
       std::lock_guard lock(m_mutex);
@@ -190,7 +211,14 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       m_ready = true;
     }
     m_started.notify_all();
+    std::ofstream profile;
+    const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
+    if (!profilePath.empty()) {
+      profile.open(profilePath);
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation\n";
+    }
     auto lastPresent = std::chrono::steady_clock::now();
+    auto profilePresent = lastPresent;
     while (!m_stop) {
       auto next = m_mailbox.take(std::chrono::milliseconds(8));
       if (m_stop) break;
@@ -211,7 +239,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       }
       if (state.closeRequested) break;
       if (next.frame) {
-        for (const auto &resources : next.resources) resourcePacket(resources);
+        for (const auto &resources : next.resources) { resourcePacket(resources); m_uploadBytes += resources.size(); }
         m_lastFrame = std::move(next.frame);
         m_pendingSequence = next.sequence;
       }
@@ -219,11 +247,16 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       const auto now = std::chrono::steady_clock::now();
       redraw |= m_api.GetUIState() != REMIXAPI_UI_STATE_NONE &&
         now - lastPresent >= std::chrono::microseconds(16667);
+      remixapi_TracingStatisticsEXT tracing = {};
+      tracing.structSize = sizeof(tracing);
+      check(m_traceStats(&tracing));
+      const bool accumulation = tracing.redrawRequested != 0;
       if (state.minimized || !state.drawableWidth || !state.drawableHeight) continue;
-      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw)) {
+      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation)) {
         MCRTX_PERF_CPU_SCOPE(perf::Side::Native, "direct.frame");
         framePacket(*m_lastFrame);
         drawTerrain();
+        check(m_api.DrawLightInstance(m_daylight));
         std::uint64_t before = 0, after = 0;
         check(m_presentCount(&before));
         check(m_api.Present(nullptr));
@@ -236,6 +269,32 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           m_lastSequence = m_pendingSequence;
         }
         perf::recordCount(perf::Side::Native, "direct.fresh", fresh ? 1 : 0);
+        perf::recordCount(perf::Side::Native, "direct.accumulationRedraw", !fresh && accumulation ? 1 : 0);
+        check(m_traceStats(&tracing));
+        perf::recordCount(perf::Side::Native, "trace.samples", tracing.samplesPerPixel);
+        perf::recordCount(perf::Side::Native, "trace.accumulation", tracing.accumulationCount);
+        perf::recordCount(perf::Side::Native, "trace.generation", tracing.sceneGeneration);
+        perf::recordCount(perf::Side::Native, "trace.blasBuilds", tracing.blasBuilds);
+        perf::recordCount(perf::Side::Native, "trace.blasRefits", tracing.blasRefits);
+        perf::recordCount(perf::Side::Native, "trace.compactions", tracing.blasCompactions);
+        perf::recordCount(perf::Side::Native, "trace.staticBuilds", tracing.staticTlasBuilds);
+        perf::recordCount(perf::Side::Native, "trace.dynamicBuilds", tracing.dynamicTlasBuilds);
+        perf::recordCount(perf::Side::Native, "trace.dynamicRefits", tracing.dynamicTlasRefits);
+        perf::recordCount(perf::Side::Native, "trace.rebuildReason", tracing.dynamicRebuildReason);
+        perf::recordCount(perf::Side::Native, "trace.accelerationBytes", tracing.accelerationBytes);
+        perf::recordCount(perf::Side::Native, "trace.gpuBuildUs", std::uint64_t(tracing.gpuBuildMilliseconds*1000));
+        perf::recordCount(perf::Side::Native, "trace.gpuTraceUs", std::uint64_t(tracing.gpuTraceMilliseconds*1000));
+        const auto completed = std::chrono::steady_clock::now();
+        if (profile.is_open()) {
+          const auto stamp = std::chrono::duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+          profile << stamp << ',' << fresh << ',' << std::fixed << std::setprecision(6)
+            << std::chrono::duration<double, std::milli>(completed-profilePresent).count() << ','
+            << tracing.gpuBuildMilliseconds << ',' << tracing.gpuTraceMilliseconds << ',' << m_uploadBytes << ','
+            << tracing.accelerationBytes << ',' << tracing.blasBuilds << ',' << tracing.blasRefits << ',' << tracing.blasCompactions << ','
+            << tracing.staticTlasBuilds << ',' << tracing.dynamicTlasBuilds << ',' << tracing.dynamicTlasRefits << ','
+            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << '\n';
+        }
+        profilePresent = completed; m_uploadBytes = 0;
         perf::onFramePresented();
         lastPresent = now;
       }
@@ -386,12 +445,17 @@ void Runtime::framePacket(const Bytes &bytes) {
       remixapi_InstanceInfo info = {};
       info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
       info.mesh = handle<remixapi_MeshHandle>(data.read<std::uint64_t>());
+      remixapi_InstanceIdentityEXT identity = {};
+      identity.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_IDENTITY_EXT;
+      identity.instanceId = data.read<std::uint64_t>();
+      identity.classification = data.read<std::uint32_t>(); identity.rasterVisible = data.read<std::uint32_t>();
+      identity.pNext = hasRasterState ? &rasterState : nullptr;
       for (auto &row : info.transform.matrix) for (float &v : row) v = data.read<float>();
       info.categoryFlags = data.read<std::uint32_t>();
       info.doubleSided = data.read<std::uint32_t>();
       remixapi_InstanceInfoBlendEXT blend = {};
       blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
-      blend.pNext = hasRasterState ? &rasterState : nullptr;
+      blend.pNext = &identity;
       blend.tFactor = data.read<std::uint32_t>();
       blend.alphaTestCompareOp = data.read<std::uint32_t>();
       blend.alphaTestReferenceValue = data.read<std::uint32_t>();
@@ -432,6 +496,7 @@ void Runtime::framePacket(const Bytes &bytes) {
     }
     case Op::TerrainView:
       for (auto &v : m_origin) v = data.read<double>();
+      for (auto &v : m_floatingOrigin) v = data.read<double>();
       for (auto &v : m_view) v = data.read<float>();
       break;
     case Op::RasterState:
@@ -465,10 +530,13 @@ bool Runtime::terrainPublish() {
     if (result->failed) { m_terrain.retry(std::move(result)); break; }
     TerrainMesh next;
     next.lifetime = result->inputs.lifetime;
+    next.world = result->inputs.world;
     const auto previous = m_chunks.find(result->inputs.key);
     std::array<bool, 2> reused = {};
     for (unsigned pass = 0; pass < 2; ++pass) {
       next.fingerprints[pass] = result->passes[pass].fingerprint;
+      next.identities[pass] = previous != m_chunks.end() && previous->second.lifetime == next.lifetime && previous->second.world == next.world
+        ? previous->second.identities[pass] : m_nextTerrainId++;
       if (previous != m_chunks.end() && previous->second.lifetime == next.lifetime &&
           previous->second.fingerprints[pass] == next.fingerprints[pass]) {
         next.handles[pass] = previous->second.handles[pass];
@@ -498,7 +566,7 @@ bool Runtime::terrainPublish() {
       info.surfaces_values = surfaces.data(); info.surfaces_count = surfaces.size();
       check(m_api.CreateMesh(&info, &next.handles[pass]));
     }
-    bytes += result->bytes;
+    bytes += result->bytes; m_uploadBytes += result->bytes;
     bool committed = m_terrain.finish(*result, [&] {
       auto &previous = m_chunks[result->inputs.key];
       std::swap(previous, next);
@@ -535,7 +603,15 @@ void Runtime::drawTerrain() {
           unsigned(clip[1] < -clip[3]) << 2 | unsigned(clip[1] > clip[3]) << 3 |
           unsigned(clip[2] < 0) << 4 | unsigned(clip[2] > clip[3]) << 5;
     }
-    if (outside) continue;
+    // Residency supplies all traced terrain; visibility only controls raster draws.
+    remixapi_InstanceIdentityEXT identity = {};
+    identity.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_IDENTITY_EXT;
+    identity.classification = REMIXAPI_INSTANCE_STATIC_EXT; identity.rasterVisible = !outside;
+    for (unsigned row = 0; row < 3; ++row) {
+      for (unsigned col = 0; col < 3; ++col) draw.transform.matrix[row][col] = row == col ? 1.f : 0.f;
+      const double absolute[3] = {double(key.originX), double(key.originY), double(key.originZ)};
+      draw.transform.matrix[row][3] = float(absolute[row] - m_floatingOrigin[row]);
+    }
     draw.doubleSided = 1;
     remixapi_InstanceInfoBlendEXT blend = {};
     blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
@@ -543,8 +619,10 @@ void Runtime::drawTerrain() {
     blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = 6;
     blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = 7;
     draw.pNext = &blend;
+    blend.pNext = &identity;
     for (unsigned pass = 0; pass < 2; ++pass) {
       draw.mesh = chunk.handles[pass];
+      identity.instanceId = chunk.identities[pass];
       blend.alphaBlendEnabled = pass != 0;
       if (draw.mesh) check(m_api.DrawInstance(&draw));
     }

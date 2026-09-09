@@ -23,10 +23,15 @@ and reset/shutdown releases blocked workers before joining them.
 
 The SDL owner thread admits up to four completed sections, 8 MiB or 1 ms each
 iteration. Both passes publish atomically. Matching geometry fingerprints reuse
-existing Remix mesh handles. Per-frame CPU frustum checks select resident draws;
-rotation does not upload geometry. Materials use the CPU terrain atlas and
-animated fluid/portal textures. Fire is ordinary textured geometry. There is no
-light-placement, acceleration-structure or path-tracing work.
+existing Remix mesh handles. All resident geometry is submitted with stable IDs
+based on world generation, section lifetime and mesh pass. Per-frame CPU frustum
+checks set raster visibility separately; offscreen terrain still contributes to
+tracing. Camera rotation does not upload geometry or change object transforms.
+Materials use the CPU terrain atlas and animated fluid/portal textures. The Remix
+runtime caches and compacts static BLASes, then builds replacement acceleration
+geometry before tracing the published frame. A block edit changes only affected
+geometry; atlas/UV/material changes reuse acceleration geometry when positions and
+indices match. See [path tracing](PathTracing.md).
 
 Native tests compare retained block emitters with a reference implementation and
 exercise partial/empty updates, boundary changes, stale lifetimes, queue limits

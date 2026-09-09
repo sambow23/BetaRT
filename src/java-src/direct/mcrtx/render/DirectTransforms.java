@@ -43,6 +43,18 @@ public final class DirectTransforms {
                     result[column * 4 + row] += left[k * 4 + row] * right[column * 4 + k];
         System.arraycopy(result, 0, output, 0, 16);
     }
+    public static float[] inverse(float[] matrix) {
+        double[][] a=new double[4][8];
+        for(int r=0;r<4;++r){for(int c=0;c<4;++c)a[r][c]=matrix[c*4+r];a[r][r+4]=1;}
+        for(int c=0;c<4;++c){
+            int pivot=c;for(int r=c+1;r<4;++r)if(Math.abs(a[r][c])>Math.abs(a[pivot][c]))pivot=r;
+            if(Math.abs(a[pivot][c])<1e-15)throw new IllegalArgumentException("Singular camera");
+            double[] swap=a[c];a[c]=a[pivot];a[pivot]=swap;
+            double divisor=a[c][c];for(int k=0;k<8;++k)a[c][k]/=divisor;
+            for(int r=0;r<4;++r)if(r!=c){double factor=a[r][c];for(int k=0;k<8;++k)a[r][k]-=factor*a[c][k];}
+        }
+        float[] result=new float[16];for(int c=0;c<4;++c)for(int r=0;r<4;++r)result[c*4+r]=(float)a[r][c+4];return result;
+    }
     public static void translate(float x, float y, float z) {
         float[] matrix = current();
         for (int row = 0; row < 4; ++row)

@@ -112,6 +112,11 @@ public final class DirectClientPatchTool implements Opcodes {
                     beforeReturns(method,callThis("DirectGameClient","started","(L"+MC+";)V"));
                 }
             }
+            if((inherits(node.name,"gv")&&(method.desc.equals("(Lls;Ljava/lang/String;DDDI)V") || method.name.equals("b")&&method.desc.endsWith(";DDD)V"))) ||
+               (node.name.equals("bw")&&signature.equals("a(Lsn;DDDF)V"))) {
+                method.instructions.insert(new MethodInsnNode(INVOKESTATIC,R,"beginRasterEffect","()V",false));
+                InsnList end=new InsnList();end.add(new MethodInsnNode(INVOKESTATIC,R,"endRasterEffect","()V",false));beforeReturns(method,end);
+            }
             for(AbstractInsnNode instruction:method.instructions.toArray()) {
                 if(!(instruction instanceof MethodInsnNode))continue;
                 MethodInsnNode call=(MethodInsnNode)instruction;

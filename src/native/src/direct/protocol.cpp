@@ -53,13 +53,18 @@ void validatePacket(const Bytes &packet, bool resources) {
         if (payload.read<std::uint32_t>() > 2) throw std::invalid_argument("Invalid camera kind");
         for (int i = 0; i < 32; ++i) payload.read<float>();
         break;
-      case Op::Draw:
+      case Op::Draw: {
         if (!payload.read<std::uint64_t>()) throw std::invalid_argument("Zero mesh identifier");
+        const auto identity = payload.read<std::uint64_t>();
+        const auto classification = payload.read<std::uint32_t>();
+        if (classification > 2 || (!identity && classification != 2) || payload.read<std::uint32_t>() > 1)
+          throw std::invalid_argument("Invalid instance classification or identity");
         for (int i = 0; i < 12; ++i) payload.read<float>();
         // category, double-sided, RGBA tint, alpha compare/reference,
         // blending enabled, source/destination Vulkan factors, vertex color enabled.
         for (int i = 0; i < 9; ++i) payload.read<std::uint32_t>();
         break;
+      }
       case Op::Ui: {
         const auto width = payload.read<std::uint32_t>(), height = payload.read<std::uint32_t>();
         const auto vertices = payload.read<std::uint32_t>(), indices = payload.read<std::uint32_t>();
@@ -76,7 +81,7 @@ void validatePacket(const Bytes &packet, bool resources) {
         break;
       }
       case Op::TerrainView:
-        for (int i = 0; i < 3; ++i) payload.read<double>();
+        for (int i = 0; i < 6; ++i) payload.read<double>();
         for (int i = 0; i < 16; ++i) payload.read<float>();
         break;
       case Op::RasterState:

@@ -24,6 +24,47 @@ public final class DirectRenderer {
     private static long generatedBytes;
     private static long nextId = 1024;
     private static long epoch;
+    public static final double[] floatingOrigin=new double[3];
+    private static final double[] cameraOrigin=new double[3];
+    private static boolean originValid, worldCamera;
+    private static float[] worldView=new float[16], inverseView=new float[16];
+    public static boolean objectSpace, rasterVisible=true;
+    private static int rasterEffectDepth;
+    private static final java.lang.ref.ReferenceQueue<Object> deadEntities=new java.lang.ref.ReferenceQueue<Object>();
+    private static final HashMap<EntityIdentity,EntityState> entities=new HashMap<EntityIdentity,EntityState>();
+    // Vanilla Entity.equals/hashCode use a mutable, reusable network ID. Render
+    // lifetimes must instead follow the Java object without retaining it.
+    private static final class EntityIdentity extends java.lang.ref.WeakReference<Object> {
+        private final int hash;
+        EntityIdentity(Object owner,java.lang.ref.ReferenceQueue<Object> queue){super(owner,queue);hash=System.identityHashCode(owner);}
+        public int hashCode(){return hash;}
+        public boolean equals(Object other){return this==other||(other instanceof EntityIdentity&&get()!=null&&get()==((EntityIdentity)other).get());}
+    }
+    private static EntityState entity;
+    private static final java.util.WeakHashMap<Object,Long> modelParts=new java.util.WeakHashMap<Object,Long>();
+    private static final class EntityState {
+        final Map<String,Long> instances=new HashMap<String,Long>();
+        final Map<String,Integer> passes=new HashMap<String,Integer>();
+    }
+    public static void worldChanged(){entities.clear();entity=null;originValid=false;worldCamera=false;}
+    public static void beginEntity(Object owner,boolean visible){
+        java.lang.ref.Reference<?> dead;while((dead=deadEntities.poll())!=null)entities.remove(dead);
+        EntityIdentity identity=new EntityIdentity(owner,deadEntities);
+        entity=entities.get(identity);if(entity==null){entity=new EntityState();entities.put(identity,entity);}
+        entity.passes.clear();objectSpace=true;rasterVisible=visible;
+    }
+    public static void endEntity(){entity=null;objectSpace=false;rasterVisible=true;rasterEffectDepth=0;}
+    public static void beginRasterEffect(){++rasterEffectDepth;}
+    public static void endRasterEffect(){if(rasterEffectDepth>0)--rasterEffectDepth;}
+    private static long instanceIdentity(Mesh mesh){
+        if(entity==null)return 0;
+        // Texture/blend distinguish vanilla material passes. Animated tint and
+        // alpha-test values change shading, never the model part's lifetime.
+        String part=mesh.identity+":"+texture+":"+blendEnabled;
+        Integer pass=entity.passes.get(part);int ordinal=pass==null?0:pass;
+        entity.passes.put(part,ordinal+1);String key=part+":"+ordinal;
+        Long id=entity.instances.get(key);if(id==null){id=allocateId();entity.instances.put(key,id);}return id;
+    }
     private static int transientIndex;
     private static boolean inFrame;
     public static boolean ui, textureEnabled = true, depthEnabled = true, cullEnabled, blendEnabled, alphaEnabled = true;
@@ -41,6 +82,7 @@ public final class DirectRenderer {
     }
     public static void reset() {
         ++epoch;
+        worldChanged();modelParts.clear();
         resources.clear(); frame.clear();
         transientMeshes.clear(); retiredMeshes.clear(); materials.clear();
         generated.clear();generatedBytes=0;
@@ -55,6 +97,7 @@ public final class DirectRenderer {
         width = Math.max(1, drawableWidth); height = Math.max(1, drawableHeight);
         frame.clear(); uiVertices.clear(); uiIndices.clear(); uiCommands.clear();
         transientIndex = 0; Arrays.fill(cameraSent, false);
+        worldCamera=false;objectSpace=false;entity=null;rasterEffectDepth=0;rasterVisible=true;
         for (long id : retiredMeshes) {
             int command = resources.command(6); resources.id(id); resources.end(command);
         }
@@ -99,6 +142,10 @@ public final class DirectRenderer {
         }
     }
     public static final class Mesh {
+        private long identity=allocateId();
+        public Mesh identifyPart(Object part){
+            Long id=modelParts.get(part);if(id==null){id=allocateId();modelParts.put(part,id);}identity=id;return this;
+        }
         public final float[] vertices; // xyzuv
         public final int[] colors, indices;
         private final Map<Long, Long> variants = new HashMap<Long, Long>();
@@ -179,7 +226,13 @@ public final class DirectRenderer {
             int at=frame.command(20);frame.integer(depthEnabled?1:0);frame.integer(depthWrite?1:0);frame.integer(depthCompare);frame.integer(colorWrites?0:1);frame.end(at);lastDepthState=depthState;
         }
         int command = frame.command(17); frame.id(meshId);
+        boolean traced=entity!=null&&layer==0&&rasterEffectDepth==0&&depthCompare!=2&&!polygonOffset&&colorWrites;
+        frame.id(traced?instanceIdentity(mesh):0);frame.integer(traced?1:2);frame.integer(rasterVisible?1:0);
         float[] model = DirectTransforms.model();
+        if(layer==0&&worldCamera&&!objectSpace){
+            float[] object=new float[16];DirectTransforms.multiply(inverseView,model,object);
+            for(int i=0;i<3;++i)object[12+i]+=(float)(cameraOrigin[i]-floatingOrigin[i]);model=object;
+        }
         for (int row = 0; row < 3; ++row)
             for (int column = 0; column < 4; ++column) frame.number(model[column * 4 + row]);
         // Category masks retain the public Remix 0.1003 values.
@@ -191,17 +244,26 @@ public final class DirectRenderer {
     }
     public static void camera(int kind) {
         int command = frame.command(16); frame.integer(kind);
-        for (int i = 0; i < 16; ++i) frame.number(i % 5 == 0 ? 1f : 0f);
+        for (int i = 0; i < 16; ++i) frame.number(kind==0&&worldCamera?worldView[i]:(i % 5 == 0 ? 1f : 0f));
         float[] projection = DirectTransforms.projection();
         for (int i = 0; i < 16; ++i)
             frame.number(i % 4 == 2 ? (projection[i] + projection[i + 1]) * .5f : projection[i]);
         frame.end(command); cameraSent[kind] = true;
     }
     public static void terrainView(double x, double y, double z) {
-        camera(0);
+        cameraOrigin[0]=x;cameraOrigin[1]=y;cameraOrigin[2]=z;
+        if(!originValid||Math.abs(x-floatingOrigin[0])>1024||Math.abs(y-floatingOrigin[1])>1024||Math.abs(z-floatingOrigin[2])>1024){
+            for(int i=0;i<3;++i)floatingOrigin[i]=Math.floor(cameraOrigin[i]/256)*256;originValid=true;
+        }
+        float[] view=DirectTransforms.model();worldView=view.clone();inverseView=DirectTransforms.inverse(view);
+        for(int r=0;r<3;++r){
+            double value=view[12+r];for(int c=0;c<3;++c)value+=view[c*4+r]*(floatingOrigin[c]-cameraOrigin[c]);worldView[12+r]=(float)value;
+        }
+        worldCamera=true;camera(0);
         int command = frame.command(19);
-        frame.number(x); frame.number(y); frame.number(z);
-        for (float value : DirectTransforms.model()) frame.number(value);
+        for(double v:cameraOrigin)frame.number(v);
+        for(double v:floatingOrigin)frame.number(v);
+        for(float value:view)frame.number(value);
         frame.end(command);
     }
     public static void color(float r, float g, float b, float a) {

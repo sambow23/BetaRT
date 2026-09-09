@@ -39,7 +39,8 @@ private:
   struct TerrainMesh {
     std::array<remixapi_MeshHandle, 2> handles {};
     std::array<std::uint64_t, 2> fingerprints {};
-    std::uint64_t lifetime = 0;
+    std::uint64_t lifetime = 0, world = 0;
+    std::array<std::uint64_t, 2> identities {};
   };
   mutable std::mutex m_mutex;
   std::condition_variable m_started;
@@ -59,16 +60,18 @@ private:
   PFN_remixapi_GetWindowMetrics m_getMetrics = nullptr;
   PFN_remixapi_SetTextInputEnabled m_textInput = nullptr;
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
+  PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
+  remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;
   TerrainPipeline m_terrain;
-  std::array<double, 3> m_origin {};
+  std::array<double, 3> m_origin {}, m_floatingOrigin {};
   std::array<float, 16> m_view {};
   std::array<float, 16> m_projection {};
   std::shared_ptr<const Bytes> m_lastFrame;
   std::uint64_t m_nextTerrainId = 0x7000000000000000ull;
   std::atomic<std::uint64_t> m_presented {0}, m_fresh {0};
   std::uint64_t m_lastSequence = 0;
-  std::uint64_t m_pendingSequence = 0;
+  std::uint64_t m_pendingSequence = 0, m_uploadBytes = 0;
 };
 }

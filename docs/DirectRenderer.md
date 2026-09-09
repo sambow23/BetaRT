@@ -4,6 +4,8 @@ Target: replace all b1.7.3 OpenGL rendering/capture with direct Remix submission
 using the unlit SDL3/Vulkan runtime. Linux first, with gameplay validation on
 192.168.50.13. Keep gameplay, networking, Java 8, original-JAR patching and audio.
 The finished build has no selectable capture fallback or OpenGL context.
+The optional [diffuse path tracer](PathTracing.md) now shares this direct submission
+path. Raster remains the default; the historical capture renderer stays removed.
 
 ## Accepted implementation
 
@@ -23,8 +25,9 @@ The finished build has no selectable capture fallback or OpenGL context.
   at 60 FPS. Report fresh game frames separately from repeated presentations.
 - Preserve public Remix 0.1003 layouts and exports. Add independent native input
   event/text/metrics exports and implement existing PNG screenshot requests.
-- Remove light/RTX work and unsupported settings. No lighting, PBR or
-  post-processing; preserve base colors, tints, transparency and gameplay feedback.
+- Preserve base colors, tints, transparency and gameplay feedback. Raster remains
+  unlit; optional hardware path tracing evaluates a selected distant light and
+  diffuse indirect illumination without denoising, upscaling or PBR materials.
 
 ## Implementation
 
@@ -35,7 +38,7 @@ The client now renders exclusively through Remix. `DirectClientPatchTool` rewrit
 the original JAR, delegates its tessellator, model and font producers, and removes
 graphics-driver calls. It retains vanilla animation, camera, entity and GUI
 calculations. The build audits every packaged class, including paths not reached
-during startup, and Java 8 verifies all 790 classes without a graphics classpath.
+during startup, and Java 8 verifies all 792 classes without a graphics classpath.
 
 `DirectTransforms` maintains CPU model/projection/texture matrices.
 `DirectRenderer` turns local meshes into persistent Remix resources and per-frame
@@ -52,6 +55,8 @@ has a 512-entry, 8 MiB cache. Terrain residency belongs to loaded chunks and
 camera distance; see [terrain ownership](TerrainPipeline.md).
 
 The private JNI protocol has a versioned, bounded little-endian packet format.
+Version 2 adds stable instance identities, classification, independent raster
+visibility and separate camera/object transforms; mismatched clients are rejected.
 JNI copies its input before returning. The mailbox holds one executing frame
 and one pending frame; the pending frame can be replaced once, after which the
 producer waits for consumption. This prevents a fast Java producer from flooding
@@ -60,7 +65,7 @@ ordered and never discarded with replaced frames. Stop releases blocked producer
 
 The native worker owns SDL, Remix calls and Vulkan presentation. It pumps input
 within 8 ms while idle, presents fresh frames, and redraws only for terrain,
-window/control changes or the visible debug panel. A minimized frame remains
+window/control changes, progressive accumulation or the visible debug panel. A minimized frame remains
 pending until presentation is possible. Fresh counters advance only after an
 actual successful/suboptimal Vulkan presentation. F3 reports Java publications,
 fresh Remix frames and explicit redraws separately.
@@ -78,7 +83,7 @@ bytes and avoids steady-frame allocation/free churn. It does not introduce a
 scene graph or a replacement public rendering API.
 
 The public Remix 0.1003 headers and interface table remain unchanged. Additional
-input, window-metric and presentation-counter exports live in
+input, window-metric, presentation-counter and tracing capability/statistics exports live in
 `remix_native_ext.h`. The private BetaRT JNI interface replaces the removed
 capture bridge; old patched client JARs must be paired with their old JNI library.
 
@@ -99,8 +104,8 @@ traffic and CPU/GPU load. Completion requires direct rendering throughout and
 improved fresh-frame performance without a repeatable frame-time regression.
 Windows client validation and arbitrary mods issuing GL calls are deferred.
 
-Local validation passes 22 runtime tests with Vulkan synchronization validation,
-two native bridge/terrain tests, and six Java checks covering queues, all-class
+Local validation passes 29 runtime tests with Vulkan synchronization validation,
+two native bridge/terrain tests, and seven Java checks covering identities, queues, all-class
 verification, transport, vanilla client producers, startup and an in-memory world.
 The portable runtime/SDL3 require glibc 2.27 and JNI requires 2.17, within the 2.28
 target. Headless Java tests use silent audio; OpenAL is checked in the host instance.

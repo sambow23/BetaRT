@@ -99,7 +99,7 @@ public final class DirectGameGeometry {
             for(int i=1;i+1<face.a.length;++i) {indices.add(begin);indices.add(begin+i);indices.add(begin+i+1);}
         }
         int[] triangle=new int[indices.size()];for(int i=0;i<triangle.length;++i)triangle[i]=indices.get(i);
-        part.o=nextModel++; models.put(part.o,new DirectRenderer.Mesh(vertices,colors,triangle)); part.n=true;
+        part.o=nextModel++; models.put(part.o,new DirectRenderer.Mesh(vertices,colors,triangle).identifyPart(part)); part.n=true;
     }
     public static void drawModel(int id) {
         DirectRenderer.Mesh mesh=models.get(id);

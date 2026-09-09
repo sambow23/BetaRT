@@ -61,5 +61,27 @@ int main() {
   bool rejected = false;
   try { validatePacket(resource, false); } catch (const std::invalid_argument &) { rejected = true; }
   require(rejected, "Resource command accepted as a frame");
+  auto accepts = [](const Bytes &bytes) {
+    try { validatePacket(bytes, false); return true; }
+    catch (const std::invalid_argument &) { return false; }
+  };
+  auto draw = [](std::uint64_t identity, std::uint32_t classification, std::uint32_t visible) {
+    auto bytes = packet();
+    append(bytes, std::uint32_t(Op::Draw)); append(bytes, std::uint32_t(108));
+    append(bytes, std::uint64_t(1)); append(bytes, identity); append(bytes, classification); append(bytes, visible);
+    for (int i = 0; i < 12; ++i) append(bytes, i % 5 == 0 ? 1.f : 0.f);
+    for (int i = 0; i < 9; ++i) append(bytes, std::uint32_t(0));
+    return bytes;
+  };
+  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 2 instance framing");
+  require(!accepts(draw(0, 0, 1)) && !accepts(draw(0, 1, 1)) && !accepts(draw(18, 3, 1)) &&
+          !accepts(draw(18, 1, 2)), "Malformed identities replaced an accepted frame");
+  auto old = draw(18, 1, 1); old[4] = std::byte{1};
+  require(!accepts(old), "Version 1 client accepted by version 2 JNI");
+  auto view = packet(); append(view, std::uint32_t(Op::TerrainView)); append(view, std::uint32_t(112));
+  for (int i = 0; i < 6; ++i) append(view, i < 3 ? 10000000.125 : 9999872.0);
+  for (int i = 0; i < 16; ++i) append(view, i % 5 == 0 ? 1.f : 0.f);
+  require(accepts(view), "Separate double camera and floating origin");
+  view.pop_back(); require(!accepts(view), "Truncated floating origin accepted");
   std::cout << "Direct mailbox and protocol tests passed\n";
 }

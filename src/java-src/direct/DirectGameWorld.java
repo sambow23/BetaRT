@@ -20,6 +20,7 @@ public final class DirectGameWorld {
     }
     public static void attach(n renderer,fd world){
         if(renderer.k!=null)renderer.k.b(renderer);
+        DirectRenderer.worldChanged();
         renderer.k=world;renderer.u=new cv(world);th.a.a(world);renderer.a.clear();
         DirectSectionResidency.attach(world);if(world!=null){world.a(renderer);reload(renderer);}
     }
@@ -41,16 +42,32 @@ public final class DirectGameWorld {
     public static void entities(n renderer,bt position,yn frustum,float partial){
         Minecraft game=renderer.t;fd world=renderer.k;
         ll.a.a(world,renderer.l,game.q,game.i,partial);th.a.a(world,renderer.l,game.q,game.i,game.z,partial);
-        th.b=ll.b=originX;th.c=ll.c=originY;th.d=ll.d=originZ;
-        for(Object value:world.e){sn entity=(sn)value;if(entity.a(position))th.a.a(entity,partial);}
-        for(Object value:world.o()){
-            sn entity=(sn)value;
-            if(entity==game.i&&!game.z.A&&!game.i.N())continue;
-            if(entity.a(position)&&(entity.bM||frustum.a(entity.aW)))th.a.a(entity,partial);
+        th.b=ll.b=DirectRenderer.floatingOrigin[0];th.c=ll.c=DirectRenderer.floatingOrigin[1];th.d=ll.d=DirectRenderer.floatingOrigin[2];
+        int radius=Math.max(2,Math.min(16,(256>>Math.max(0,Math.min(3,game.z.e)))/16));
+        java.util.Set<sn> submitted=java.util.Collections.newSetFromMap(new java.util.IdentityHashMap<sn,Boolean>());
+        DirectTransforms.select(5888);DirectTransforms.push();DirectTransforms.loadIdentity();
+        try {
+            ArrayList<Object> visible=new ArrayList<Object>(world.e);visible.addAll(world.o());
+            for(Object value:visible){
+                sn entity=(sn)value;
+                if(!submitted.add(entity)||entity==game.i&&!game.z.A&&!game.i.N())continue;
+                if(Math.abs(Math.floor(entity.aM/16)-Math.floor(originX/16))>radius||
+                   Math.abs(Math.floor(entity.aO/16)-Math.floor(originZ/16))>radius||
+                   !DirectSectionResidency.loaded(world,(int)Math.floor(entity.aM/16),(int)Math.floor(entity.aO/16)))continue;
+                DirectRenderer.beginEntity(entity,entity.a(position)&&(entity.bM||frustum.a(entity.aW)));
+                try{th.a.a(entity,partial);}finally{DirectRenderer.endEntity();}
+            }
+            for(Object value:world.c){
+                ow tile=(ow)value;
+                if(Math.abs(Math.floor(tile.e/16.0)-Math.floor(originX/16))>radius||Math.abs(Math.floor(tile.g/16.0)-Math.floor(originZ/16))>radius)continue;
+                DirectRenderer.beginEntity(tile,tile.a(originX,originY,originZ)<4096);try{ll.a.a(tile,tile.e-DirectRenderer.floatingOrigin[0],tile.f-DirectRenderer.floatingOrigin[1],tile.g-DirectRenderer.floatingOrigin[2],partial);}finally{DirectRenderer.endEntity();}
+            }
+        } finally {
+            DirectTransforms.pop();DirectRenderer.endEntity();
+            th.b=ll.b=originX;th.c=ll.c=originY;th.d=ll.d=originZ;
         }
-        // The world's tile entity list is authoritative even before a terrain mesh finishes.
-        for(Object value:world.c)ll.a.a((ow)value,partial);
     }
+
     private static void materials(ji textures){
         int current=textures.b("/terrain.png");
         DirectTextures.Texture source=DirectTextures.pixels(current);
