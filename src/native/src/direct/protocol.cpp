@@ -52,6 +52,7 @@ void validatePacket(const Bytes &packet, bool resources) {
       case Op::Camera:
         if (payload.read<std::uint32_t>() > 2) throw std::invalid_argument("Invalid camera kind");
         for (int i = 0; i < 32; ++i) payload.read<float>();
+        payload.read<std::uint64_t>(); payload.read<std::uint64_t>(); // persistent world/reset epochs
         break;
       case Op::Draw: {
         if (!payload.read<std::uint64_t>()) throw std::invalid_argument("Zero mesh identifier");

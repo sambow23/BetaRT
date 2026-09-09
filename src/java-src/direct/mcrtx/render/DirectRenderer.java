@@ -27,6 +27,8 @@ public final class DirectRenderer {
     public static final double[] floatingOrigin=new double[3];
     private static final double[] cameraOrigin=new double[3];
     private static boolean originValid, worldCamera;
+    private static long worldEpoch, historyResetEpoch;
+    public static void cameraCut(){++historyResetEpoch;}
     private static float[] worldView=new float[16], inverseView=new float[16];
     public static boolean objectSpace, rasterVisible=true;
     private static int rasterEffectDepth;
@@ -46,7 +48,7 @@ public final class DirectRenderer {
         final Map<String,Long> instances=new HashMap<String,Long>();
         final Map<String,Integer> passes=new HashMap<String,Integer>();
     }
-    public static void worldChanged(){entities.clear();entity=null;originValid=false;worldCamera=false;}
+    public static void worldChanged(){++worldEpoch;cameraCut();entities.clear();entity=null;originValid=false;worldCamera=false;}
     public static void beginEntity(Object owner,boolean visible){
         java.lang.ref.Reference<?> dead;while((dead=deadEntities.poll())!=null)entities.remove(dead);
         EntityIdentity identity=new EntityIdentity(owner,deadEntities);
@@ -248,12 +250,13 @@ public final class DirectRenderer {
         float[] projection = DirectTransforms.projection();
         for (int i = 0; i < 16; ++i)
             frame.number(i % 4 == 2 ? (projection[i] + projection[i + 1]) * .5f : projection[i]);
+        frame.id(worldEpoch);frame.id(historyResetEpoch);
         frame.end(command); cameraSent[kind] = true;
     }
     public static void terrainView(double x, double y, double z) {
         cameraOrigin[0]=x;cameraOrigin[1]=y;cameraOrigin[2]=z;
         if(!originValid||Math.abs(x-floatingOrigin[0])>1024||Math.abs(y-floatingOrigin[1])>1024||Math.abs(z-floatingOrigin[2])>1024){
-            for(int i=0;i<3;++i)floatingOrigin[i]=Math.floor(cameraOrigin[i]/256)*256;originValid=true;
+            cameraCut();for(int i=0;i<3;++i)floatingOrigin[i]=Math.floor(cameraOrigin[i]/256)*256;originValid=true;
         }
         float[] view=DirectTransforms.model();worldView=view.clone();inverseView=DirectTransforms.inverse(view);
         for(int r=0;r<3;++r){

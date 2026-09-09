@@ -5,7 +5,7 @@ hardware ray-query backend. Raster remains the default and all HUD, menus, held
 items, particles, weather, labels and selection/damage feedback remain rasterized.
 The sky is a visual background, not a source of illumination. A white distant light
 supplies direct shadows and diffuse indirect lighting; F12 controls its direction,
-color and intensity. There is no denoising, upscaling, specular material model,
+color and intensity. REBLUR SH denoising and native-resolution TAA default on for path tracing. There is no upscaling, specular material model,
 physical refraction or acceleration-structure disk cache.
 
 ## Launch controls
@@ -18,6 +18,8 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_RENDER_BACKEND` | `raster`, `pathtrace` | `raster` |
 | `MCRTX_PT_SAMPLES` | 1–16 | 1 |
 | `MCRTX_PT_BOUNCES` | 0–4 indirect bounces | 2 |
+| `MCRTX_PT_DENOISER` | `off`, `reblur-sh` | `reblur-sh` |
+| `MCRTX_PT_TAA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_ACCUMULATE` | 0/1 or false/true | 0 |
 | `MCRTX_PT_FORCE_REBUILD` | Same booleans; dynamic TLAS profiling | 0 |
 | `MCRTX_PT_PROFILE` | Path to per-presentation CSV, overwritten on launch | disabled |
@@ -29,19 +31,21 @@ leaves raster active. Standard SDK MoltenVK and devices without those capabiliti
 remain on raster. Tracing hardware validation is limited to the Linux RTX 2080 host;
 Windows, macOS and Android hardware validation has not been performed.
 
-One sample per pixel is visibly noisy. Accumulation can improve a stationary scene,
+Raw one-sample output is noisy. REBLUR SH filters indirect lighting; TAA resolves native-resolution world edges and transparent-light noise before raster gameplay overlays.
+Progressive accumulation bypasses both filters while retaining their requested settings. It can improve a stationary scene,
 but camera motion, object animation, used animated textures or other scene changes
-reset it. UI-only redraws do not invalidate it. The worker treats accumulation as
-an explicit redraw reason and keeps fresh-presentation counters separate.
+reset it. UI-only redraws do not invalidate it. The worker treats accumulation and warming temporal histories as
+explicit redraw reasons and keeps fresh-presentation counters separate. After convergence, UI-only redraws reuse cached world output.
 
 ## Ownership and object identity
 
-Update the patched client JAR and private JNI library together. Protocol version 2
-adds lifetime identity, static/dynamic/raster-only classification and independent
+Update the patched client JAR and private JNI library together. Protocol version 3
+retains lifetime identity, static/dynamic/raster-only classification and independent
 raster visibility to Draw. TerrainView carries double-precision camera and floating
 origin coordinates separately from its original view matrix. The original Remix
 0.1003 interface remains unchanged; its independent native extension supplies the
-identity and backend/statistics API.
+identity, camera temporal metadata and independent backend/denoising statistics APIs.
+Every camera packet carries world and history-reset epochs, preserving world/cut/rebase resets through replaced pending frames. Camera motion and normal object animation keep temporal history; incompatible mesh/material/texture changes invalidate affected surfaces.
 
 JNI copies the complete packet before returning. Framing, versions, finite values,
 identity/classification and lengths are validated before a pending frame can be
@@ -112,18 +116,17 @@ Run the profiler with the same working display/driver environment used for GPU t
 ```sh
 python3 scripts-linux/profile-pathtrace.py \
   --instance /path/to/BetaRT-Raster-Profile --classes /path/to/classes \
-  --output /path/to/new-results-directory
+  --output /path/to/new-results-directory --comparison denoise
 ```
 
 Defaults are three runs per configuration, 45 seconds warmup and 60 seconds
 measurement, native 1920×1080, one sample per pixel, two indirect bounces and VSync
-off. Configuration order rotates between raster, refit-with-recovery and forced
-dynamic rebuild. Validation and injected overlays are disabled during measurements.
+off. `--comparison denoise` rotates raw, raw plus TAA, REBLUR SH and REBLUR SH plus TAA. The default `--comparison acceleration` retains raster/refit/rebuild comparisons with filters off. Validation and injected overlays are disabled during measurements.
 The test never loads the instance's saved world; its data directory is the run's
 output folder. Keep the profiling instance closed before starting the script.
 
 `frames.csv` records fresh status, presentation intervals, previous-frame GPU
-build/trace timings, resource traffic, acceleration bytes, AS counters/rebuild reason,
+build/trace/confidence/NRD/TAA timings, temporal redraws, active modes, history resets, temporal memory, resource traffic, acceleration bytes, AS counters/rebuild reason,
 scene generation, sampling and accumulation. `measurement.json` records the exact
 window and fresh/published/presented count deltas. `load.json` samples process RSS
 and NVIDIA utilization/memory/clocks/power each second. Per-run and aggregate JSON
@@ -134,5 +137,6 @@ NVIDIA memory samples include other host GPU users.
 
 Compare total fresh frame cost as well as GPU construction and traversal. A cheaper
 refit can leave a tree that traces more slowly. Recovery thresholds are initial
-heuristics to evaluate in each workload. [The runtime verification report](../../dxvk-remix-gmod/docs/path-tracing-verification.md)
-contains the tested host, final binary hashes, measured results and rollback path.
+heuristics to evaluate in each workload. [The denoising verification report](../../dxvk-remix-gmod/docs/denoising-verification.md)
+contains the tested host, paired artifact hashes, four-mode results and verified rollback.
+[Earlier acceleration measurements](../../dxvk-remix-gmod/docs/path-tracing-verification.md) remain available.

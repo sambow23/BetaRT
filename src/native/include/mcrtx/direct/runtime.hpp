@@ -61,6 +61,7 @@ private:
   PFN_remixapi_SetTextInputEnabled m_textInput = nullptr;
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
   PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
+  PFN_remixapi_GetDenoisingStatisticsEXT m_denoiseStats = nullptr;
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;

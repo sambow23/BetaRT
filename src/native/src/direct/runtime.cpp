@@ -174,6 +174,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     m_textInput = function<PFN_remixapi_SetTextInputEnabled>(m_library, "remixapi_SetTextInputEnabled");
     m_presentCount = function<PFN_remixapi_GetPresentationCount>(m_library, "remixapi_GetPresentationCount");
     m_traceStats = function<PFN_remixapi_GetTracingStatisticsEXT>(m_library, "remixapi_GetTracingStatisticsEXT");
+    m_denoiseStats = function<PFN_remixapi_GetDenoisingStatisticsEXT>(m_library, "remixapi_GetDenoisingStatisticsEXT");
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -193,7 +194,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       else check(result);
     }
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
-        {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"}, {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}}) {
+        {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
+        {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}}) {
       auto value = detail::readEnvironmentVariable(environment);
       if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
     }
@@ -215,7 +217,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -251,8 +253,12 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       tracing.structSize = sizeof(tracing);
       check(m_traceStats(&tracing));
       const bool accumulation = tracing.redrawRequested != 0;
+      remixapi_DenoisingStatisticsEXT denoising = {};
+      denoising.structSize = sizeof(denoising);
+      check(m_denoiseStats(&denoising));
+      const bool temporal = denoising.redrawRequested != 0;
       if (state.minimized || !state.drawableWidth || !state.drawableHeight) continue;
-      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation)) {
+      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation || temporal)) {
         MCRTX_PERF_CPU_SCOPE(perf::Side::Native, "direct.frame");
         framePacket(*m_lastFrame);
         drawTerrain();
@@ -271,6 +277,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         perf::recordCount(perf::Side::Native, "direct.fresh", fresh ? 1 : 0);
         perf::recordCount(perf::Side::Native, "direct.accumulationRedraw", !fresh && accumulation ? 1 : 0);
         check(m_traceStats(&tracing));
+        check(m_denoiseStats(&denoising));
+        perf::recordCount(perf::Side::Native, "direct.temporalRedraw", !fresh && temporal ? 1 : 0);
         perf::recordCount(perf::Side::Native, "trace.samples", tracing.samplesPerPixel);
         perf::recordCount(perf::Side::Native, "trace.accumulation", tracing.accumulationCount);
         perf::recordCount(perf::Side::Native, "trace.generation", tracing.sceneGeneration);
@@ -292,7 +300,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
             << tracing.gpuBuildMilliseconds << ',' << tracing.gpuTraceMilliseconds << ',' << m_uploadBytes << ','
             << tracing.accelerationBytes << ',' << tracing.blasBuilds << ',' << tracing.blasRefits << ',' << tracing.blasCompactions << ','
             << tracing.staticTlasBuilds << ',' << tracing.dynamicTlasBuilds << ',' << tracing.dynamicTlasRefits << ','
-            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << '\n';
+            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << ',' << (!fresh && temporal ? 1 : 0) << ',' << denoising.gpuConfidenceMilliseconds << ',' << denoising.gpuDenoiseMilliseconds << ',' << denoising.gpuTaaMilliseconds << ',' << denoising.memoryBytes << ',' << denoising.historyResets << ',' << denoising.activeDenoiser << ',' << denoising.activeTaa << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
         perf::onFramePresented();
@@ -438,6 +446,11 @@ void Runtime::framePacket(const Bytes &bytes) {
       for (auto &column : info.view) for (float &v : column) v = data.read<float>();
       for (auto &column : info.projection) for (float &v : column) v = data.read<float>();
       if (info.type == REMIXAPI_CAMERA_TYPE_WORLD) std::memcpy(m_projection.data(), info.projection, sizeof(info.projection));
+      remixapi_CameraTemporalEXT temporal = {};
+      temporal.sType = REMIXAPI_STRUCT_TYPE_CAMERA_TEMPORAL_EXT;
+      temporal.worldEpoch = data.read<std::uint64_t>();
+      temporal.historyResetEpoch = data.read<std::uint64_t>();
+      info.pNext = &temporal;
       check(m_api.SetupCamera(&info));
       break;
     }

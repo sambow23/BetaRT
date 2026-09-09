@@ -8,7 +8,7 @@ public final class DirectPacket {
     private static final int LIMIT = 256 * 1024 * 1024;
     private ByteBuffer data = ByteBuffer.allocateDirect(4096).order(ByteOrder.LITTLE_ENDIAN);
     public DirectPacket() { clear(); }
-    public void clear() { data.clear(); integer(0x54435244); integer(2); }
+    public void clear() { data.clear(); integer(0x54435244); integer(3); }
     public ByteBuffer buffer() { return data; }
     private void reserve(int count) {
         if (count < 0 || count > LIMIT - data.position()) throw new IllegalArgumentException("Submission too large");

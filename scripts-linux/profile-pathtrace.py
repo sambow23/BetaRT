@@ -24,6 +24,7 @@ parser.add_argument('--instance',type=Path,required=True)
 parser.add_argument('--classes',type=Path,required=True)
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--runs',type=int,default=3)
+parser.add_argument('--comparison',choices=['acceleration','denoise'],default='acceleration')
 parser.add_argument('--warmup-ms',type=int,default=45000)
 parser.add_argument('--measure-ms',type=int,default=60000)
 args=parser.parse_args()
@@ -42,12 +43,13 @@ results=[]
 def percentile(values,p):
     values=sorted(values);return values[min(len(values)-1,int((len(values)-1)*p))]
 for repeat in range(args.runs):
-    modes=['raster','refit','rebuild']
-    modes=modes[repeat%3:]+modes[:repeat%3]
+    modes=['raw','raw-taa','reblur-sh','reblur-sh-taa'] if args.comparison=='denoise' else ['raster','refit','rebuild']
+    rotation=repeat%len(modes);modes=modes[rotation:]+modes[:rotation]
     for mode in modes:
         run=(args.output/(mode+'-'+str(repeat+1))).resolve();run.mkdir()
         env=base.copy();env.update(MCRTX_RENDER_BACKEND='raster' if mode=='raster' else 'pathtrace',
-            MCRTX_PT_FORCE_REBUILD='1' if mode=='rebuild' else '0',MCRTX_PT_PROFILE=str(run/'frames.csv'))
+            MCRTX_PT_FORCE_REBUILD='1' if mode=='rebuild' else '0',
+            MCRTX_PT_DENOISER='reblur-sh' if mode.startswith('reblur') else 'off',MCRTX_PT_TAA='1' if mode.endswith('-taa') else '0',MCRTX_PT_PROFILE=str(run/'frames.csv'))
         command=['java','-Xverify:all','-Djava.awt.headless=true','-Dmcrtx.test.directGpu=true','-Dmcrtx.test.benchmark=true',
                  '-Dmcrtx.test.width=1920','-Dmcrtx.test.height=1080','-Dmcrtx.test.warmupMs='+str(args.warmup_ms),
                  '-Dmcrtx.test.measureMs='+str(args.measure_ms),'-cp',str(args.classes.resolve())+':'+str(instance/'libraries/customjar-1.jar'),
@@ -98,5 +100,14 @@ for repeat in range(args.runs):
                 'static_tlas_builds':int(rows[-1]['static_builds'])-int(rows[0]['static_builds']),
                 'dynamic_tlas_builds':int(rows[-1]['dynamic_builds'])-int(rows[0]['dynamic_builds']),
                 'dynamic_tlas_refits':int(rows[-1]['dynamic_refits'])-int(rows[0]['dynamic_refits'])}
+        if args.comparison=='denoise':
+            if any(int(row['denoiser'])!=int(mode.startswith('reblur')) or int(row['taa'])!=int(mode.endswith('-taa')) for row in rows):
+                raise RuntimeError('Requested temporal mode was inactive: '+run.name)
+            result.update(gpu_confidence_ms=statistics.mean(float(row['gpu_confidence_ms']) for row in rows),
+                gpu_nrd_ms=statistics.mean(float(row['gpu_nrd_ms']) for row in rows),
+                gpu_taa_ms=statistics.mean(float(row['gpu_taa_ms']) for row in rows),
+                peak_denoise_bytes=max(int(row['denoise_bytes']) for row in rows),
+                temporal_redraws=sum(int(row['temporal_redraw']) for row in rows),
+                history_resets=int(rows[-1]['history_resets'])-int(rows[0]['history_resets']))
         results.append(result);(run/'load.json').write_text(json.dumps(samples));(run/'result.json').write_text(json.dumps(result,indent=2))
         (args.output/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(result),flush=True)

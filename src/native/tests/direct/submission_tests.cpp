@@ -73,11 +73,25 @@ int main() {
     for (int i = 0; i < 9; ++i) append(bytes, std::uint32_t(0));
     return bytes;
   };
-  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 2 instance framing");
+  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 3 instance framing");
   require(!accepts(draw(0, 0, 1)) && !accepts(draw(0, 1, 1)) && !accepts(draw(18, 3, 1)) &&
           !accepts(draw(18, 1, 2)), "Malformed identities replaced an accepted frame");
   auto old = draw(18, 1, 1); old[4] = std::byte{1};
-  require(!accepts(old), "Version 1 client accepted by version 2 JNI");
+  require(!accepts(old), "Version 1 client accepted by version 3 JNI");
+  old[4]=std::byte{2};require(!accepts(old), "Version 2 client accepted by version 3 JNI");
+  auto camera = [](std::uint64_t world, std::uint64_t reset) {
+    auto bytes=packet();append(bytes,std::uint32_t(Op::Camera));append(bytes,std::uint32_t(148));append(bytes,std::uint32_t(0));
+    for(int i=0;i<32;++i)append(bytes,i%5==0?1.f:0.f);
+    append(bytes,world);append(bytes,reset);return bytes;
+  };
+  auto epochFrame=camera(8,11);require(accepts(epochFrame),"Camera temporal metadata rejected");
+  epochFrame.pop_back();require(!accepts(epochFrame),"Truncated temporal epoch accepted");
+  Mailbox temporalQueue(1024);
+  require(temporalQueue.publish({},camera(8,10))&&temporalQueue.publish({},camera(8,11)),"Publish temporal frames");auto latest=temporalQueue.take(0ms);
+  require(bool(latest.frame),"Missing replaced temporal frame");
+  Reader cameraReader(*latest.frame);cameraReader.header();cameraReader.read<std::uint32_t>();auto payload=cameraReader.slice(cameraReader.read<std::uint32_t>());
+  payload.read<std::uint32_t>();for(int i=0;i<32;++i)payload.read<float>();
+  require(payload.read<std::uint64_t>()==8&&payload.read<std::uint64_t>()==11,"Replaced frame lost pending history reset");
   auto view = packet(); append(view, std::uint32_t(Op::TerrainView)); append(view, std::uint32_t(112));
   for (int i = 0; i < 6; ++i) append(view, i < 3 ? 10000000.125 : 9999872.0);
   for (int i = 0; i < 16; ++i) append(view, i % 5 == 0 ? 1.f : 0.f);

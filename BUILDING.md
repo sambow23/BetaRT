@@ -65,7 +65,7 @@ and synchronization validation with the installed validation layer for GPU tests
 The test classpath excludes all LWJGL modules; local audio therefore uses the
 vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
 
-The private JNI protocol is versioned independently of the public Remix SDK.
+The private JNI protocol is version 3, independently of the public Remix SDK. Update the patched JAR and JNI together; the paired runtime must export native denoising statistics. Path tracing defaults to REBLUR SH and TAA; `MCRTX_PT_DENOISER=off` and `MCRTX_PT_TAA=0` select raw output.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.
