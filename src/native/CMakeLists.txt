@@ -41,10 +41,23 @@ endif()
 
 if(MCRTX_BUILD_JNI)
   find_package(JNI REQUIRED)
+  # Companion SDKs need not implement advanced lighting/sampling statistics.
+  include(CheckCXXSourceCompiles)
+  set(CMAKE_REQUIRED_INCLUDES "${MCRTX_DXVK_REMIX_ROOT}/public/include")
+  foreach(feature Lighting Sampling)
+    string(TOUPPER "${feature}" feature_upper)
+    check_cxx_source_compiles("#include <remix/remix_native_ext.h>
+      int main() { return sizeof(remixapi_${feature}StatisticsEXT) + sizeof(PFN_remixapi_Get${feature}StatisticsEXT); }"
+      MCRTX_HAS_${feature_upper}_STATISTICS)
+  endforeach()
+  unset(CMAKE_REQUIRED_INCLUDES)
   add_library(mcrtx_jni SHARED
     src/direct/submission.cpp src/direct/protocol.cpp src/direct/runtime.cpp
     src/direct/jni.cpp src/direct/jni_terrain.cpp src/lifecycle/jni_perf.cpp)
   target_include_directories(mcrtx_jni PRIVATE ${JNI_INCLUDE_DIRS})
+  target_compile_definitions(mcrtx_jni PRIVATE
+    MCRTX_HAS_LIGHTING_STATISTICS=$<BOOL:${MCRTX_HAS_LIGHTING_STATISTICS}>
+    MCRTX_HAS_SAMPLING_STATISTICS=$<BOOL:${MCRTX_HAS_SAMPLING_STATISTICS}>)
   target_link_libraries(mcrtx_jni PRIVATE mcrtx_terrain)
   set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
   install(TARGETS mcrtx_jni RUNTIME DESTINATION . LIBRARY DESTINATION .)

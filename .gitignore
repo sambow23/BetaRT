@@ -8,3 +8,5 @@ work/decompiled-vineflower/
 work/reports/*.log
 scratch/
 __pycache__/
+
+/_work/

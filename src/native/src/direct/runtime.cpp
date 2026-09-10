@@ -11,13 +11,13 @@
 namespace mcrtx::direct {
 namespace {
 template<class T> T handle(std::uint64_t id) { return reinterpret_cast<T>(std::uintptr_t(id)); }
-template<class T> T function(remixapi_HMODULE library, const char *name) {
+template<class T> T function(remixapi_HMODULE library, const char *name, bool required = true) {
 #if defined(_WIN32)
   auto result = reinterpret_cast<T>(GetProcAddress(library, name));
 #else
   auto result = reinterpret_cast<T>(dlsym(library, name));
 #endif
-  if (!result) throw std::runtime_error(std::string("Missing native extension: ") + name);
+  if (!result && required) throw std::runtime_error(std::string("Missing native extension: ") + name);
   return result;
 }
 std::filesystem::path texturePath(std::uint64_t texture) {
@@ -175,8 +175,12 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     m_presentCount = function<PFN_remixapi_GetPresentationCount>(m_library, "remixapi_GetPresentationCount");
     m_traceStats = function<PFN_remixapi_GetTracingStatisticsEXT>(m_library, "remixapi_GetTracingStatisticsEXT");
     m_denoiseStats = function<PFN_remixapi_GetDenoisingStatisticsEXT>(m_library, "remixapi_GetDenoisingStatisticsEXT");
-    m_samplingStats = function<PFN_remixapi_GetSamplingStatisticsEXT>(m_library, "remixapi_GetSamplingStatisticsEXT");
-    m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT");
+#if MCRTX_HAS_SAMPLING_STATISTICS
+    m_samplingStats = function<PFN_remixapi_GetSamplingStatisticsEXT>(m_library, "remixapi_GetSamplingStatisticsEXT", false);
+#endif
+#if MCRTX_HAS_LIGHTING_STATISTICS
+    m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT", false);
+#endif
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -260,11 +264,19 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       remixapi_DenoisingStatisticsEXT denoising = {};
       denoising.structSize = sizeof(denoising);
       check(m_denoiseStats(&denoising));
-      remixapi_LightingStatisticsEXT illumination{};illumination.structSize=sizeof(illumination);
-      check(m_lightingStats(&illumination));
-      remixapi_SamplingStatisticsEXT sampling{};sampling.structSize=sizeof(sampling);
-      check(m_samplingStats(&sampling));
-      const bool temporal = denoising.redrawRequested != 0 || illumination.redrawRequested != 0;
+      bool lightingRedraw = false;
+#if MCRTX_HAS_LIGHTING_STATISTICS
+      remixapi_LightingStatisticsEXT illumination{};
+      illumination.structSize = sizeof(illumination);
+      bool lightingAvailable = m_lightingStats && m_lightingStats(&illumination) == REMIXAPI_ERROR_CODE_SUCCESS;
+      lightingRedraw = lightingAvailable && illumination.redrawRequested;
+#endif
+#if MCRTX_HAS_SAMPLING_STATISTICS
+      remixapi_SamplingStatisticsEXT sampling{};
+      sampling.structSize = sizeof(sampling);
+      bool samplingAvailable = m_samplingStats && m_samplingStats(&sampling) == REMIXAPI_ERROR_CODE_SUCCESS;
+#endif
+      const bool temporal = denoising.redrawRequested != 0 || lightingRedraw;
       if (state.minimized || !state.drawableWidth || !state.drawableHeight) continue;
       if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation || tracing.redrawRequested || temporal)) {
         MCRTX_PERF_CPU_SCOPE(perf::Side::Native, "direct.frame");
@@ -286,9 +298,12 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         perf::recordCount(perf::Side::Native, "direct.accumulationRedraw", !fresh && accumulation ? 1 : 0);
         check(m_traceStats(&tracing));
         check(m_denoiseStats(&denoising));
-        check(m_lightingStats(&illumination));
-      remixapi_SamplingStatisticsEXT sampling{};sampling.structSize=sizeof(sampling);
-      check(m_samplingStats(&sampling));
+#if MCRTX_HAS_LIGHTING_STATISTICS
+        lightingAvailable = m_lightingStats && m_lightingStats(&illumination) == REMIXAPI_ERROR_CODE_SUCCESS;
+#endif
+#if MCRTX_HAS_SAMPLING_STATISTICS
+        samplingAvailable = m_samplingStats && m_samplingStats(&sampling) == REMIXAPI_ERROR_CODE_SUCCESS;
+#endif
         perf::recordCount(perf::Side::Native, "direct.temporalRedraw", !fresh && temporal ? 1 : 0);
         perf::recordCount(perf::Side::Native, "trace.samples", tracing.samplesPerPixel);
         perf::recordCount(perf::Side::Native, "trace.accumulation", tracing.accumulationCount);
@@ -311,13 +326,29 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
             << tracing.gpuBuildMilliseconds << ',' << tracing.gpuTraceMilliseconds << ',' << m_uploadBytes << ','
             << tracing.accelerationBytes << ',' << tracing.blasBuilds << ',' << tracing.blasRefits << ',' << tracing.blasCompactions << ','
             << tracing.staticTlasBuilds << ',' << tracing.dynamicTlasBuilds << ',' << tracing.dynamicTlasRefits << ','
-            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << ',' << (!fresh && temporal ? 1 : 0) << ',' << denoising.gpuConfidenceMilliseconds << ',' << denoising.gpuDenoiseMilliseconds << ',' << denoising.gpuTaaMilliseconds << ',' << denoising.memoryBytes << ',' << denoising.historyResets << ',' << denoising.activeDenoiser << ',' << denoising.activeTaa << ',' << illumination.activeRtxdi << ',' << illumination.activeSharc << ',' << illumination.emitterCount << ',' << illumination.gpuLightPrepareMilliseconds << ',' << illumination.gpuRtxdiMilliseconds << ',' << illumination.gpuSharcUpdateMilliseconds << ',' << illumination.gpuSharcResolveMilliseconds << ',' << illumination.memoryBytes << ',' << illumination.cacheQueries << ',' << illumination.cacheHits << ',' << illumination.cacheOccupied << ',' << illumination.cacheResets << ',' << illumination.gpuDirectDenoiseMilliseconds
-            << ',' << sampling.requestedSampler << ',' << sampling.activeSampler << ',' << sampling.requestedDownscale << ',' << sampling.activeDownscale
+            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << ',' << (!fresh && temporal ? 1 : 0) << ',' << denoising.gpuConfidenceMilliseconds << ',' << denoising.gpuDenoiseMilliseconds << ',' << denoising.gpuTaaMilliseconds << ',' << denoising.memoryBytes << ',' << denoising.historyResets << ',' << denoising.activeDenoiser << ',' << denoising.activeTaa;
+#if MCRTX_HAS_LIGHTING_STATISTICS
+          if (lightingAvailable) {
+            profile << ',' << illumination.activeRtxdi << ',' << illumination.activeSharc << ',' << illumination.emitterCount << ',' << illumination.gpuLightPrepareMilliseconds << ',' << illumination.gpuRtxdiMilliseconds << ',' << illumination.gpuSharcUpdateMilliseconds << ',' << illumination.gpuSharcResolveMilliseconds << ',' << illumination.memoryBytes << ',' << illumination.cacheQueries << ',' << illumination.cacheHits << ',' << illumination.cacheOccupied << ',' << illumination.cacheResets << ',' << illumination.gpuDirectDenoiseMilliseconds;
+          } else
+#endif
+          {
+            for (unsigned i = 0; i < 13; ++i) profile << ",unavailable";
+          }
+#if MCRTX_HAS_SAMPLING_STATISTICS
+          if (samplingAvailable) {
+            profile << ',' << sampling.requestedSampler << ',' << sampling.activeSampler << ',' << sampling.requestedDownscale << ',' << sampling.activeDownscale
             << ',' << sampling.requestedIndirect << ',' << sampling.activeIndirect << ',' << sampling.lightingWidth << ',' << sampling.lightingHeight
             << ',' << sampling.lightCandidates << ',' << sampling.skyEnabled << ',' << sampling.primaryShadingLocations << ',' << sampling.transparentRecords
             << ',' << sampling.unavailableOpaque << ',' << sampling.unavailableTransparent << ',' << sampling.gpuCandidatesMilliseconds
             << ',' << sampling.gpuTemporalReuseMilliseconds << ',' << sampling.gpuSpatialReuseMilliseconds << ',' << sampling.gpuVisibilityMilliseconds
-            << ',' << sampling.gpuReconstructionMilliseconds << ',' << sampling.gpuLightBvhMilliseconds << ',' << sampling.lightBvhBuilds << ',' << sampling.lightBvhRefits << '\n';
+            << ',' << sampling.gpuReconstructionMilliseconds << ',' << sampling.gpuLightBvhMilliseconds << ',' << sampling.lightBvhBuilds << ',' << sampling.lightBvhRefits;
+          } else
+#endif
+          {
+            for (unsigned i = 0; i < 22; ++i) profile << ",unavailable";
+          }
+          profile << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
         perf::onFramePresented();

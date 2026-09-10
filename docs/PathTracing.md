@@ -3,8 +3,18 @@
 The direct client can render textured terrain and entities through Remix's Vulkan
 hardware ray-query backend. Raster remains the default and all HUD, menus, held
 items, particles, weather, labels and selection/damage feedback remain rasterized.
-Minecraft supplies current sky color and the visible sun direction with daylight/weather attenuation on every world frame. Sky RGB is converted to linear once and illuminates the upper hemisphere through actual visibility, including tinted transmission. F12 can override the sun; sun/moon/star sprites remain visual backgrounds. Luminous blocks retain their textured visible glow, including through tinted transparent layers, but cast no light. Sun and sky are the only illumination sources; enclosed rooms receive no replacement block lighting. SHARC diffuse caching, REBLUR SH denoising and native-resolution TAA default on for path tracing. There is no upscaling, specular material model,
-physical refraction or acceleration-structure disk cache.
+Minecraft supplies the same interpolated sky color and celestial angle used by the
+visible sky on every world frame. Sky RGB is converted to linear once, at unit
+strength. A spatially uniform environment illuminates diffuse surfaces only when
+the existing continuation rays escape, respecting cutouts and tinted transmission.
+Sun travel direction is `(0, -cos(theta), -sin(theta))`, where `theta` is the
+celestial angle in radians. White noon intensity remains pi, scaled by
+`clamp(2*cos(theta), 0, 1) * (1-rain) * (1-thunder)` for a continuous horizon fade.
+Dimensions without a sky disable both sources; night ambient uses only Minecraft's
+night-sky color. F12 retains the manual sunlight override and adds a sky toggle.
+Sun/moon/star sprites remain visual backgrounds. REBLUR SH and native-resolution
+TAA default on. Openremix has no SHARC, emitter sampling, glow, moonlight, cubemap,
+upscaling, specular material model, physical refraction or acceleration-structure disk cache.
 
 ## Launch controls
 
@@ -17,9 +27,7 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_SAMPLES` | 1–16 | 1 |
 | `MCRTX_PT_BOUNCES` | 0–4 indirect bounces | 2 |
 | `MCRTX_PT_DENOISER` | `off`, `reblur-sh` | `reblur-sh` |
-| `MCRTX_PT_INDIRECT_SAMPLING` | `full`, `checkerboard` | `full` |
 | `MCRTX_PT_SKY` | 0 or 1 | 1 |
-| `MCRTX_PT_SHARC` | `off`, `on`, `auto` | `auto` |
 | `MCRTX_PT_TAA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_ACCUMULATE` | 0/1 or false/true | 0 |
 | `MCRTX_PT_FORCE_REBUILD` | Same booleans; dynamic TLAS profiling | 0 |
@@ -33,7 +41,7 @@ remain on raster. Tracing hardware validation is limited to the Linux RTX 2080 h
 Windows, macOS and Android hardware validation has not been performed.
 
 Raw one-sample output is noisy. REBLUR SH filters indirect lighting; TAA resolves native-resolution world edges and transparent-light noise before raster gameplay overlays.
-Progressive accumulation selects full-rate power sampling and bypasses SHARC and both filters while retaining their requested settings. It can improve a stationary scene,
+Progressive accumulation bypasses both filters while retaining their requested settings. It can improve a stationary scene,
 but camera motion, object animation, used animated textures or other scene changes
 reset it. UI-only redraws do not invalidate it. The worker treats accumulation and warming temporal histories as
 explicit redraw reasons and keeps fresh-presentation counters separate. After convergence, UI-only redraws reuse cached world output.
@@ -45,8 +53,12 @@ retains lifetime identity, static/dynamic/raster-only classification and indepen
 raster visibility to Draw. TerrainView carries double-precision camera and floating
 origin coordinates separately from its original view matrix. The original Remix
 0.1003 interface remains unchanged; its independent native extension supplies the
-identity, camera temporal metadata and independent backend/denoising/lighting statistics APIs. Material commands now carry an emission texture and linear RGB radiance; the terrain snapshot has 24 words per cell, including intrinsic block light emission.
-Every camera packet carries world and history-reset epochs, preserving world/cut/rebase resets through replaced pending frames. Camera motion and normal object animation keep temporal history; incompatible mesh changes invalidate affected surfaces. Material/texture changes affect shading confidence independently from geometric motion.
+identity, camera temporal/environment metadata and backend/tracing/denoising APIs.
+Lighting and sampling statistics are compile-gated against the SDK and loaded as
+optional exports; unsupported CSV fields remain explicitly `unavailable`.
+Protocol-v5 material emission fields and the 24-word terrain snapshot remain
+transport-compatible, but openremix does not use them for glow or lighting.
+Every camera packet carries world and history-reset epochs, preserving world/cut/rebase resets through replaced pending frames. Camera motion and normal object animation keep temporal history; incompatible mesh changes invalidate affected surfaces. Material/texture and ordinary time/weather changes affect shading confidence independently from geometric motion, without global history resets. Sky changes invalidate progressive accumulation. Zero indirect bounces disables sky lighting.
 
 JNI copies the complete packet before returning. Framing, versions, finite values,
 identity/classification and lengths are validated before a pending frame can be
@@ -76,7 +88,7 @@ instance transforms and normally refits the dynamic TLAS. Native skinned meshes
 use private update-capable BLASes when vertices deform. Static terrain TLAS work
 occurs only on membership, geometry-reference or origin changes. Recovery rebuilds
 follow 300 refits or excessive displacement, with an explicit forced-rebuild mode.
-See [the runtime design](../../dxvk-remix-gmod/docs/path-tracing.md) for synchronization,
+See [the runtime design](../../openremix/docs/path-tracing.md) for synchronization,
 compaction retirement, transparency, depth composition and resource limits.
 
 ## Verification and isolated staging
@@ -108,68 +120,15 @@ The payload contains `customjar-1.jar`, `libmcrtx_jni.so`, `libremix.so.0.1003.0
 `libSDL3.so.0.4.14`. Build normal runtime/JNI/client artifacts first; staging does
 not compile or change launcher options. The default remains raster after staging.
 
-## Reproducible profiling
+## Optional diagnostics
 
-Compile `src/tests/java/direct/DirectWorldTest.java` against the paired patched JAR
-with `javac --release 8 -cp /path/to/customjar-1.jar -d /path/to/classes ...`.
-Run the profiler with the same working display/driver environment used for GPU tests:
+`MCRTX_PT_PROFILE` records per-presentation CSV with fresh/redraw status,
+presentation intervals, tracing/confidence/NRD/TAA timings, history resets,
+resource traffic and acceleration statistics. Unsupported lighting/sampling
+statistics fields are `unavailable`, never fabricated zero counters. Settings for
+SHARC, emitter sampling and checkerboard sampling belong to other companion
+runtimes and are not supported by openremix.
 
-```sh
-python3 scripts-linux/profile-pathtrace.py \
-  --instance /path/to/BetaRT-Raster-Profile --classes /path/to/classes \
-  --output /path/to/new-results-directory --comparison denoise
-```
-
-Defaults are three runs per configuration, 45 seconds warmup and 60 seconds
-measurement, native 1920×1080, one sample per pixel, two indirect bounces and VSync
-off. `--comparison lighting` compares uncached sun/sky with SHARC, retaining REBLUR SH and TAA in both modes. `--comparison denoise` rotates raw, raw plus TAA, REBLUR SH and REBLUR SH plus TAA. The default `--comparison acceleration` retains raster/refit/rebuild comparisons with filters off. Validation and injected overlays are disabled during measurements.
-
-Use `--comparison denoise --modes raw` to measure uncached sun/sky tracing with
-NRD and TAA disabled. `--no-emitters` omits luminous blocks from the fixture for
-geometry comparisons; all runtime emitter counters remain zero in this revision.
-
-The test never loads the instance's saved world; its data directory is the run's
-output folder. Keep the profiling instance closed before starting the script.
-
-`frames.csv` records fresh status, presentation intervals, previous-frame GPU
-build/trace/confidence/NRD/TAA timings, temporal redraws, active modes, history resets, temporal memory, resource traffic, acceleration bytes, AS counters/rebuild reason,
-scene generation, sampling and accumulation. `measurement.json` records the exact
-window and fresh/published/presented count deltas. `load.json` samples process RSS
-and NVIDIA utilization/memory/clocks/power each second. Per-run and aggregate JSON
-summaries preserve interval p50/p95/p99 and AS work. `upload_bytes` includes copied
-reliable resource command bytes and admitted terrain upload bytes; it is not a
-measurement of PCIe traffic. Acceleration memory excludes textures and framebuffers;
-NVIDIA memory samples include other host GPU users.
-
-Compare total fresh frame cost as well as GPU construction and traversal. A cheaper
-refit can leave a tree that traces more slowly. Recovery thresholds are initial
-heuristics to evaluate in each workload. [The denoising verification report](../../dxvk-remix-gmod/docs/denoising-verification.md)
-contains the tested host, paired artifact hashes, four-mode results and verified rollback.
-[Earlier acceleration measurements](../../dxvk-remix-gmod/docs/path-tracing-verification.md) remain available.
-
-## Visible glow and cache behavior
-
-BetaRT protocol v5 retains emission masks, emission RGB and material variants for
-visible glow. Native surface composition evaluates emission textures at full
-resolution. Indirect rays, SHARC and confidence probes use sun/sky illumination
-only. Emission edits update visible output and reset progressive accumulation when
-needed, without resetting indirect NRD/SHARC history. SHARC retains material
-demodulation and black-material handling.
-
-Valid legacy startup settings `MCRTX_PT_RTXDI=off|on|auto`,
-`MCRTX_PT_EMISSIVE_SAMPLER=power|rtxdi|lightbvh`,
-`MCRTX_PT_EMISSIVE_DOWNSCALE=1|4` and `MCRTX_PT_LIGHT_CANDIDATES=4|8|16` are accepted
-as deprecated no-ops. Requested values remain diagnostic; they allocate no resources
-and reset no histories. Active emissive sampler is `UINT32_MAX` (removed), with zero
-emitter counts, dimensions, passes and sampler memory. Existing CSV columns and
-public structures remain compatible.
-
-Full indirect sampling remains the default. Optional checkerboard requires NRD
-and TAA, supports odd dimensions, and falls back to full sampling when filtering
-is unavailable or accumulation is enabled. No checkerboard tuning is included.
-
-Profiling selects explicit fresh world-frame measurement windows from
-`measurement.json`; emitter count is never evidence that a world frame is valid.
-Before/after measurements for this revision describe deliberate lighting-feature
-removal, not an emissive-quality comparison. See the
-[verification report](../../dxvk-remix-gmod/docs/emission-removal-verification.md).
+Keep screenshots, validation results and deployment manifests in ignored
+`_work/reports/`. Stage the renderer, JNI and patched JAR as a matched set with the
+instance closed; preserve its SDL binary, launcher settings and saved worlds.

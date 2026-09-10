@@ -1,12 +1,12 @@
 # Building the direct client
 
 Use Linux x64, Clang, CMake 3.24+, Ninja, a JDK supporting `javac --release 8`,
-and Java 8 for running Minecraft. Build the companion `dxvk-remix-gmod` raster
+and Java 8 for running Minecraft. Build the companion `openremix` raster
 runtime with SDL3/Vulkan first. No shader compiler or RTX dependency is needed.
 
 ```sh
 export JAVA_HOME=/path/to/compiler-jdk
-scripts-linux/build-native.sh /tmp/betart-direct /path/to/dxvk-remix-gmod Release
+scripts-linux/build-native.sh /tmp/betart-direct /path/to/openremix Release
 scripts-linux/build-client.sh /path/to/minecraft-b1.7.3-client.jar \
   /path/to/lwjgl-2.9.4.jar /path/to/lwjgl_util-2.9.4.jar \
   /path/to/asm-9.9.jar /path/to/asm-tree-9.9.jar /tmp/betart-client
@@ -65,7 +65,14 @@ and synchronization validation with the installed validation layer for GPU tests
 Set `MCRTX_RENDER_BACKEND=pathtrace` to exercise the in-memory world with lighting reuse; the transport, menu and exact raster-pixel fixtures retain raster. World tests allow cold driver compilation before timing warmup. The test classpath excludes all LWJGL modules; local audio therefore uses the
 vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
 
-The private JNI protocol is version 5, independently of the public Remix SDK. Update the patched JAR and JNI together; the paired runtime must export native denoising, lighting and sampling statistics. Path tracing uses sun/sky illumination and visible surface glow, with SHARC, REBLUR SH and TAA enabled by default. `MCRTX_PT_SHARC=off` bypasses caching; `MCRTX_PT_DENOISER=off` and `MCRTX_PT_TAA=0` select raw output. Legacy emissive sampling settings remain accepted as deprecated no-ops.
+The private JNI protocol is version 5, independently of the public Remix SDK.
+Update the patched JAR and JNI together. The paired openremix runtime supplies
+camera environment metadata and tracing/denoising statistics. Lighting and sampling
+statistics are optional: CMake checks the SDK types, missing exports are non-fatal,
+and unsupported CSV fields read `unavailable`.
+Path tracing uses Minecraft sun/sky illumination with REBLUR SH and TAA enabled by
+default. `MCRTX_PT_SKY=0` disables indirect sky lighting; `MCRTX_PT_DENOISER=off` and
+`MCRTX_PT_TAA=0` select raw output. Openremix has no SHARC, emitter sampling or glow.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.

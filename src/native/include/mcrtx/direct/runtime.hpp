@@ -64,8 +64,12 @@ private:
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
   PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
   PFN_remixapi_GetDenoisingStatisticsEXT m_denoiseStats = nullptr;
+#if MCRTX_HAS_LIGHTING_STATISTICS
   PFN_remixapi_GetLightingStatisticsEXT m_lightingStats = nullptr;
+#endif
+#if MCRTX_HAS_SAMPLING_STATISTICS
   PFN_remixapi_GetSamplingStatisticsEXT m_samplingStats = nullptr;
+#endif
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;

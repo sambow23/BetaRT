@@ -27,7 +27,7 @@ path. Raster remains the default; the historical capture renderer stays removed.
   event/text/metrics exports and implement existing PNG screenshot requests.
 - Preserve base colors, tints, transparency and gameplay feedback. Raster remains
   unlit; optional hardware path tracing evaluates a selected distant light and
-  sun/sky diffuse lighting and visible glow with SHARC, REBLUR SH and native TAA; no upscaling or PBR materials.
+  sun/sky diffuse lighting with REBLUR SH and native TAA; no upscaling or PBR materials.
 
 ## Implementation
 
