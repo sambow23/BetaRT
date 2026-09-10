@@ -72,7 +72,12 @@ statistics are optional: CMake checks the SDK types, missing exports are non-fat
 and unsupported CSV fields read `unavailable`.
 Path tracing uses Minecraft sun/sky illumination with REBLUR SH and TAA enabled by
 default. `MCRTX_PT_SKY=0` disables indirect sky lighting; `MCRTX_PT_DENOISER=off` and
-`MCRTX_PT_TAA=0` select raw output. Openremix has no SHARC, emitter sampling or glow.
+`MCRTX_PT_TAA=0` select raw output. Openremix supports optional SHARC diffuse radiance caching (`MCRTX_PT_SHARC=0/1`),
+with `MCRTX_PT_SHARC_DOWNSCALE`, `MCRTX_PT_SHARC_SCALE`, and
+`MCRTX_PT_SHARC_CAPACITY_LOG2` controls. Progressive accumulation bypasses SHARC.
+The profiling CSV reports SHARC timings, memory, occupancy and resets when the
+companion export exists; sampled query/hit counts have separate named columns.
+Unsupported full-ray counters, emitter sampling and glow remain unavailable.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.

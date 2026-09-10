@@ -64,6 +64,9 @@ private:
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
   PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
   PFN_remixapi_GetDenoisingStatisticsEXT m_denoiseStats = nullptr;
+#if MCRTX_HAS_SHARC_STATISTICS
+  PFN_remixapi_GetSharcStatisticsEXT m_sharcStats = nullptr;
+#endif
 #if MCRTX_HAS_LIGHTING_STATISTICS
   PFN_remixapi_GetLightingStatisticsEXT m_lightingStats = nullptr;
 #endif

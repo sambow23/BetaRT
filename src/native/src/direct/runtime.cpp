@@ -181,6 +181,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_LIGHTING_STATISTICS
     m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT", false);
 #endif
+#if MCRTX_HAS_SHARC_STATISTICS
+    m_sharcStats = function<PFN_remixapi_GetSharcStatisticsEXT>(m_library, "remixapi_GetSharcStatisticsEXT", false);
+#endif
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -203,6 +206,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
         {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
         {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
+        {"MCRTX_PT_SHARC_DOWNSCALE", "sharcDownscale"}, {"MCRTX_PT_SHARC_SCALE", "sharcSceneScale"},
+        {"MCRTX_PT_SHARC_CAPACITY_LOG2", "sharcCapacityLog2"}, {"MCRTX_PT_SHARC_DEBUG", "sharcDebug"},
         {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"}}) {
       auto value = detail::readEnvironmentVariable(environment);
       if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
@@ -225,7 +230,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -304,6 +309,11 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_SAMPLING_STATISTICS
         samplingAvailable = m_samplingStats && m_samplingStats(&sampling) == REMIXAPI_ERROR_CODE_SUCCESS;
 #endif
+#if MCRTX_HAS_SHARC_STATISTICS
+        remixapi_SharcStatisticsEXT cache{};
+        cache.structSize = sizeof(cache);
+        const bool cacheAvailable = m_sharcStats && m_sharcStats(&cache) == REMIXAPI_ERROR_CODE_SUCCESS;
+#endif
         perf::recordCount(perf::Side::Native, "direct.temporalRedraw", !fresh && temporal ? 1 : 0);
         perf::recordCount(perf::Side::Native, "trace.samples", tracing.samplesPerPixel);
         perf::recordCount(perf::Side::Native, "trace.accumulation", tracing.accumulationCount);
@@ -332,6 +342,16 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
             profile << ',' << illumination.activeRtxdi << ',' << illumination.activeSharc << ',' << illumination.emitterCount << ',' << illumination.gpuLightPrepareMilliseconds << ',' << illumination.gpuRtxdiMilliseconds << ',' << illumination.gpuSharcUpdateMilliseconds << ',' << illumination.gpuSharcResolveMilliseconds << ',' << illumination.memoryBytes << ',' << illumination.cacheQueries << ',' << illumination.cacheHits << ',' << illumination.cacheOccupied << ',' << illumination.cacheResets << ',' << illumination.gpuDirectDenoiseMilliseconds;
           } else
 #endif
+#if MCRTX_HAS_SHARC_STATISTICS
+          if (cacheAvailable) {
+            // Keep unsupported systems and full-ray counters explicitly unavailable.
+            // This SDK's query diagnostics sample pixels; report those separately.
+            profile << ",unavailable," << cache.active << ",unavailable,unavailable,unavailable,";
+            if (cache.gpuTimingsAvailable) profile << cache.gpuUpdateMilliseconds << ',' << cache.gpuResolveMilliseconds;
+            else profile << "unavailable,unavailable";
+            profile << ',' << cache.memoryBytes << ",unavailable,unavailable," << cache.occupiedEntries << ',' << cache.resets << ",unavailable";
+          } else
+#endif
           {
             for (unsigned i = 0; i < 13; ++i) profile << ",unavailable";
           }
@@ -348,6 +368,11 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           {
             for (unsigned i = 0; i < 22; ++i) profile << ",unavailable";
           }
+#if MCRTX_HAS_SHARC_STATISTICS
+          if (cacheAvailable) profile << ',' << cache.queryAttempts << ',' << cache.queryHits;
+          else
+#endif
+          profile << ",unavailable,unavailable";
           profile << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
