@@ -44,7 +44,7 @@ if(MCRTX_BUILD_JNI)
   # Companion SDKs need not implement advanced lighting/sampling statistics.
   include(CheckCXXSourceCompiles)
   set(CMAKE_REQUIRED_INCLUDES "${MCRTX_DXVK_REMIX_ROOT}/public/include")
-  foreach(feature Lighting Sampling Sharc)
+  foreach(feature Lighting Sampling Sharc Shadow)
     string(TOUPPER "${feature}" feature_upper)
     check_cxx_source_compiles("#include <remix/remix_native_ext.h>
       int main() { return sizeof(remixapi_${feature}StatisticsEXT) + sizeof(PFN_remixapi_Get${feature}StatisticsEXT); }"
@@ -56,6 +56,7 @@ if(MCRTX_BUILD_JNI)
     src/direct/jni.cpp src/direct/jni_terrain.cpp src/lifecycle/jni_perf.cpp)
   target_include_directories(mcrtx_jni PRIVATE ${JNI_INCLUDE_DIRS})
   target_compile_definitions(mcrtx_jni PRIVATE
+    MCRTX_HAS_SHADOW_STATISTICS=$<BOOL:${MCRTX_HAS_SHADOW_STATISTICS}>
     MCRTX_HAS_SHARC_STATISTICS=$<BOOL:${MCRTX_HAS_SHARC_STATISTICS}>
     MCRTX_HAS_LIGHTING_STATISTICS=$<BOOL:${MCRTX_HAS_LIGHTING_STATISTICS}>
     MCRTX_HAS_SAMPLING_STATISTICS=$<BOOL:${MCRTX_HAS_SAMPLING_STATISTICS}>)

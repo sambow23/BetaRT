@@ -13,7 +13,11 @@ celestial angle in radians. White noon intensity remains pi, scaled by
 Dimensions without a sky disable both sources; night ambient uses only Minecraft's
 night-sky color. F12 retains the manual sunlight override and adds a sky toggle.
 Sun/moon/star sprites remain visual backgrounds. REBLUR SH and native-resolution
-TAA default on. Openremix has no SHARC, emitter sampling, glow, moonlight, cubemap,
+TAA default on. SHARC caches indirect diffuse radiance; SIGMA filters primary
+opaque sun visibility with distance-dependent penumbra. BetaRT supplies a
+0.533-degree sun diameter. F12 exposes SIGMA and a sun-size override; zero diameter
+retains hard shadows. See [SIGMA details](../../openremix/docs/features/sigma.md).
+Openremix has no emitter sampling, glow, moonlight, cubemap,
 upscaling, specular material model, physical refraction or acceleration-structure disk cache.
 
 ## Launch controls
@@ -27,6 +31,10 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_SAMPLES` | 1–16 | 1 |
 | `MCRTX_PT_BOUNCES` | 0–4 indirect bounces | 2 |
 | `MCRTX_PT_DENOISER` | `off`, `reblur-sh` | `reblur-sh` |
+| `MCRTX_PT_SIGMA` | 0/1 or false/true | 1 |
+| `MCRTX_PT_SUN_DIAMETER` | -1 inherit, 0–10 degrees override | -1 (game: 0.533) |
+| `MCRTX_PT_SHADOW_DEBUG` | 0 final, 1 raw visibility, 2 SIGMA visibility | 0 |
+| `MCRTX_PT_SHARC` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SKY` | 0 or 1 | 1 |
 | `MCRTX_PT_TAA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_ACCUMULATE` | 0/1 or false/true | 0 |
@@ -41,7 +49,7 @@ remain on raster. Tracing hardware validation is limited to the Linux RTX 2080 h
 Windows, macOS and Android hardware validation has not been performed.
 
 Raw one-sample output is noisy. REBLUR SH filters indirect lighting; TAA resolves native-resolution world edges and transparent-light noise before raster gameplay overlays.
-Progressive accumulation bypasses both filters while retaining their requested settings. It can improve a stationary scene,
+Progressive accumulation bypasses SIGMA, REBLUR, TAA and SHARC while retaining their requested settings. It can improve a stationary scene,
 but camera motion, object animation, used animated textures or other scene changes
 reset it. UI-only redraws do not invalidate it. The worker treats accumulation and warming temporal histories as
 explicit redraw reasons and keeps fresh-presentation counters separate. After convergence, UI-only redraws reuse cached world output.
@@ -54,8 +62,10 @@ raster visibility to Draw. TerrainView carries double-precision camera and float
 origin coordinates separately from its original view matrix. The original Remix
 0.1003 interface remains unchanged; its independent native extension supplies the
 identity, camera temporal/environment metadata and backend/tracing/denoising APIs.
-Lighting and sampling statistics are compile-gated against the SDK and loaded as
-optional exports; unsupported CSV fields remain explicitly `unavailable`.
+Lighting, sampling, SHARC and SIGMA statistics are compile-gated against the SDK and loaded as
+optional exports; unsupported CSV fields remain explicitly `unavailable`. SIGMA
+adds `sigma`, `gpu_sigma_ms`, `sigma_history_resets` and `sun_diameter_degrees`;
+`gpu_nrd_ms` remains indirect REBLUR timing.
 Protocol-v5 material emission fields and the 24-word terrain snapshot remain
 transport-compatible, but openremix does not use them for glow or lighting.
 Every camera packet carries world and history-reset epochs, preserving world/cut/rebase resets through replaced pending frames. Camera motion and normal object animation keep temporal history; incompatible mesh changes invalidate affected surfaces. Material/texture and ordinary time/weather changes affect shading confidence independently from geometric motion, without global history resets. Sky changes invalidate progressive accumulation. Zero indirect bounces disables sky lighting.

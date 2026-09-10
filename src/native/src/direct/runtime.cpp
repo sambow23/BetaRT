@@ -181,6 +181,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_LIGHTING_STATISTICS
     m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT", false);
 #endif
+#if MCRTX_HAS_SHADOW_STATISTICS
+    m_shadowStats = function<PFN_remixapi_GetShadowStatisticsEXT>(m_library, "remixapi_GetShadowStatisticsEXT", false);
+#endif
 #if MCRTX_HAS_SHARC_STATISTICS
     m_sharcStats = function<PFN_remixapi_GetSharcStatisticsEXT>(m_library, "remixapi_GetSharcStatisticsEXT", false);
 #endif
@@ -203,7 +206,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       else check(result);
     }
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
-        {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
+        {"MCRTX_PT_SIGMA", "sigma"}, {"MCRTX_PT_SUN_DIAMETER", "sunAngularDiameter"},
+        {"MCRTX_PT_SHADOW_DEBUG", "shadowDebug"}, {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
         {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
         {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
         {"MCRTX_PT_SHARC_DOWNSCALE", "sharcDownscale"}, {"MCRTX_PT_SHARC_SCALE", "sharcSceneScale"},
@@ -214,6 +218,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     }
     remixapi_LightInfoDistantEXT distant = {};
     distant.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
+    distant.angularDiameterDegrees = .533f;
     distant.direction = {-.423999f, -.847998f, -.317999f};
     remixapi_LightInfo daylight = {};
     daylight.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO; daylight.pNext = &distant;
@@ -230,7 +235,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -373,6 +378,17 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           else
 #endif
           profile << ",unavailable,unavailable";
+#if MCRTX_HAS_SHADOW_STATISTICS
+          remixapi_ShadowStatisticsEXT shadow{};
+          shadow.structSize = sizeof(shadow);
+          if (m_shadowStats && m_shadowStats(&shadow) == REMIXAPI_ERROR_CODE_SUCCESS) {
+            profile << ',' << shadow.active << ',';
+            if (shadow.gpuTimingsAvailable) profile << shadow.gpuSigmaMilliseconds;
+            else profile << "unavailable";
+            profile << ',' << shadow.historyResets << ',' << shadow.sunAngularDiameterDegrees;
+          } else
+#endif
+          profile << ",unavailable,unavailable,unavailable,unavailable";
           profile << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
@@ -535,6 +551,7 @@ void Runtime::framePacket(const Bytes &bytes) {
       environment.radiance={data.read<float>(),data.read<float>(),data.read<float>()};
       remixapi_LightInfoDistantEXT sun{};
       sun.sType=REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
+      sun.angularDiameterDegrees=.533f;
       sun.direction={data.read<float>(),data.read<float>(),data.read<float>()};
       remixapi_LightInfo sunlight{};
       sunlight.sType=REMIXAPI_STRUCT_TYPE_LIGHT_INFO;sunlight.pNext=&sun;
