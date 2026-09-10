@@ -8,6 +8,7 @@ struct ChunkBlockCell {
   std::uint8_t materialClass {0};
   std::uint8_t blockId {0};
   std::uint8_t blockMetadata {0};
+  std::uint8_t emissionLevel {0};
   std::uint8_t renderType {0};
   std::uint8_t renderPass {0};
   std::array<float, 6> bounds {0.0f, 0.0f, 0.0f, 1.0f, 1.0f, 1.0f};

@@ -13,6 +13,7 @@ import subprocess
 import time
 import csv
 import signal
+from profile_windows import world_frames, require_idle_profile
 
 def interrupted(signum, frame):
     raise SystemExit(128 + signum)
@@ -24,45 +25,62 @@ parser.add_argument('--instance',type=Path,required=True)
 parser.add_argument('--classes',type=Path,required=True)
 parser.add_argument('--output',type=Path,required=True)
 parser.add_argument('--runs',type=int,default=3)
-parser.add_argument('--comparison',choices=['acceleration','denoise'],default='acceleration')
+parser.add_argument('--comparison',choices=['acceleration','denoise','lighting'],default='acceleration')
+parser.add_argument('--modes',nargs='+',help='Run only these modes from the selected comparison')
+parser.add_argument('--no-emitters',action='store_true',help='Omit luminous blocks for a sunlight-only baseline')
 parser.add_argument('--warmup-ms',type=int,default=45000)
 parser.add_argument('--measure-ms',type=int,default=60000)
 args=parser.parse_args()
 if args.runs < 1 or args.warmup_ms < 0 or args.measure_ms < 1:
     parser.error('Use positive run/measurement counts and a nonnegative warmup')
+comparison_modes={'acceleration':['raster','refit','rebuild'],
+    'denoise':['raw','raw-taa','reblur-sh','reblur-sh-taa'],
+    'lighting':['baseline','sharc']}
+selected_modes=args.modes or comparison_modes[args.comparison]
+if len(set(selected_modes))!=len(selected_modes) or any(mode not in comparison_modes[args.comparison] for mode in selected_modes):
+    parser.error('Choose distinct modes from: '+', '.join(comparison_modes[args.comparison]))
 instance=args.instance.resolve()
 if instance.name!='BetaRT-Raster-Profile':parser.error('Only the isolated profile instance is accepted')
+require_idle_profile(instance)
 args.output.mkdir(parents=True,exist_ok=False)
 base=os.environ.copy()
 for key in ('REMIX_VULKAN_VALIDATION','VK_LAYER_VALIDATE_SYNC','LD_PRELOAD','MCRTX_PERF_TRACE','MCRTX_PT_ACCUMULATE'):
     base.pop(key,None)
 base.update(MCRTX_JNI_PATH=str(instance/'libraries/libmcrtx_jni.so'),MCRTX_REMIX_PATH=str(instance/'libraries/libremix.so.0'),
-            MCRTX_VSYNC='0',MCRTX_PT_SAMPLES='1',MCRTX_PT_BOUNCES='2',MCRTX_PT_ACCUMULATE='0',MANGOHUD='0',DISABLE_MANGOHUD='1')
+            MCRTX_PT_INDIRECT_SAMPLING='full',MCRTX_VSYNC='0',MCRTX_PT_SAMPLES='1',MCRTX_PT_BOUNCES='2',MCRTX_PT_ACCUMULATE='0',MANGOHUD='0',DISABLE_MANGOHUD='1')
 base['LD_LIBRARY_PATH']=str(instance/'libraries')
 results=[]
 def percentile(values,p):
     values=sorted(values);return values[min(len(values)-1,int((len(values)-1)*p))]
 for repeat in range(args.runs):
-    modes=['raw','raw-taa','reblur-sh','reblur-sh-taa'] if args.comparison=='denoise' else ['raster','refit','rebuild']
+    modes=selected_modes[:]
     rotation=repeat%len(modes);modes=modes[rotation:]+modes[:rotation]
     for mode in modes:
         run=(args.output/(mode+'-'+str(repeat+1))).resolve();run.mkdir()
         env=base.copy();env.update(MCRTX_RENDER_BACKEND='raster' if mode=='raster' else 'pathtrace',
             MCRTX_PT_FORCE_REBUILD='1' if mode=='rebuild' else '0',
             MCRTX_PT_DENOISER='reblur-sh' if mode.startswith('reblur') else 'off',MCRTX_PT_TAA='1' if mode.endswith('-taa') else '0',MCRTX_PT_PROFILE=str(run/'frames.csv'))
+        env.update(MCRTX_PT_RTXDI='off', MCRTX_PT_SHARC='off')
+        if args.comparison=='lighting':
+            env.update(MCRTX_PT_DENOISER='reblur-sh', MCRTX_PT_TAA='1',
+                MCRTX_PT_RTXDI='auto' if mode in ('rtxdi','combined') else 'off',
+                MCRTX_PT_SHARC='auto' if mode in ('sharc','combined') else 'off')
         command=['java','-Xverify:all','-Djava.awt.headless=true','-Dmcrtx.test.directGpu=true','-Dmcrtx.test.benchmark=true',
                  '-Dmcrtx.test.width=1920','-Dmcrtx.test.height=1080','-Dmcrtx.test.warmupMs='+str(args.warmup_ms),
                  '-Dmcrtx.test.measureMs='+str(args.measure_ms),'-cp',str(args.classes.resolve())+':'+str(instance/'libraries/customjar-1.jar'),
                  'DirectWorldTest',str(run)]
+        if args.no_emitters:command.insert(1,'-Dmcrtx.test.noEmitters=true')
         samples=[]
+        require_idle_profile(instance)
         print('Starting '+run.name,flush=True)
         with (run/'game.log').open('w') as log:
             process=subprocess.Popen(command,cwd=instance/'minecraft',env=env,stdout=log,stderr=subprocess.STDOUT)
-            deadline=time.monotonic()+(args.warmup_ms+args.measure_ms)/1000+120
+            deadline=time.monotonic()+(args.warmup_ms+args.measure_ms)/1000+300
             try:
                 while process.poll() is None:
                     if time.monotonic()>deadline:
                         raise RuntimeError('Benchmark timeout: '+run.name)
+                    require_idle_profile(instance, process.pid)
                     try:
                         status=Path('/proc/'+str(process.pid)+'/status').read_text()
                         rss=int(next(line.split()[1] for line in status.splitlines() if line.startswith('VmRSS:')))*1024
@@ -82,12 +100,14 @@ for repeat in range(args.runs):
         if process.returncode:raise RuntimeError('Benchmark failed: '+str(run/'game.log'))
         window=json.loads((run/'measurement.json').read_text())
         with (run/'frames.csv').open() as file:
-            rows=[row for row in csv.DictReader(file) if window['start_ms']<=int(row['time_ms'])<window['end_ms']]
+            all_rows=list(csv.DictReader(file))
+            presentations=[row for row in all_rows if window["start_ms"]<=int(row["time_ms"])<window["end_ms"]]
+            rows=world_frames(all_rows,window)
         if not rows:raise RuntimeError('Missing measured presentations')
-        intervals=[float(row['interval_ms']) for row in rows]
+        intervals=[float(row['interval_ms']) for row in presentations]
         duration=(window['end_ms']-window['start_ms'])/1000
         if mode!='raster' and max(int(row['blas_builds']) for row in rows)==0:raise RuntimeError('Tracing unavailable during benchmark')
-        result={'mode':mode,'run':repeat+1,'duration_s':duration,'fresh_fps':window['fresh']/duration,
+        result={'mode':mode,'run':repeat+1,'no_emitters':args.no_emitters,'duration_s':duration,'fresh_fps':window['fresh']/duration,
                 'published_fps':window['published']/duration,'presented_fps':window['presented']/duration,
                 'p50_ms':percentile(intervals,.5),'p95_ms':percentile(intervals,.95),'p99_ms':percentile(intervals,.99),
                 'gpu_build_ms':statistics.mean(float(row['gpu_build_ms']) for row in rows),
@@ -99,7 +119,10 @@ for repeat in range(args.runs):
                 'blas_refits':int(rows[-1]['blas_refits'])-int(rows[0]['blas_refits']),
                 'static_tlas_builds':int(rows[-1]['static_builds'])-int(rows[0]['static_builds']),
                 'dynamic_tlas_builds':int(rows[-1]['dynamic_builds'])-int(rows[0]['dynamic_builds']),
-                'dynamic_tlas_refits':int(rows[-1]['dynamic_refits'])-int(rows[0]['dynamic_refits'])}
+                'dynamic_tlas_refits':int(rows[-1]['dynamic_refits'])-int(rows[0]['dynamic_refits']),
+                'emitters':max(int(row['emitters']) for row in rows)}
+        if mode!='raster' and any(int(row['emitters']) or int(row['sampler'])!=0xffffffff or int(row['downscale']) for row in rows):
+            raise RuntimeError('Removed emissive illumination is active during measurement')
         if args.comparison=='denoise':
             if any(int(row['denoiser'])!=int(mode.startswith('reblur')) or int(row['taa'])!=int(mode.endswith('-taa')) for row in rows):
                 raise RuntimeError('Requested temporal mode was inactive: '+run.name)
@@ -109,5 +132,17 @@ for repeat in range(args.runs):
                 peak_denoise_bytes=max(int(row['denoise_bytes']) for row in rows),
                 temporal_redraws=sum(int(row['temporal_redraw']) for row in rows),
                 history_resets=int(rows[-1]['history_resets'])-int(rows[0]['history_resets']))
+        if args.comparison=='lighting':
+            expected=(0,int(mode=='sharc'))
+            if any((int(row['rtxdi']),int(row['sharc']))!=expected or not int(row['denoiser']) or not int(row['taa']) for row in rows):
+                raise RuntimeError('Requested lighting mode was inactive: '+run.name)
+            for field in ('gpu_confidence_ms','gpu_nrd_ms','gpu_taa_ms','gpu_light_prepare_ms','gpu_rtxdi_ms','gpu_sharc_update_ms','gpu_sharc_resolve_ms','gpu_direct_nrd_ms','cache_queries','cache_hits','cache_occupied'):
+                result[field]=statistics.mean(float(row[field]) for row in rows)
+            result.update(peak_denoise_bytes=max(int(row['denoise_bytes']) for row in rows),
+                peak_lighting_bytes=max(int(row['lighting_bytes']) for row in rows),
+                emitters=max(int(row['emitters']) for row in rows),
+                temporal_redraws=sum(int(row['temporal_redraw']) for row in rows),
+                history_resets=int(rows[-1]['history_resets'])-int(rows[0]['history_resets']),
+                cache_resets=int(rows[-1]['cache_resets'])-int(rows[0]['cache_resets']))
         results.append(result);(run/'load.json').write_text(json.dumps(samples));(run/'result.json').write_text(json.dumps(result,indent=2))
         (args.output/'results.json').write_text(json.dumps(results,indent=2));print(json.dumps(result),flush=True)

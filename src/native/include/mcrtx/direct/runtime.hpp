@@ -35,6 +35,8 @@ private:
   struct Material {
     std::uint64_t texture;
     std::uint32_t filter, wrapU, wrapV;
+    std::uint64_t emissionTexture=0;
+    std::array<float,3> emission{};
   };
   struct TerrainMesh {
     std::array<remixapi_MeshHandle, 2> handles {};
@@ -62,6 +64,8 @@ private:
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
   PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
   PFN_remixapi_GetDenoisingStatisticsEXT m_denoiseStats = nullptr;
+  PFN_remixapi_GetLightingStatisticsEXT m_lightingStats = nullptr;
+  PFN_remixapi_GetSamplingStatisticsEXT m_samplingStats = nullptr;
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;

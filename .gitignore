@@ -1,4 +1,5 @@
 build/
+/build-linux/
 .vs/
 out/
 _build-direct*/

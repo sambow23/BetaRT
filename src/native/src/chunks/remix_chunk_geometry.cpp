@@ -34,10 +34,11 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
   const auto& meshData = *inputs.sections[13];
   auto& surfacesToBuild = build.surfacesToBuild;
   surfacesToBuild.reserve(8);
-  std::unordered_map<std::uint8_t, std::size_t> surfaceIndexByHandle;
+  std::unordered_map<std::uint32_t, std::size_t> surfaceIndexByHandle;
 
-  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](std::uint8_t materialClass) -> SurfaceBuildBuffers& {
-    const auto materialKey = materialClass;
+  const auto acquireSurface = [&surfacesToBuild, &surfaceIndexByHandle](std::uint8_t materialClass, const ChunkBlockCell &cell) -> SurfaceBuildBuffers& {
+    const std::uint16_t emissionKey=cell.emissionLevel?std::uint16_t(cell.blockId*16+cell.emissionLevel):0;
+    const std::uint32_t materialKey = materialClass | (std::uint32_t(emissionKey)<<8);
     const auto it = surfaceIndexByHandle.find(materialKey);
     if (it != surfaceIndexByHandle.end()) {
       return surfacesToBuild[it->second];
@@ -45,6 +46,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
 
     TerrainSurface surface;
     surface.materialClass = materialClass;
+    surface.emissionKey=emissionKey;
     surface.vertices.reserve(512);
     surface.indices.reserve(768);
     const std::size_t surfaceIndex = surfacesToBuild.size();
@@ -177,7 +179,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
 
         if (cell.renderType == kLiquidBlockRenderType
             && (materialClass == kWaterTerrainMaterialClass || materialClass == kLavaTerrainMaterialClass)) {
-          SurfaceBuildBuffers& liquidSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& liquidSurface = acquireSurface(materialClass,cell);
           appendWaterGeometry(
               cell,
               static_cast<float>(localX),
@@ -189,7 +191,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isCrossedQuadRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& floraSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& floraSurface = acquireSurface(materialClass,cell);
           appendCrossedQuadGeometry(
               cell,
               chunkKey.originX + localX,
@@ -204,7 +206,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isCropRenderType(cell.renderType) && isCropBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& cropSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& cropSurface = acquireSurface(materialClass,cell);
           appendCropGeometry(
               cell,
               static_cast<float>(localX),
@@ -216,7 +218,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isFireRenderType(cell.renderType)) {
-          auto &fire = acquireSurface(kCutoutTerrainMaterialClass);
+          auto &fire = acquireSurface(kCutoutTerrainMaterialClass,cell);
           const auto begin = fire.vertices.size();
           const int x = chunkKey.originX + localX, y = chunkKey.originY + localY, z = chunkKey.originZ + localZ;
           appendFireGeometry(x, y, z, hasSolidSupport(x, y - 1, z),
@@ -235,7 +237,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isTorchRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& torchSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& torchSurface = acquireSurface(materialClass,cell);
           appendTorchGeometry(
               cell,
               static_cast<float>(localX),
@@ -247,7 +249,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isLadderRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& ladderSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& ladderSurface = acquireSurface(materialClass,cell);
           appendLadderGeometry(
               cell,
               static_cast<float>(localX),
@@ -286,7 +288,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
               connectNorth = connectNorth || climbNorth;
               connectSouth = connectSouth || climbSouth;
 
-              SurfaceBuildBuffers& redstoneSurface = acquireSurface(materialClass);
+              SurfaceBuildBuffers& redstoneSurface = acquireSurface(materialClass,cell);
               appendRedstoneDustGeometry(
                 cell,
                 connectWest,
@@ -306,7 +308,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
             }
 
         if (isRailRenderType(cell.renderType) && isRailBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& railSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& railSurface = acquireSurface(materialClass,cell);
           appendRailGeometry(
               cell,
               static_cast<float>(localX),
@@ -318,7 +320,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isStairRenderType(cell.renderType) && isStairBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& stairSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& stairSurface = acquireSurface(materialClass,cell);
           appendStairGeometry(
               cell,
               static_cast<float>(localX),
@@ -330,7 +332,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isLeverOrButtonRenderType(cell.renderType)) {
-          SurfaceBuildBuffers& controlSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& controlSurface = acquireSurface(materialClass,cell);
           if (isLeverBlockId(cell.blockId)) {
             appendLeverGeometry(
                 cell,
@@ -375,7 +377,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
             resolvedDoorMetadata = (resolvedDoorMetadata & 3) | 4;
           }
 
-          SurfaceBuildBuffers& doorSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& doorSurface = acquireSurface(materialClass,cell);
           appendDoorGeometry(
               cell,
               resolvedDoorMetadata,
@@ -391,7 +393,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
           const int worldX = chunkKey.originX + localX;
           const int worldY = chunkKey.originY + localY;
           const int worldZ = chunkKey.originZ + localZ;
-          SurfaceBuildBuffers& fenceSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& fenceSurface = acquireSurface(materialClass,cell);
           appendFenceGeometry(
               hasFenceNeighbor(worldX - 1, worldY, worldZ),
               hasFenceNeighbor(worldX + 1, worldY, worldZ),
@@ -417,7 +419,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
           const ChunkBlockCell* westCell = findWorldCell(worldX - 1, worldY, worldZ);
           const ChunkBlockCell* eastCell = findWorldCell(worldX + 1, worldY, worldZ);
 
-          SurfaceBuildBuffers& cactusSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& cactusSurface = acquireSurface(materialClass,cell);
           appendCactusGeometry(
               belowCell == nullptr || !isSolidSupportBlock(*belowCell),
               aboveCell == nullptr || !isSolidSupportBlock(*aboveCell),
@@ -435,7 +437,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isBedRenderType(cell.renderType) && isBedBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& bedSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& bedSurface = acquireSurface(materialClass,cell);
           appendBedGeometry(
               cell,
               static_cast<float>(localX),
@@ -447,7 +449,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isRepeaterRenderType(cell.renderType) && isRepeaterBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& repeaterSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& repeaterSurface = acquireSurface(materialClass,cell);
           appendRepeaterGeometry(
               cell,
               static_cast<float>(localX),
@@ -459,7 +461,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isPistonBaseRenderType(cell.renderType) && isPistonBaseBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass,cell);
           appendPistonBaseGeometry(
               cell,
               static_cast<float>(localX),
@@ -471,7 +473,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (isPistonHeadRenderType(cell.renderType) && isPistonHeadBlockId(cell.blockId)) {
-          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& pistonSurface = acquireSurface(materialClass,cell);
           appendPistonHeadGeometry(
               cell,
               static_cast<float>(localX),
@@ -483,7 +485,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (cell.blockId == kNetherPortalBlockId) {
-          SurfaceBuildBuffers& portalSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& portalSurface = acquireSurface(materialClass,cell);
           appendPortalGeometry(
               cell,
               static_cast<float>(localX),
@@ -495,7 +497,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
         }
 
         if (cell.renderType == kCubeBlockRenderType && usesPartialCubeBounds(cell)) {
-          SurfaceBuildBuffers& partialCubeSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& partialCubeSurface = acquireSurface(materialClass,cell);
           appendBoxGeometry(
               static_cast<float>(localX) + cell.bounds[0],
               static_cast<float>(localY) + cell.bounds[1],
@@ -571,7 +573,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
           }
 
 
-          SurfaceBuildBuffers& faceSurface = acquireSurface(materialClass);
+          SurfaceBuildBuffers& faceSurface = acquireSurface(materialClass,cell);
             appendFaceGeometry(
               faceIndex,
               static_cast<float>(localX),
@@ -587,7 +589,7 @@ void emitTerrainGeometry(const TerrainInputs& inputs, int pass, ChunkGeometryBui
               && minecraftSide >= 2
               && minecraftSide <= 5
               && normalizeTerrainTileIndex(cell.terrainTiles[minecraftSide]) == 3) {
-            SurfaceBuildBuffers& overlaySurface = acquireSurface(kCutoutTerrainMaterialClass);
+            SurfaceBuildBuffers& overlaySurface = acquireSurface(kCutoutTerrainMaterialClass,cell);
             appendFaceGeometry(
                 faceIndex,
                 static_cast<float>(localX),

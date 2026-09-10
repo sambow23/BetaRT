@@ -77,6 +77,18 @@ void ownershipAndRevisions() {
   require(update(pipeline, kKey, 1, 1, 1, kFull, std::vector<ChunkBlockCell>(4096, cell())), "old packet was not acknowledged");
   require(pipeline.statistics().pending == 0, "out of order packet changed storage");
 }
+void emissionOwnership() {
+  TerrainPipeline pipeline(2);pipeline.reset(1);pipeline.allocate(kKey,1,1);
+  std::vector<ChunkBlockCell> cells(4096);cells[0]=cell(89);cells[0].emissionLevel=15;cells[3]=cell(89);
+  require(update(pipeline,kKey,1,1,1,kFull,cells),"Emissive capture rejected");
+  auto a=waitResult(pipeline);require(a->passes[0].surfacesToBuild.size()==2,"Luminous and dark surfaces merged");
+  bool found=false;for(const auto &surface:a->passes[0].surfacesToBuild)found|=surface.emissionKey==89*16+15;
+  require(found,"Intrinsic light missing from material key");
+  require(pipeline.finish(*a,[]{}),"Emission build not published");
+  cells[0].emissionLevel=0;require(update(pipeline,kKey,1,1,2,kFull,cells),"Emission removal rejected");
+  auto b=waitResult(pipeline);require(b->passes[0].fingerprint!=a->passes[0].fingerprint,"Emission change reused stale mesh");
+  require(a->inputs.sections[13]->cells[0].emissionLevel==15,"Emissive snapshot mutated");
+}
 void neighborAndLifetimes() {
   TerrainPipeline pipeline(2);
   pipeline.reset(1);
@@ -273,6 +285,7 @@ void directFireGeometry() {
 }
 }
 int main() {
+  emissionOwnership();
   try {
     geometryReference();
     directFireGeometry();

@@ -17,7 +17,7 @@ std::uint64_t fingerprint(const std::vector<TerrainSurface>& surfaces) {
   fingerprint = detail::mixHashComponent(fingerprint, static_cast<std::uint32_t>(surfaces.size()));
 
   for (const TerrainSurface& surface : surfaces) {
-    const std::uintptr_t materialKey = surface.materialClass;
+    const std::uintptr_t materialKey = surface.materialClass | (std::uintptr_t(surface.emissionKey)<<8);
     fingerprint = detail::mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey));
     fingerprint = detail::mixHashComponent(fingerprint, static_cast<std::uint32_t>(materialKey >> 32));
     fingerprint = detail::mixHashComponent(fingerprint, static_cast<std::uint32_t>(surface.vertices.size()));

@@ -29,6 +29,8 @@ void validatePacket(const Bytes &packet, bool resources) {
         payload.read<std::uint64_t>();
         if (payload.read<std::uint32_t>() > 1 || payload.read<std::uint32_t>() > 4 ||
             payload.read<std::uint32_t>() > 4) throw std::invalid_argument("Invalid material state");
+        payload.read<std::uint64_t>(); // emissive texture id, zero means constant
+        for(int i=0;i<3;++i)if(payload.read<float>()<0)throw std::invalid_argument("Negative emission");
         break;
       case Op::Mesh: {
         payload.read<std::uint64_t>(); // material
@@ -49,11 +51,17 @@ void validatePacket(const Bytes &packet, bool resources) {
       }
     } else {
       switch (op) {
-      case Op::Camera:
+      case Op::Camera: {
         if (payload.read<std::uint32_t>() > 2) throw std::invalid_argument("Invalid camera kind");
         for (int i = 0; i < 32; ++i) payload.read<float>();
         payload.read<std::uint64_t>(); payload.read<std::uint64_t>(); // persistent world/reset epochs
+        if(payload.read<std::uint32_t>()>1)throw std::invalid_argument("Invalid environment state");
+        for(int i=0;i<3;++i)if(payload.read<float>()<0)throw std::invalid_argument("Negative sky radiance");
+        float direction[3];for(float &v:direction)v=payload.read<float>();
+        if(std::hypot(direction[0],direction[1],direction[2])<1e-6f)throw std::invalid_argument("Invalid sun direction");
+        for(int i=0;i<3;++i)if(payload.read<float>()<0)throw std::invalid_argument("Negative sun radiance");
         break;
+      }
       case Op::Draw: {
         if (!payload.read<std::uint64_t>()) throw std::invalid_argument("Zero mesh identifier");
         const auto identity = payload.read<std::uint64_t>();

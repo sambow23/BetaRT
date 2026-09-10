@@ -73,17 +73,33 @@ int main() {
     for (int i = 0; i < 9; ++i) append(bytes, std::uint32_t(0));
     return bytes;
   };
-  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 3 instance framing");
+  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 5 instance framing");
   require(!accepts(draw(0, 0, 1)) && !accepts(draw(0, 1, 1)) && !accepts(draw(18, 3, 1)) &&
           !accepts(draw(18, 1, 2)), "Malformed identities replaced an accepted frame");
   auto old = draw(18, 1, 1); old[4] = std::byte{1};
-  require(!accepts(old), "Version 1 client accepted by version 3 JNI");
-  old[4]=std::byte{2};require(!accepts(old), "Version 2 client accepted by version 3 JNI");
+  require(!accepts(old), "Version 1 client accepted by version 5 JNI");
+  old[4]=std::byte{2};require(!accepts(old), "Version 2 client accepted by version 5 JNI");
+  old[4]=std::byte{3};require(!accepts(old),"Version 3 material protocol accepted by version 5 JNI");
+  auto material=packet();append(material,std::uint32_t(Op::Material));append(material,std::uint32_t(48));
+  append(material,std::uint64_t(9));append(material,std::uint64_t(10));
+  append(material,std::uint32_t(0));append(material,std::uint32_t(1));append(material,std::uint32_t(1));
+  append(material,std::uint64_t(11));append(material,3.f);append(material,2.f);append(material,1.f);
+  validatePacket(material,true);
+  auto broken=material;broken.pop_back();rejected=false;
+  try{validatePacket(broken,true);}catch(const std::invalid_argument &){rejected=true;}
+  require(rejected,"Truncated emission accepted");
+  float negative=-1;std::memcpy(material.data()+material.size()-4,&negative,4);rejected=false;
+  try{validatePacket(material,true);}catch(const std::invalid_argument &){rejected=true;}
+  require(rejected,"Negative emission accepted");
   auto camera = [](std::uint64_t world, std::uint64_t reset) {
-    auto bytes=packet();append(bytes,std::uint32_t(Op::Camera));append(bytes,std::uint32_t(148));append(bytes,std::uint32_t(0));
+    auto bytes=packet();append(bytes,std::uint32_t(Op::Camera));append(bytes,std::uint32_t(188));append(bytes,std::uint32_t(0));
     for(int i=0;i<32;++i)append(bytes,i%5==0?1.f:0.f);
-    append(bytes,world);append(bytes,reset);return bytes;
+    append(bytes,world);append(bytes,reset);
+    append(bytes,std::uint32_t(1));
+    for(float value:{.1f,.2f,.3f,0.f,-1.f,0.f,1.f,1.f,1.f})append(bytes,value);
+    return bytes;
   };
+  old[4]=std::byte{4};require(!accepts(old),"Protocol 4 accepted without complete lighting state");
   auto epochFrame=camera(8,11);require(accepts(epochFrame),"Camera temporal metadata rejected");
   epochFrame.pop_back();require(!accepts(epochFrame),"Truncated temporal epoch accepted");
   Mailbox temporalQueue(1024);
@@ -92,6 +108,12 @@ int main() {
   Reader cameraReader(*latest.frame);cameraReader.header();cameraReader.read<std::uint32_t>();auto payload=cameraReader.slice(cameraReader.read<std::uint32_t>());
   payload.read<std::uint32_t>();for(int i=0;i<32;++i)payload.read<float>();
   require(payload.read<std::uint64_t>()==8&&payload.read<std::uint64_t>()==11,"Replaced frame lost pending history reset");
+  require(payload.read<std::uint32_t>()==1&&payload.read<float>()==.1f,"Replaced camera lost environment");
+  auto invalidEnvironment=camera(8,11);
+  float badRadiance=-1;std::memcpy(invalidEnvironment.data()+168,&badRadiance,4);
+  require(!accepts(invalidEnvironment),"Negative sky radiance accepted");
+  invalidEnvironment=camera(8,11);invalidEnvironment[164]=std::byte{2};
+  require(!accepts(invalidEnvironment),"Invalid environment enable value accepted");
   auto view = packet(); append(view, std::uint32_t(Op::TerrainView)); append(view, std::uint32_t(112));
   for (int i = 0; i < 6; ++i) append(view, i < 3 ? 10000000.125 : 9999872.0);
   for (int i = 0; i < 16; ++i) append(view, i % 5 == 0 ? 1.f : 0.f);

@@ -28,6 +28,8 @@ public final class DirectRenderer {
     private static final double[] cameraOrigin=new double[3];
     private static boolean originValid, worldCamera;
     private static long worldEpoch, historyResetEpoch;
+    public static boolean environmentEnabled;
+    public static float[] environment=new float[]{0,0,0,0,-1,0,0,0,0};
     public static void cameraCut(){++historyResetEpoch;}
     private static float[] worldView=new float[16], inverseView=new float[16];
     public static boolean objectSpace, rasterVisible=true;
@@ -100,6 +102,7 @@ public final class DirectRenderer {
         frame.clear(); uiVertices.clear(); uiIndices.clear(); uiCommands.clear();
         transientIndex = 0; Arrays.fill(cameraSent, false);
         worldCamera=false;objectSpace=false;entity=null;rasterEffectDepth=0;rasterVisible=true;
+        environmentEnabled=false;environment=new float[]{0,0,0,0,-1,0,0,0,0};
         for (long id : retiredMeshes) {
             int command = resources.command(6); resources.id(id); resources.end(command);
         }
@@ -126,11 +129,17 @@ public final class DirectRenderer {
         writeMaterial(id, textureId); return id;
     }
     public static void writeMaterial(long id, int textureId) {
+        writeMaterial(id,textureId,0,0,0,0);
+    }
+    public static void writeMaterial(long id,int textureId,int emissionTexture,float r,float g,float b) {
         DirectTextures.Texture image = DirectTextures.get(textureId);
+        DirectTextures.Texture emissive=DirectTextures.get(emissionTexture);
         int command = resources.command(2);
         resources.id(id); resources.id(textureId == 0 ? 0 : image.id);
         resources.integer(image == null ? 0 : image.filter);
         resources.integer(image == null ? 1 : image.wrapU); resources.integer(image == null ? 1 : image.wrapV);
+        resources.id(emissive==null?0:emissive.id);
+        resources.number(r);resources.number(g);resources.number(b);
         resources.end(command);
     }
     public static void textureStateChanged(int textureId) {
@@ -251,6 +260,8 @@ public final class DirectRenderer {
         for (int i = 0; i < 16; ++i)
             frame.number(i % 4 == 2 ? (projection[i] + projection[i + 1]) * .5f : projection[i]);
         frame.id(worldEpoch);frame.id(historyResetEpoch);
+        frame.integer(kind==0&&environmentEnabled?1:0);
+        for(float value:environment)frame.number(value);
         frame.end(command); cameraSent[kind] = true;
     }
     public static void terrainView(double x, double y, double z) {

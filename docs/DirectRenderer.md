@@ -27,7 +27,7 @@ path. Raster remains the default; the historical capture renderer stays removed.
   event/text/metrics exports and implement existing PNG screenshot requests.
 - Preserve base colors, tints, transparency and gameplay feedback. Raster remains
   unlit; optional hardware path tracing evaluates a selected distant light and
-  diffuse indirect illumination with REBLUR SH and native TAA; no upscaling or PBR materials.
+  sun/sky diffuse lighting and visible glow with SHARC, REBLUR SH and native TAA; no upscaling or PBR materials.
 
 ## Implementation
 
@@ -54,7 +54,7 @@ invalidate widths/meshes when their atlas changes. Generated item/sprite geometr
 has a 512-entry, 8 MiB cache. Terrain residency belongs to loaded chunks and
 camera distance; see [terrain ownership](TerrainPipeline.md).
 
-The private JNI protocol uses version 3, a bounded little-endian packet format. Camera packets carry world and reset epochs on every submission; client and JNI must be updated together.
+The private JNI protocol uses version 5, a bounded little-endian packet format. Camera packets carry world/reset epochs and complete enabled sky RGB/sun direction/sun RGB state on every submission; client and JNI must be updated together.
 Version 2 adds stable instance identities, classification, independent raster
 visibility and separate camera/object transforms; mismatched clients are rejected.
 JNI copies its input before returning. The mailbox holds one executing frame

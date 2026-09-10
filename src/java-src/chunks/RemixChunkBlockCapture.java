@@ -57,7 +57,8 @@ final class RemixChunkBlockCapture {
         records[offset++] = Float.floatToRawIntBits(liquidHeight1);
         records[offset++] = Float.floatToRawIntBits(liquidHeight2);
         records[offset++] = Float.floatToRawIntBits(liquidHeight3);
-        records[offset] = Float.floatToRawIntBits(liquidFlowAngle);
+        records[offset++] = Float.floatToRawIntBits(liquidFlowAngle);
+        records[offset] = Math.max(0, Math.min(15, uu.s[blockId]));
     }
 
     private static boolean isWaterBlock(int blockId) {

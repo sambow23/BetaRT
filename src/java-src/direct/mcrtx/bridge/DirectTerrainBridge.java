@@ -1,7 +1,7 @@
 package mcrtx.bridge;
 
 public final class DirectTerrainBridge {
-    public static final int RECORD_WORDS = 23;
+    public static final int RECORD_WORDS = 24;
     private DirectTerrainBridge() { }
 
     public static void resetTerrain(long world) {

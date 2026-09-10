@@ -30,12 +30,12 @@ public final class DirectIdentityTest {
         Field field=DirectRenderer.class.getDeclaredField("frame");field.setAccessible(true);
         ByteBuffer source=((DirectPacket)field.get(null)).buffer();ByteBuffer packet=source.duplicate().order(ByteOrder.LITTLE_ENDIAN);
         packet.limit(source.position());packet.position(0);
-        require(packet.getInt()==0x54435244&&packet.getInt()==3,"Protocol v3");
+        require(packet.getInt()==0x54435244&&packet.getInt()==5,"Protocol v5");
         Map<Long,float[]> result=new HashMap<Long,float[]>();
         while(packet.remaining()>0){
             int operation=packet.getInt(),size=packet.getInt(),end=packet.position()+size;
             if(operation==16){
-                require(size==148,"Complete v3 camera metadata");
+                require(size==188,"Complete v5 camera metadata");
                 int kind=packet.getInt();packet.position(packet.position()+128);
                 long world=packet.getLong(),reset=packet.getLong();
                 if(kind==0){temporalWorld=world;temporalReset=reset;}

@@ -9,6 +9,7 @@ namespace mcrtx {
 
 struct TerrainSurface : geometry::SurfaceBuildBuffers {
   std::uint8_t materialClass {0};
+  std::uint16_t emissionKey {0};
 };
 
 struct ChunkGeometryBuild {

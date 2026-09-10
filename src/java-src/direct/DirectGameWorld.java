@@ -11,9 +11,11 @@ public final class DirectGameWorld {
     public static double originX,originY,originZ;
     private static int atlas,water,lava,portal;
     private static long atlasRevision=-1;
+    private static final int[] emissionTextures=new int[256];
+    private static final int[][] emissionPixels=new int[256][];
     private static DirectRenderer.Mesh dome,stars,sun,moon;
     private DirectGameWorld() { }
-    public static void reset(){atlas=water=lava=portal=0;atlasRevision=-1;}
+    public static void reset(){atlas=water=lava=portal=0;atlasRevision=-1;Arrays.fill(emissionTextures,0);Arrays.fill(emissionPixels,null);}
     public static void initialize(n renderer,Minecraft game,ji textures){
         renderer.t=game;renderer.l=textures;renderer.a=new ArrayList();renderer.m=new ArrayList();
         renderer.H=-1;renderer.f=renderer.g=renderer.h=-9999;renderer.c=ge.d(0);
@@ -78,6 +80,21 @@ public final class DirectGameWorld {
         if(atlasRevision==source.revision)return;atlasRevision=source.revision;
         extract(source,water,205,206);extract(source,lava,237,238);extract(source,portal,14);
         for(int i=0;i<8;++i)DirectRenderer.writeMaterial(i+1,i==2?water:i==3?lava:i==5?portal:atlas);
+        for(int block=0;block<uu.m.length&&block<256;++block) {
+            int level=uu.s[block];if(uu.m[block]==null||level<=0)continue;
+            int color=(block==10||block==11)?lava:block==90?portal:atlas;
+            DirectTextures.Texture image=DirectTextures.pixels(color);
+            int[] mask=mcrtx.render.DirectEmission.mask(image,block);
+            if(emissionTextures[block]==0)emissionTextures[block]=DirectTextures.allocate();
+            if(!Arrays.equals(mask,emissionPixels[block])) {
+                DirectTextures.image(emissionTextures[block],mask,image.width,image.height,false,false);
+                emissionPixels[block]=mask;
+            }
+            float power=mcrtx.render.DirectEmission.radiance(level);
+            for(int material=0;material<8;++material)
+                DirectRenderer.writeMaterial(0x6000000000000000L+(block*16+level)*8+material,
+                    material==2?water:material==3?lava:material==5?portal:atlas,emissionTextures[block],power,power,power);
+        }
     }
     private static void extract(DirectTextures.Texture source,int id,int... tiles){
         int size=source.width/16,height=source.height/16;int[] pixels=new int[size*tiles.length*height];
@@ -112,6 +129,14 @@ public final class DirectGameWorld {
                 points.add(x*40+tx*a+bx*b);points.add(y*40+by*b);points.add(z*40+tz*a+bz*b);points.add(0f);points.add(0f);}
         }
         float[] data=new float[points.size()];for(int i=0;i<data.length;++i)data[i]=points.get(i);stars=mesh(data);
+    }
+    public static void environment(n renderer,float partial){
+        boolean enabled=!renderer.k.t.c;
+        bt color=enabled?renderer.k.a(renderer.t.i,partial):null;
+        DirectRenderer.environmentEnabled=enabled;
+        DirectRenderer.environment=mcrtx.render.DirectEnvironment.lighting(enabled,
+            enabled?(float)color.a:0,enabled?(float)color.b:0,enabled?(float)color.c:0,
+            renderer.k.b(partial),renderer.k.g(partial),renderer.k.f(partial));
     }
     public static void sky(n renderer,float partial){
         if(renderer.k.t.c)return;initializeSky();

@@ -1,6 +1,6 @@
 package mcrtx.bridge;
 public final class DirectTerrainBridge {
-    public static final int RECORD_WORDS = 23;
+    public static final int RECORD_WORDS = 24;
     public static boolean accept = true;
     public static int updates, removals, allocations;
     public static long lastRevision;

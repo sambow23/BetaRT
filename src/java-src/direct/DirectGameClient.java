@@ -76,6 +76,7 @@ public final class DirectGameClient {
         DirectRenderer.ui=false;DirectRenderer.layer=0;DirectRenderer.depthEnabled=true;
         DirectRenderer.cullEnabled=true;DirectRenderer.blendEnabled=false;DirectRenderer.alphaEnabled=true;
         renderer.a(partial,0); // Vanilla camera collision, bobbing, hurt, sleeping and third person.
+        DirectGameWorld.environment(game.g,partial);
         DirectRenderer.terrainView(DirectGameWorld.originX,DirectGameWorld.originY,DirectGameWorld.originZ);
         sr frustum=new sr();frustum.a(DirectGameWorld.originX,DirectGameWorld.originY,DirectGameWorld.originZ);
         DirectGameWorld.sky(game.g,partial);

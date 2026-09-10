@@ -7,10 +7,10 @@
 #include <type_traits>
 
 namespace mcrtx::direct {
-// Private JNI protocol: little-endian, version 3, independent of public ABI.
+// Private JNI protocol: little-endian, version 5, independent of public ABI.
 // Header: magic/version. Commands: opcode, payload bytes, then tightly packed payload.
 inline constexpr std::uint32_t kMagic = 0x54435244; // DRCT
-inline constexpr std::uint32_t kVersion = 3;
+inline constexpr std::uint32_t kVersion = 5;
 enum class Op : std::uint32_t {
   Texture = 1, Material = 2, Mesh = 3,
   DestroyTexture = 4, DestroyMaterial = 5, DestroyMesh = 6,

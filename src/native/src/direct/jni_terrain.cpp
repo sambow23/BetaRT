@@ -42,7 +42,7 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_DirectTerrainBridge_nUpdateSection(
       || (x & 15) || (y & 15) || (z & 15) || y < 0 || y >= 128) {
     return JNI_FALSE;
   }
-  constexpr int kRecordWords = 23;
+  constexpr int kRecordWords = 24;
   const int count = (maxX - minX + 1) * (maxY - minY + 1) * (maxZ - minZ + 1);
   if (env->GetArrayLength(records) != count * kRecordWords) {
     return JNI_FALSE;
@@ -60,6 +60,8 @@ JNIEXPORT jboolean JNICALL Java_mcrtx_bridge_DirectTerrainBridge_nUpdateSection(
         continue;
       }
       auto& cell = cells[i];
+      if(pRecord[23]<0||pRecord[23]>15)return JNI_FALSE;
+      cell.emissionLevel=pRecord[23];
       cell.blockId = pRecord[0];
       cell.blockMetadata = pRecord[1];
       cell.renderType = pRecord[2];

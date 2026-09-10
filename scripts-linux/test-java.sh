@@ -21,16 +21,24 @@ mapfile -t test_queue_sources < <(rg --files src/tests/java/chunks -g '*.java' |
   src/java-src/chunks/DirtyChunkSection.java src/java-src/chunks/RemixChunkSectionKey.java \
   src/java-src/direct/DirectSectionResidency.java src/java-src/direct/DirectSectionUpdates.java
 "$test_java" -cp "$test_output/queue" TerrainQueueTest
-"$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" src/tests/java/direct/DirectClassLoadingTest.java src/tests/java/direct/DirectIdentityTest.java
+"$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" src/tests/java/direct/DirectClassLoadingTest.java src/tests/java/direct/DirectIdentityTest.java src/tests/java/direct/DirectEmissionTest.java src/tests/java/direct/DirectEnvironmentTest.java
 "$test_java" -Xverify:all -cp "$test_output/client:$test_client" DirectClassLoadingTest "$test_client"
 "$test_java" -cp "$test_output/client:$test_client" DirectIdentityTest
+"$test_java" -cp "$test_output/client:$test_client" DirectEmissionTest
+"$test_java" -cp "$test_output/client:$test_client" DirectEnvironmentTest
 if [[ ${MCRTX_TEST_GPU:-0} == 1 ]]; then
   mapfile -t test_sources < <(rg --files src/tests/java/direct -g '*.java' | sort)
   "$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" "${test_sources[@]}"
   for test_name in DirectTransportTest DirectClientTest DirectStartupTest DirectWorldTest; do
     test_data="$test_output/$test_name"
     [[ $test_name != DirectTransportTest ]] || test_data="$test_data.png"
-    timeout 60 "$test_java" -Djava.awt.headless=true -Dmcrtx.test.directGpu=true \
+    test_backend=raster
+    test_timeout=60
+    if [[ $test_name == DirectWorldTest ]]; then
+      test_backend=${MCRTX_RENDER_BACKEND:-raster}
+      test_timeout=300
+    fi
+    timeout "$test_timeout" env MCRTX_RENDER_BACKEND="$test_backend" "$test_java" -Djava.awt.headless=true -Dmcrtx.test.directGpu=true \
       -cp "$test_output/client:$test_client" "$test_name" "$test_data"
   done
 fi

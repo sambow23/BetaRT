@@ -175,6 +175,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     m_presentCount = function<PFN_remixapi_GetPresentationCount>(m_library, "remixapi_GetPresentationCount");
     m_traceStats = function<PFN_remixapi_GetTracingStatisticsEXT>(m_library, "remixapi_GetTracingStatisticsEXT");
     m_denoiseStats = function<PFN_remixapi_GetDenoisingStatisticsEXT>(m_library, "remixapi_GetDenoisingStatisticsEXT");
+    m_samplingStats = function<PFN_remixapi_GetSamplingStatisticsEXT>(m_library, "remixapi_GetSamplingStatisticsEXT");
+    m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT");
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -195,7 +197,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     }
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
         {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
-        {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}}) {
+        {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
+        {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
+        {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"}}) {
       auto value = detail::readEnvironmentVariable(environment);
       if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
     }
@@ -204,7 +208,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     distant.direction = {-.423999f, -.847998f, -.317999f};
     remixapi_LightInfo daylight = {};
     daylight.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO; daylight.pNext = &distant;
-    daylight.hash = 0x6fffffffffffffffull; daylight.radiance = {3.14159265f, 3.14159265f, 3.14159265f};
+    daylight.hash = 0x6fffffffffffffffull;
     check(m_api.CreateLight(&daylight, &m_daylight));
     events();
     {
@@ -217,7 +221,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -252,13 +256,17 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       remixapi_TracingStatisticsEXT tracing = {};
       tracing.structSize = sizeof(tracing);
       check(m_traceStats(&tracing));
-      const bool accumulation = tracing.redrawRequested != 0;
+      const bool accumulation = tracing.accumulationEnabled != 0;
       remixapi_DenoisingStatisticsEXT denoising = {};
       denoising.structSize = sizeof(denoising);
       check(m_denoiseStats(&denoising));
-      const bool temporal = denoising.redrawRequested != 0;
+      remixapi_LightingStatisticsEXT illumination{};illumination.structSize=sizeof(illumination);
+      check(m_lightingStats(&illumination));
+      remixapi_SamplingStatisticsEXT sampling{};sampling.structSize=sizeof(sampling);
+      check(m_samplingStats(&sampling));
+      const bool temporal = denoising.redrawRequested != 0 || illumination.redrawRequested != 0;
       if (state.minimized || !state.drawableWidth || !state.drawableHeight) continue;
-      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation || temporal)) {
+      if (m_lastFrame && (m_pendingSequence != m_lastSequence || terrainChanged || redraw || accumulation || tracing.redrawRequested || temporal)) {
         MCRTX_PERF_CPU_SCOPE(perf::Side::Native, "direct.frame");
         framePacket(*m_lastFrame);
         drawTerrain();
@@ -278,6 +286,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         perf::recordCount(perf::Side::Native, "direct.accumulationRedraw", !fresh && accumulation ? 1 : 0);
         check(m_traceStats(&tracing));
         check(m_denoiseStats(&denoising));
+        check(m_lightingStats(&illumination));
+      remixapi_SamplingStatisticsEXT sampling{};sampling.structSize=sizeof(sampling);
+      check(m_samplingStats(&sampling));
         perf::recordCount(perf::Side::Native, "direct.temporalRedraw", !fresh && temporal ? 1 : 0);
         perf::recordCount(perf::Side::Native, "trace.samples", tracing.samplesPerPixel);
         perf::recordCount(perf::Side::Native, "trace.accumulation", tracing.accumulationCount);
@@ -300,7 +311,13 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
             << tracing.gpuBuildMilliseconds << ',' << tracing.gpuTraceMilliseconds << ',' << m_uploadBytes << ','
             << tracing.accelerationBytes << ',' << tracing.blasBuilds << ',' << tracing.blasRefits << ',' << tracing.blasCompactions << ','
             << tracing.staticTlasBuilds << ',' << tracing.dynamicTlasBuilds << ',' << tracing.dynamicTlasRefits << ','
-            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << ',' << (!fresh && temporal ? 1 : 0) << ',' << denoising.gpuConfidenceMilliseconds << ',' << denoising.gpuDenoiseMilliseconds << ',' << denoising.gpuTaaMilliseconds << ',' << denoising.memoryBytes << ',' << denoising.historyResets << ',' << denoising.activeDenoiser << ',' << denoising.activeTaa << '\n';
+            << tracing.dynamicRebuildReason << ',' << tracing.sceneGeneration << ',' << tracing.samplesPerPixel << ',' << tracing.accumulationCount << ',' << (!fresh && temporal ? 1 : 0) << ',' << denoising.gpuConfidenceMilliseconds << ',' << denoising.gpuDenoiseMilliseconds << ',' << denoising.gpuTaaMilliseconds << ',' << denoising.memoryBytes << ',' << denoising.historyResets << ',' << denoising.activeDenoiser << ',' << denoising.activeTaa << ',' << illumination.activeRtxdi << ',' << illumination.activeSharc << ',' << illumination.emitterCount << ',' << illumination.gpuLightPrepareMilliseconds << ',' << illumination.gpuRtxdiMilliseconds << ',' << illumination.gpuSharcUpdateMilliseconds << ',' << illumination.gpuSharcResolveMilliseconds << ',' << illumination.memoryBytes << ',' << illumination.cacheQueries << ',' << illumination.cacheHits << ',' << illumination.cacheOccupied << ',' << illumination.cacheResets << ',' << illumination.gpuDirectDenoiseMilliseconds
+            << ',' << sampling.requestedSampler << ',' << sampling.activeSampler << ',' << sampling.requestedDownscale << ',' << sampling.activeDownscale
+            << ',' << sampling.requestedIndirect << ',' << sampling.activeIndirect << ',' << sampling.lightingWidth << ',' << sampling.lightingHeight
+            << ',' << sampling.lightCandidates << ',' << sampling.skyEnabled << ',' << sampling.primaryShadingLocations << ',' << sampling.transparentRecords
+            << ',' << sampling.unavailableOpaque << ',' << sampling.unavailableTransparent << ',' << sampling.gpuCandidatesMilliseconds
+            << ',' << sampling.gpuTemporalReuseMilliseconds << ',' << sampling.gpuSpatialReuseMilliseconds << ',' << sampling.gpuVisibilityMilliseconds
+            << ',' << sampling.gpuReconstructionMilliseconds << ',' << sampling.gpuLightBvhMilliseconds << ',' << sampling.lightBvhBuilds << ',' << sampling.lightBvhRefits << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
         perf::onFramePresented();
@@ -345,6 +362,10 @@ void Runtime::material(std::uint64_t id) {
   info.hash = id;
   info.pNext = &opaque;
   info.albedoTexture = source.texture ? path.c_str() : nullptr;
+  const auto emissionPath=texturePath(source.emissionTexture);
+  info.emissiveTexture=source.emissionTexture?emissionPath.c_str():nullptr;
+  info.emissiveColorConstant={source.emission[0],source.emission[1],source.emission[2]};
+  info.emissiveIntensity=1;
   info.filterMode = source.filter;
   info.wrapModeU = source.wrapU;
   info.wrapModeV = source.wrapV;
@@ -377,7 +398,7 @@ void Runtime::resourcePacket(const Bytes &bytes) {
       check(m_api.CreateTexture(&info, &result));
       check(m_api.RegisterUITexture(id, info.width, info.height, info.format, info.data, info.dataSize));
       for (const auto &[materialId, source] : m_materials) {
-        if (source.texture == id) material(materialId);
+        if (source.texture == id || source.emissionTexture == id) material(materialId);
       }
       break;
     }
@@ -387,6 +408,8 @@ void Runtime::resourcePacket(const Bytes &bytes) {
       value.filter = data.read<std::uint32_t>();
       value.wrapU = data.read<std::uint32_t>();
       value.wrapV = data.read<std::uint32_t>();
+      value.emissionTexture=data.read<std::uint64_t>();
+      for(auto &component:value.emission)component=data.read<float>();
       m_materials[id] = value;
       material(id);
       break;
@@ -450,6 +473,22 @@ void Runtime::framePacket(const Bytes &bytes) {
       temporal.sType = REMIXAPI_STRUCT_TYPE_CAMERA_TEMPORAL_EXT;
       temporal.worldEpoch = data.read<std::uint64_t>();
       temporal.historyResetEpoch = data.read<std::uint64_t>();
+      remixapi_CameraEnvironmentEXT environment{};
+      environment.sType=REMIXAPI_STRUCT_TYPE_CAMERA_ENVIRONMENT_EXT;
+      environment.enabled=data.read<std::uint32_t>();
+      environment.radiance={data.read<float>(),data.read<float>(),data.read<float>()};
+      remixapi_LightInfoDistantEXT sun{};
+      sun.sType=REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
+      sun.direction={data.read<float>(),data.read<float>(),data.read<float>()};
+      remixapi_LightInfo sunlight{};
+      sunlight.sType=REMIXAPI_STRUCT_TYPE_LIGHT_INFO;sunlight.pNext=&sun;
+      sunlight.hash=0x6fffffffffffffffull;
+      sunlight.radiance={data.read<float>(),data.read<float>(),data.read<float>()};
+      if(!environment.enabled)sunlight.radiance={};
+      if(info.type==REMIXAPI_CAMERA_TYPE_WORLD) {
+        temporal.pNext=&environment;
+        check(m_api.UpdateLightDefinition(m_daylight,&sunlight));
+      }
       info.pNext = &temporal;
       check(m_api.SetupCamera(&info));
       break;
@@ -559,8 +598,9 @@ bool Runtime::terrainPublish() {
       std::vector<remixapi_MeshInfoSurfaceTriangles> surfaces;
       for (const auto &source : result->passes[pass].surfacesToBuild) {
         if (source.indices.empty()) continue;
-        // Reserved material IDs 1..8 describe the eight existing terrain classes.
-        if (!m_materials.count(1 + source.materialClass)) {
+        // IDs 1..8 are diffuse classes; emissive variants are immutable per block/light level.
+        const std::uint64_t materialId=source.emissionKey?0x6000000000000000ull+source.emissionKey*8+source.materialClass:1+source.materialClass;
+        if (!m_materials.count(materialId)) {
           for (unsigned p = 0; p < 2; ++p) if (next.handles[p] && !reused[p]) check(m_api.DestroyMesh(next.handles[p]));
           m_terrain.retry(std::move(result));
           return changed;
@@ -568,7 +608,7 @@ bool Runtime::terrainPublish() {
         remixapi_MeshInfoSurfaceTriangles surface = {};
         surface.vertices_values = source.vertices.data(); surface.vertices_count = source.vertices.size();
         surface.indices_values = source.indices.data(); surface.indices_count = source.indices.size();
-        surface.material = handle<remixapi_MaterialHandle>(1 + source.materialClass);
+        surface.material = handle<remixapi_MaterialHandle>(materialId);
         surfaces.push_back(surface);
       }
       next.fingerprints[pass] = result->passes[pass].fingerprint;

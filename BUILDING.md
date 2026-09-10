@@ -62,10 +62,10 @@ Set `MCRTX_TEST_GPU=1`, `MCRTX_JNI_PATH` and `MCRTX_REMIX_PATH` to include Java/
 real vanilla menu/model/startup and in-memory world tests. `SDL_VIDEODRIVER=offscreen`
 works with a compatible software Vulkan driver. Enable `REMIX_VULKAN_VALIDATION=1`
 and synchronization validation with the installed validation layer for GPU tests.
-The test classpath excludes all LWJGL modules; local audio therefore uses the
+Set `MCRTX_RENDER_BACKEND=pathtrace` to exercise the in-memory world with lighting reuse; the transport, menu and exact raster-pixel fixtures retain raster. World tests allow cold driver compilation before timing warmup. The test classpath excludes all LWJGL modules; local audio therefore uses the
 vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
 
-The private JNI protocol is version 3, independently of the public Remix SDK. Update the patched JAR and JNI together; the paired runtime must export native denoising statistics. Path tracing defaults to REBLUR SH and TAA; `MCRTX_PT_DENOISER=off` and `MCRTX_PT_TAA=0` select raw output.
+The private JNI protocol is version 5, independently of the public Remix SDK. Update the patched JAR and JNI together; the paired runtime must export native denoising, lighting and sampling statistics. Path tracing uses sun/sky illumination and visible surface glow, with SHARC, REBLUR SH and TAA enabled by default. `MCRTX_PT_SHARC=off` bypasses caching; `MCRTX_PT_DENOISER=off` and `MCRTX_PT_TAA=0` select raw output. Legacy emissive sampling settings remain accepted as deprecated no-ops.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.
