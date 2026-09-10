@@ -17,8 +17,8 @@ TAA default on. SHARC caches indirect diffuse radiance; SIGMA filters primary
 opaque sun visibility with distance-dependent penumbra. BetaRT supplies a
 0.533-degree sun diameter. F12 exposes SIGMA and a sun-size override; zero diameter
 retains hard shadows. See [SIGMA details](../../openremix/docs/features/sigma.md).
-Openremix has no emitter sampling, glow, moonlight, cubemap,
-upscaling, specular material model, physical refraction or acceleration-structure disk cache.
+Openremix supports analytic sphere-light sampling; general mesh-emitter sampling, glow, moonlight, cubemap,
+upscaling, a specular material model, physical refraction and acceleration-structure disk caches remain unavailable.
 
 ## Launch controls
 
@@ -34,6 +34,10 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_SIGMA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SUN_DIAMETER` | -1 inherit, 0–10 degrees override | -1 (game: 0.533) |
 | `MCRTX_PT_SHADOW_DEBUG` | 0 final, 1 raw visibility, 2 SIGMA visibility | 0 |
+| `MCRTX_PT_LOCAL_LIGHTS` | 0/1 or false/true | 1 |
+| `MCRTX_PT_LOCAL_SAMPLES` | 1–16 primary local samples | 2 |
+| `MCRTX_PT_LOCAL_DENOISER` | 0/1 or false/true (with REBLUR enabled) | 1 |
+| `MCRTX_PT_LOCAL_INTENSITY` | 0–100 radiance multiplier | 1 |
 | `MCRTX_PT_SHARC` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SKY` | 0 or 1 | 1 |
 | `MCRTX_PT_TAA` | 0/1 or false/true | 1 |
@@ -49,6 +53,21 @@ remain on raster. Tracing hardware validation is limited to the Linux RTX 2080 h
 Windows, macOS and Android hardware validation has not been performed.
 
 Raw one-sample output is noisy. REBLUR SH filters indirect lighting; TAA resolves native-resolution world edges and transparent-light noise before raster gameplay overlays.
+Normal torches and lit redstone torches provide analytic sphere illumination.
+The native terrain worker extracts flame positions from existing v5 block data;
+accepted section publications retain stable IDs by cell and lifetime. Wall-mounted
+flames use their rendered cap offsets. Unlit redstone keeps a zero-power slot,
+while removed chunks retire their lights. All resident torches contribute,
+including those outside the camera frustum. Stale worker results never update
+light handles.
+
+The renderer uses a persistent LightBVH with a default budget of two samples at
+opaque primary surfaces and one at diffuse bounces, SHARC updates and transparent
+sheets. Local primary radiance uses a separate NRD filter; SIGMA continues to
+filter only the sun. F12 exposes local light controls and diagnostics. See
+[local-light architecture](../../openremix/docs/features/local-lights.md) for
+radiance strengths, sampling, temporal behavior and current limitations.
+
 Progressive accumulation bypasses SIGMA, REBLUR, TAA and SHARC while retaining their requested settings. It can improve a stationary scene,
 but camera motion, object animation, used animated textures or other scene changes
 reset it. UI-only redraws do not invalidate it. The worker treats accumulation and warming temporal histories as
@@ -62,12 +81,13 @@ raster visibility to Draw. TerrainView carries double-precision camera and float
 origin coordinates separately from its original view matrix. The original Remix
 0.1003 interface remains unchanged; its independent native extension supplies the
 identity, camera temporal/environment metadata and backend/tracing/denoising APIs.
-Lighting, sampling, SHARC and SIGMA statistics are compile-gated against the SDK and loaded as
+Lighting, sampling, SHARC, SIGMA and local-light statistics are compile-gated against the SDK and loaded as
 optional exports; unsupported CSV fields remain explicitly `unavailable`. SIGMA
 adds `sigma`, `gpu_sigma_ms`, `sigma_history_resets` and `sun_diameter_degrees`;
 `gpu_nrd_ms` remains indirect REBLUR timing.
 Protocol-v5 material emission fields and the 24-word terrain snapshot remain
-transport-compatible, but openremix does not use them for glow or lighting.
+transport-compatible. Torch lighting derives from block identity and orientation;
+material emission fields do not enable general mesh emission or glow.
 Every camera packet carries world and history-reset epochs, preserving world/cut/rebase resets through replaced pending frames. Camera motion and normal object animation keep temporal history; incompatible mesh changes invalidate affected surfaces. Material/texture and ordinary time/weather changes affect shading confidence independently from geometric motion, without global history resets. Sky changes invalidate progressive accumulation. Zero indirect bounces disables sky lighting.
 
 JNI copies the complete packet before returning. Framing, versions, finite values,
@@ -135,9 +155,9 @@ not compile or change launcher options. The default remains raster after staging
 `MCRTX_PT_PROFILE` records per-presentation CSV with fresh/redraw status,
 presentation intervals, tracing/confidence/NRD/TAA timings, history resets,
 resource traffic and acceleration statistics. Unsupported lighting/sampling
-statistics fields are `unavailable`, never fabricated zero counters. Settings for
-SHARC, emitter sampling and checkerboard sampling belong to other companion
-runtimes and are not supported by openremix.
+statistics fields are `unavailable`, never fabricated zero counters. Legacy RTXDI, general emissive-mesh sampling and checkerboard-sampling controls
+belong to other companion runtimes. The separate local-light diagnostics report
+light count, sample budget, BVH builds/refits, CPU update cost and torch NRD time.
 
 Keep screenshots, validation results and deployment manifests in ignored
 `_work/reports/`. Stage the renderer, JNI and patched JAR as a matched set with the

@@ -38,11 +38,13 @@ private:
     std::uint64_t emissionTexture=0;
     std::array<float,3> emission{};
   };
+  struct Torch { TerrainTorch source; std::uint64_t id = 0; };
   struct TerrainMesh {
     std::array<remixapi_MeshHandle, 2> handles {};
     std::array<std::uint64_t, 2> fingerprints {};
     std::uint64_t lifetime = 0, world = 0;
     std::array<std::uint64_t, 2> identities {};
+    std::vector<Torch> torches;
   };
   mutable std::mutex m_mutex;
   std::condition_variable m_started;
@@ -64,6 +66,9 @@ private:
   PFN_remixapi_GetPresentationCount m_presentCount = nullptr;
   PFN_remixapi_GetTracingStatisticsEXT m_traceStats = nullptr;
   PFN_remixapi_GetDenoisingStatisticsEXT m_denoiseStats = nullptr;
+#if MCRTX_HAS_LOCALLIGHT_STATISTICS
+  PFN_remixapi_GetLocalLightStatisticsEXT m_localStats = nullptr;
+#endif
 #if MCRTX_HAS_SHADOW_STATISTICS
   PFN_remixapi_GetShadowStatisticsEXT m_shadowStats = nullptr;
 #endif
@@ -79,6 +84,13 @@ private:
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;
+  struct TorchLight {
+    remixapi_LightHandle handle = nullptr;
+    std::array<float, 3> position {}, radiance {};
+    float radius = 0;
+    bool seen = false;
+  };
+  std::unordered_map<std::uint64_t, TorchLight> m_torchLights;
   TerrainPipeline m_terrain;
   std::array<double, 3> m_origin {}, m_floatingOrigin {};
   std::array<float, 16> m_view {};

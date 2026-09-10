@@ -181,6 +181,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_LIGHTING_STATISTICS
     m_lightingStats = function<PFN_remixapi_GetLightingStatisticsEXT>(m_library, "remixapi_GetLightingStatisticsEXT", false);
 #endif
+#if MCRTX_HAS_LOCALLIGHT_STATISTICS
+    m_localStats = function<PFN_remixapi_GetLocalLightStatisticsEXT>(m_library, "remixapi_GetLocalLightStatisticsEXT", false);
+#endif
 #if MCRTX_HAS_SHADOW_STATISTICS
     m_shadowStats = function<PFN_remixapi_GetShadowStatisticsEXT>(m_library, "remixapi_GetShadowStatisticsEXT", false);
 #endif
@@ -206,6 +209,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       else check(result);
     }
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
+        {"MCRTX_PT_LOCAL_LIGHTS", "localLights"}, {"MCRTX_PT_LOCAL_SAMPLES", "localSamples"},
+        {"MCRTX_PT_LOCAL_DENOISER", "localDenoiser"}, {"MCRTX_PT_LOCAL_INTENSITY", "localIntensity"},
         {"MCRTX_PT_SIGMA", "sigma"}, {"MCRTX_PT_SUN_DIAMETER", "sunAngularDiameter"},
         {"MCRTX_PT_SHADOW_DEBUG", "shadowDebug"}, {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
         {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
@@ -235,7 +240,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees,local_lights,local_active_lights,local_samples,local_nodes,local_tree_depth,local_bvh_builds,local_bvh_refits,local_bvh_cpu_ms,local_bvh_bytes,local_denoiser,gpu_local_nrd_ms\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -389,6 +394,18 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           } else
 #endif
           profile << ",unavailable,unavailable,unavailable,unavailable";
+#if MCRTX_HAS_LOCALLIGHT_STATISTICS
+          remixapi_LocalLightStatisticsEXT local{};
+          local.structSize = sizeof(local);
+          if (m_localStats && m_localStats(&local) == REMIXAPI_ERROR_CODE_SUCCESS) {
+            profile << ',' << local.lightCount << ',' << local.activeLights << ',' << local.samples << ',' << local.nodeCount
+                    << ',' << local.treeDepth << ',' << local.builds << ',' << local.refits << ',' << local.cpuUpdateMilliseconds
+                    << ',' << local.memoryBytes << ',' << local.denoiserActive << ',';
+            if (local.gpuTimingsAvailable) profile << local.gpuDenoiseMilliseconds;
+            else profile << "unavailable";
+          } else
+#endif
+          for (unsigned i = 0; i < 11; ++i) profile << ",unavailable";
           profile << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
@@ -409,6 +426,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
   m_api = {};
   m_materials.clear();
   m_chunks.clear();
+  m_torchLights.clear();
   m_lastFrame.reset();
   {
     std::lock_guard lock(m_mutex);
@@ -657,6 +675,18 @@ bool Runtime::terrainPublish() {
     next.lifetime = result->inputs.lifetime;
     next.world = result->inputs.world;
     const auto previous = m_chunks.find(result->inputs.key);
+    const bool sameLifetime = previous != m_chunks.end() && previous->second.lifetime == next.lifetime &&
+                              previous->second.world == next.world;
+    for (const auto& source : result->torches) {
+      std::uint64_t id = 0;
+      if (sameLifetime) {
+        const auto& old = previous->second.torches;
+        const auto found = std::lower_bound(old.begin(), old.end(), source.cell,
+            [](const Torch& torch, std::uint32_t cell) { return torch.source.cell < cell; });
+        if (found != old.end() && found->source.cell == source.cell) id = found->id;
+      }
+      next.torches.push_back({source, id ? id : m_nextTerrainId++});
+    }
     std::array<bool, 2> reused = {};
     for (unsigned pass = 0; pass < 2; ++pass) {
       next.fingerprints[pass] = result->passes[pass].fingerprint;
@@ -706,7 +736,35 @@ bool Runtime::terrainPublish() {
 }
 
 void Runtime::drawTerrain() {
+  for (auto& [id, light] : m_torchLights) light.seen = false;
   for (const auto &[key, chunk] : m_chunks) {
+    // Submit all resident lights, independent of the raster frustum. API changes
+    // happen only here, after terrainPublish has accepted a complete section.
+    for (const auto& torch : chunk.torches) {
+      auto& light = m_torchLights[torch.id];
+      const std::array<float, 3> position = {
+        float(double(key.originX) + torch.source.position[0] - m_floatingOrigin[0]),
+        float(double(key.originY) + torch.source.position[1] - m_floatingOrigin[1]),
+        float(double(key.originZ) + torch.source.position[2] - m_floatingOrigin[2])};
+      if (!light.handle || light.position != position || light.radiance != torch.source.radiance || light.radius != torch.source.radius) {
+        remixapi_LightInfoSphereEXT sphere{};
+        sphere.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_SPHERE_EXT;
+        sphere.position = {position[0], position[1], position[2]};
+        sphere.radius = torch.source.radius;
+        remixapi_LightInfo info{};
+        info.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO;
+        info.pNext = &sphere;
+        info.hash = torch.id;
+        info.radiance = {torch.source.radiance[0], torch.source.radiance[1], torch.source.radiance[2]};
+        if (light.handle) check(m_api.UpdateLightDefinition(light.handle, &info));
+        else check(m_api.CreateLight(&info, &light.handle));
+        light.position = position;
+        light.radiance = torch.source.radiance;
+        light.radius = torch.source.radius;
+      }
+      check(m_api.DrawLightInstance(light.handle));
+      light.seen = true;
+    }
     remixapi_InstanceInfo draw = {};
     draw.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
     const double position[3] = {key.originX - m_origin[0], key.originY - m_origin[1], key.originZ - m_origin[2]};
@@ -752,6 +810,12 @@ void Runtime::drawTerrain() {
       blend.alphaBlendEnabled = pass != 0;
       if (draw.mesh) check(m_api.DrawInstance(&draw));
     }
+  }
+  for (auto it = m_torchLights.begin(); it != m_torchLights.end();) {
+    if (!it->second.seen) {
+      check(m_api.DestroyLight(it->second.handle));
+      it = m_torchLights.erase(it);
+    } else ++it;
   }
 }
 }

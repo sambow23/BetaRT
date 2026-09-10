@@ -25,10 +25,19 @@ struct TerrainInputs {
   const TerrainSectionData* neighbor(int x, int y, int z) const;
 };
 
+struct TerrainTorch {
+  std::uint32_t cell = 0;
+  std::array<float, 3> position {}, radiance {};
+  float radius = .08f;
+  bool operator==(const TerrainTorch&) const = default;
+};
+std::vector<TerrainTorch> terrainTorches(const TerrainSectionData& section);
+
 struct TerrainResult {
   TerrainInputs inputs;
   std::array<ChunkGeometryBuild, 2> passes;
   std::array<std::size_t, 2> blockCounts {};
+  std::vector<TerrainTorch> torches;
   std::size_t bytes {0};
   std::uint64_t workerNanos {0};
   bool failed {false};

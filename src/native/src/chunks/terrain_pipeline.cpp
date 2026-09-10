@@ -56,6 +56,32 @@ const TerrainSectionData* TerrainInputs::neighbor(int x, int y, int z) const {
   return sections[dx + 3 * dz + 9 * dy].get();
 }
 
+// Flame tips match remix_block_geometry_fixtures.cpp. Keep the virtual sphere
+// above the opaque cap, including wall-mounted torches, to avoid self-shadowing.
+std::vector<TerrainTorch> terrainTorches(const TerrainSectionData& section) {
+  std::vector<TerrainTorch> result;
+  for (unsigned i = 0; i < section.cells.size(); ++i) {
+    const auto& cell = section.cells[i];
+    if (cell.blockId != 50 && cell.blockId != 75 && cell.blockId != 76)
+      continue;
+    TerrainTorch torch;
+    torch.cell = i;
+    torch.position = {float(i % 16) + .5f, float(i / 256) + .745f, float((i / 16) % 16) + .5f};
+    if (cell.blockMetadata >= 1 && cell.blockMetadata <= 4) {
+      torch.position[1] += .2f;
+      if (cell.blockMetadata <= 2) torch.position[0] += cell.blockMetadata == 1 ? -.25f : .25f;
+      else torch.position[2] += cell.blockMetadata == 3 ? -.25f : .25f;
+    }
+    // Radiance is linear. These are artistic torch strengths, not a conversion
+    // of vanilla's block-light attenuation into a physical unit. Off redstone
+    // retains its slot, allowing a power-only BVH refit when it switches on.
+    if (cell.blockId == 50) torch.radiance = {200.f, 110.f, 44.f};
+    if (cell.blockId == 76) torch.radiance = {40.f, 1.f, .4f};
+    result.push_back(torch);
+  }
+  return result;
+}
+
 TerrainResult buildTerrainGeometry(TerrainInputs inputs) {
   MCRTX_PERF_SCOPE(::mcrtx::perf::Side::Native, "terrain.mesh");
   const auto start = std::chrono::steady_clock::now();
@@ -63,6 +89,8 @@ TerrainResult buildTerrainGeometry(TerrainInputs inputs) {
   result.inputs = std::move(inputs);
   result.bytes = sizeof(TerrainResult) + sizeof(TerrainSectionData);
   try {
+    result.torches = terrainTorches(*result.inputs.sections[13]);
+    result.bytes += result.torches.capacity() * sizeof(TerrainTorch);
     for (int pass = 0; pass < 2; ++pass) {
       emitTerrainGeometry(result.inputs, pass, result.passes[pass]);
       result.passes[pass].fingerprint = detail::mixHashComponent(fingerprint(result.passes[pass].surfacesToBuild), result.inputs.settings);
@@ -79,6 +107,7 @@ TerrainResult buildTerrainGeometry(TerrainInputs inputs) {
     }
   } catch (...) {
     result.passes = {};
+    result.torches.clear();
     result.bytes = 0;
     result.failed = true;
   }

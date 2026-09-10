@@ -2,6 +2,7 @@
 #include "mcrtx/chunks/remix_chunk_policy.hpp"
 
 #include <cstring>
+#include <cmath>
 #include <iostream>
 #include <random>
 #include <stdexcept>
@@ -284,9 +285,46 @@ void directFireGeometry() {
   require(found, "fire above a solid block emitted no geometry");
 }
 }
+void torchLighting() {
+  TerrainSectionData section;
+  for (unsigned i = 0; i < 5; ++i) {
+    section.cells[17 + 256 * i] = cell(50, 2);
+    section.cells[17 + 256 * i].blockMetadata = i + 1;
+  }
+  section.cells[3] = cell(75, 2);
+  section.cells[4] = cell(76, 2);
+  section.cells[5] = cell(10); // Lava is outside the torch-light scope.
+  const auto torches = terrainTorches(section);
+  require(torches.size() == 7, "torch extraction included a non-torch emitter");
+  require(torches[0].cell == 3 && torches[0].radiance[0] == 0, "unlit redstone lost its zero-power slot");
+  require(torches[1].radiance[0] > torches[1].radiance[1] * 10, "redstone is not red");
+  const float x[] = {1.25f, 1.75f, 1.5f, 1.5f, 1.5f};
+  const float z[] = {1.5f, 1.5f, 1.25f, 1.75f, 1.5f};
+  for (unsigned i = 0; i < 5; ++i) {
+    const auto& torch = torches[i + 2];
+    require(torch.position[0] == x[i] && torch.position[2] == z[i] &&
+            std::abs(torch.position[1] - (i + (i < 4 ? .945f : .745f))) < 1.e-5f,
+            "torch flame disagrees with block orientation or cell coordinates");
+    require(torch.radius > 0 && torch.radiance[0] > torches[1].radiance[0], "normal torch intensity/radius invalid");
+  }
+  TerrainPipeline pipeline(1);
+  pipeline.reset(1); pipeline.allocate(kKey, 1, 1);
+  require(update(pipeline, kKey, 1, 1, 1, kFull, {section.cells.begin(), section.cells.end()}), "torch admission failed");
+  auto first = waitResult(pipeline);
+  require(first->torches == torches, "worker lost captured torches");
+  require(update(pipeline, kKey, 1, 1, 2, {3, 0, 0, 3, 0, 0}, {cell(76, 2)}), "redstone toggle rejected");
+  require(!pipeline.finish(*first, [] { throw std::runtime_error("stale torch result committed"); }), "stale torches accepted");
+  auto next = waitResult(pipeline);
+  require(next->torches[0].cell == 3 && next->torches[0].radiance[0] > 0, "redstone toggle did not update same cell");
+  require(pipeline.finish(*next, [] {}), "torch update not committed");
+  pipeline.remove(kKey, 1, 1);
+  require(pipeline.lifetime(kKey) == 0, "unloaded torch section survived");
+}
+
 int main() {
   emissionOwnership();
   try {
+    torchLighting();
     geometryReference();
     directFireGeometry();
     ownershipAndRevisions();
