@@ -262,6 +262,14 @@ void geometryReference() {
 
   }
 }
+void capturePolicy() {
+  require(chunk::shouldCaptureBlock(8, 4, 0), "opaque water pass was rejected");
+  require(chunk::shouldCaptureBlock(9, 4, 0), "opaque flowing water pass was rejected");
+  require(chunk::shouldCaptureBlock(8, 4, 1), "transparent water pass was rejected");
+  require(chunk::shouldCaptureBlock(79, 0, 0), "opaque ice pass was rejected");
+  require(chunk::shouldCaptureBlock(79, 0, 1), "transparent ice pass was rejected");
+  require(!chunk::shouldCaptureBlock(8, 99, 0), "unsupported water render type was accepted");
+}
 void directFireGeometry() {
   TerrainInputs inputs;
   auto section = std::make_shared<TerrainSectionData>();
@@ -324,6 +332,7 @@ void torchLighting() {
 int main() {
   emissionOwnership();
   try {
+    capturePolicy();
     torchLighting();
     geometryReference();
     directFireGeometry();

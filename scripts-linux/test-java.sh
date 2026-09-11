@@ -21,11 +21,12 @@ mapfile -t test_queue_sources < <(rg --files src/tests/java/chunks -g '*.java' |
   src/java-src/chunks/DirtyChunkSection.java src/java-src/chunks/RemixChunkSectionKey.java \
   src/java-src/direct/DirectSectionResidency.java src/java-src/direct/DirectSectionUpdates.java
 "$test_java" -cp "$test_output/queue" TerrainQueueTest
-"$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" src/tests/java/direct/DirectClassLoadingTest.java src/tests/java/direct/DirectIdentityTest.java src/tests/java/direct/DirectEmissionTest.java src/tests/java/direct/DirectEnvironmentTest.java
+"$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" src/tests/java/direct/DirectClassLoadingTest.java src/tests/java/direct/DirectIdentityTest.java src/tests/java/direct/DirectEmissionTest.java src/tests/java/direct/DirectEnvironmentTest.java src/tests/java/direct/DirectWaterIceTransparencyTest.java
 "$test_java" -Xverify:all -cp "$test_output/client:$test_client" DirectClassLoadingTest "$test_client"
 "$test_java" -cp "$test_output/client:$test_client" DirectIdentityTest
 "$test_java" -cp "$test_output/client:$test_client" DirectEmissionTest
 "$test_java" -cp "$test_output/client:$test_client" DirectEnvironmentTest
+"$test_java" -cp "$test_output/client:$test_client" DirectWaterIceTransparencyTest
 if [[ ${MCRTX_TEST_GPU:-0} == 1 ]]; then
   mapfile -t test_sources < <(rg --files src/tests/java/direct -g '*.java' | sort)
   "$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" "${test_sources[@]}"

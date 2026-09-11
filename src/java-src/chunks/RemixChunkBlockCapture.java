@@ -3,6 +3,8 @@ final class RemixChunkBlockCapture {
     private static final int WATER_FLOWING_BLOCK_ID = 9;
     private static final int LAVA_STILL_BLOCK_ID = 10;
     private static final int LAVA_FLOWING_BLOCK_ID = 11;
+    private static final int ICE_BLOCK_ID = 79;
+    private static final boolean OPAQUE_WATER_ICE = opaqueWaterIceSetting();
 
     private RemixChunkBlockCapture() {
     }
@@ -41,7 +43,8 @@ final class RemixChunkBlockCapture {
         records[offset++] = blockId;
         records[offset++] = blockMetadata;
         records[offset++] = renderType;
-        records[offset++] = blockDefinition.b_();
+        records[offset++] = renderPassForCapture(
+                blockId, blockDefinition.b_(), OPAQUE_WATER_ICE);
         for (int side = 0; side < 6; ++side) {
             records[offset++] = blockDefinition.a(blockAccess, blockX, blockY, blockZ, side);
         }
@@ -71,6 +74,21 @@ final class RemixChunkBlockCapture {
 
     private static boolean isLiquidBlock(int blockId) {
         return isWaterBlock(blockId) || isLavaBlock(blockId);
+    }
+
+    static int renderPassForCapture(int blockId, int renderPass, boolean opaqueWaterIce) {
+        return opaqueWaterIce && (isWaterBlock(blockId) || blockId == ICE_BLOCK_ID) ? 0 : renderPass;
+    }
+
+    private static boolean opaqueWaterIceSetting() {
+        String value = mcrtx.bridge.McrtxRuntimeConfig.getEnvironmentValue("MCRTX_OPAQUE_WATER_ICE");
+        if (value.isEmpty()) {
+            return true;
+        }
+        return !("0".equals(value)
+                || "false".equalsIgnoreCase(value)
+                || "off".equalsIgnoreCase(value)
+                || "no".equalsIgnoreCase(value));
     }
 
     private static int computeLiquidVisibilityMask(
