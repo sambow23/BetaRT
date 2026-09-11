@@ -61,10 +61,15 @@ while removed chunks retire their lights. All resident torches contribute,
 including those outside the camera frustum. Stale worker results never update
 light handles.
 
-The renderer uses a persistent LightBVH with a default budget of two samples at
-opaque primary surfaces and one at diffuse bounces, SHARC updates and transparent
-sheets. Local primary radiance uses a separate NRD filter; SIGMA continues to
-filter only the sun. F12 exposes local light controls and diagnostics. See
+The renderer uses a persistent LightBVH with a default budget of one local sample
+at opaque primary surfaces, diffuse bounces, SHARC updates and transparent sheets.
+Torch reach defaults to 16 blocks, with unchanged individual-light strength inside
+12 blocks and a smooth fade to zero over the outer four. Set reach to zero for the
+previous unlimited model. Recent visibility guides opaque direct-light selection
+while retaining exploration and fresh shadow rays. Local primary radiance uses a
+separate NRD filter; SIGMA continues to filter only the sun. F12 exposes reach,
+guidance, samples and diagnostics. `MCRTX_PT_LOCAL_RANGE` and
+`MCRTX_PT_LOCAL_GUIDING` provide matching environment controls. See
 [local-light architecture](../../openremix/docs/features/local-lights.md) for
 radiance strengths, sampling, temporal behavior and current limitations.
 

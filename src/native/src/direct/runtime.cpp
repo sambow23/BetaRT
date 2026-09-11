@@ -184,6 +184,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_LOCALLIGHT_STATISTICS
     m_localStats = function<PFN_remixapi_GetLocalLightStatisticsEXT>(m_library, "remixapi_GetLocalLightStatisticsEXT", false);
 #endif
+#if MCRTX_HAS_LOCALLIGHTGUIDING_STATISTICS
+    m_localGuidingStats = function<PFN_remixapi_GetLocalLightGuidingStatisticsEXT>(m_library, "remixapi_GetLocalLightGuidingStatisticsEXT", false);
+#endif
 #if MCRTX_HAS_SHADOW_STATISTICS
     m_shadowStats = function<PFN_remixapi_GetShadowStatisticsEXT>(m_library, "remixapi_GetShadowStatisticsEXT", false);
 #endif
@@ -211,6 +214,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
         {"MCRTX_PT_LOCAL_LIGHTS", "localLights"}, {"MCRTX_PT_LOCAL_SAMPLES", "localSamples"},
         {"MCRTX_PT_LOCAL_DENOISER", "localDenoiser"}, {"MCRTX_PT_LOCAL_INTENSITY", "localIntensity"},
+        {"MCRTX_PT_LOCAL_RANGE", "localRange"}, {"MCRTX_PT_LOCAL_GUIDING", "localGuiding"},
         {"MCRTX_PT_SIGMA", "sigma"}, {"MCRTX_PT_SUN_DIAMETER", "sunAngularDiameter"},
         {"MCRTX_PT_SHADOW_DEBUG", "shadowDebug"}, {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
         {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
@@ -240,7 +244,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees,local_lights,local_active_lights,local_samples,local_nodes,local_tree_depth,local_bvh_builds,local_bvh_refits,local_bvh_cpu_ms,local_bvh_bytes,local_denoiser,gpu_local_nrd_ms\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees,local_lights,local_active_lights,local_samples,local_nodes,local_tree_depth,local_bvh_builds,local_bvh_refits,local_bvh_cpu_ms,local_bvh_bytes,local_denoiser,gpu_local_nrd_ms,local_range,local_guiding,local_observed_samples,local_guided_samples,local_visible_samples,local_guiding_bytes,local_guiding_resets\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -406,6 +410,16 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           } else
 #endif
           for (unsigned i = 0; i < 11; ++i) profile << ",unavailable";
+#if MCRTX_HAS_LOCALLIGHTGUIDING_STATISTICS
+          remixapi_LocalLightGuidingStatisticsEXT guiding{};
+          guiding.structSize = sizeof(guiding);
+          if (m_localGuidingStats && m_localGuidingStats(&guiding) == REMIXAPI_ERROR_CODE_SUCCESS) {
+            profile << ',' << guiding.influenceRange << ',' << guiding.active << ',' << guiding.sampledQueries
+                    << ',' << guiding.sampledGuided << ',' << guiding.sampledVisible << ',' << guiding.memoryBytes
+                    << ',' << guiding.historyResets;
+          } else
+#endif
+          for (unsigned i = 0; i < 7; ++i) profile << ",unavailable";
           profile << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;

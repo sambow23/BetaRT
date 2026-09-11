@@ -69,6 +69,9 @@ private:
 #if MCRTX_HAS_LOCALLIGHT_STATISTICS
   PFN_remixapi_GetLocalLightStatisticsEXT m_localStats = nullptr;
 #endif
+#if MCRTX_HAS_LOCALLIGHTGUIDING_STATISTICS
+  PFN_remixapi_GetLocalLightGuidingStatisticsEXT m_localGuidingStats = nullptr;
+#endif
 #if MCRTX_HAS_SHADOW_STATISTICS
   PFN_remixapi_GetShadowStatisticsEXT m_shadowStats = nullptr;
 #endif
