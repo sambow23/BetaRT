@@ -1,4 +1,5 @@
 #include "mcrtx/direct/runtime.hpp"
+#include "mcrtx/direct/thread_affinity.hpp"
 #include <algorithm>
 #include <bit>
 #include <cstdio>
@@ -234,6 +235,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     daylight.hash = 0x6fffffffffffffffull;
     check(m_api.CreateLight(&daylight, &m_daylight));
     events();
+    // Apply after renderer startup so existing driver threads keep their policy.
+    const auto affinity = setRenderThreadCpus(detail::readEnvironmentVariable("MCRTX_RENDER_CPUS"));
+    if (!affinity.message.empty()) std::fprintf(stderr, "[mcrtx] %s\n", affinity.message.c_str());
     {
       std::lock_guard lock(m_mutex);
       m_running = true;
@@ -244,7 +248,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     const auto profilePath = detail::readEnvironmentVariable("MCRTX_PT_PROFILE");
     if (!profilePath.empty()) {
       profile.open(profilePath);
-      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees,local_lights,local_active_lights,local_samples,local_nodes,local_tree_depth,local_bvh_builds,local_bvh_refits,local_bvh_cpu_ms,local_bvh_bytes,local_denoiser,gpu_local_nrd_ms,local_range,local_guiding,local_observed_samples,local_guided_samples,local_visible_samples,local_guiding_bytes,local_guiding_resets\n";
+      profile << "time_ms,fresh,interval_ms,gpu_build_ms,gpu_trace_ms,upload_bytes,acceleration_bytes,blas_builds,blas_refits,compactions,static_builds,dynamic_builds,dynamic_refits,rebuild_reason,scene_generation,samples,accumulation,temporal_redraw,gpu_confidence_ms,gpu_nrd_ms,gpu_taa_ms,denoise_bytes,history_resets,denoiser,taa,rtxdi,sharc,emitters,gpu_light_prepare_ms,gpu_rtxdi_ms,gpu_sharc_update_ms,gpu_sharc_resolve_ms,lighting_bytes,cache_queries,cache_hits,cache_occupied,cache_resets,gpu_direct_nrd_ms,requested_sampler,sampler,requested_downscale,downscale,requested_indirect,indirect,lighting_width,lighting_height,light_candidates,sky,primary_shading_locations,transparent_records,unavailable_opaque,unavailable_transparent,gpu_candidates_ms,gpu_temporal_reuse_ms,gpu_spatial_reuse_ms,gpu_visibility_ms,gpu_reconstruction_ms,gpu_lightbvh_ms,lightbvh_builds,lightbvh_refits,sharc_sampled_queries,sharc_sampled_hits,sigma,gpu_sigma_ms,sigma_history_resets,sun_diameter_degrees,local_lights,local_active_lights,local_samples,local_nodes,local_tree_depth,local_bvh_builds,local_bvh_refits,local_bvh_cpu_ms,local_bvh_bytes,local_denoiser,gpu_local_nrd_ms,local_range,local_guiding,local_observed_samples,local_guided_samples,local_visible_samples,local_guiding_bytes,local_guiding_resets,submission_sequence,presentation_count\n";
     }
     auto lastPresent = std::chrono::steady_clock::now();
     auto profilePresent = lastPresent;
@@ -420,7 +424,7 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
           } else
 #endif
           for (unsigned i = 0; i < 7; ++i) profile << ",unavailable";
-          profile << '\n';
+          profile << ',' << m_lastSequence << ',' << after << '\n';
         }
         profilePresent = completed; m_uploadBytes = 0;
         perf::onFramePresented();

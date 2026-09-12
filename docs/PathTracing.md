@@ -163,6 +163,10 @@ resource traffic and acceleration statistics. Unsupported lighting/sampling
 statistics fields are `unavailable`, never fabricated zero counters. Legacy RTXDI, general emissive-mesh sampling and checkerboard-sampling controls
 belong to other companion runtimes. The separate local-light diagnostics report
 light count, sample budget, BVH builds/refits, CPU update cost and torch NRD time.
+The trailing `submission_sequence` and `presentation_count` columns link a row
+to its Java submission and the renderer's presentation counter. Repeated frames
+retain their submission sequence. These counters support timing correlation;
+the CPU presentation interval is not a physical display timestamp.
 
 Keep screenshots, validation results and deployment manifests in ignored
 `_work/reports/`. Stage the renderer, JNI and patched JAR as a matched set with the

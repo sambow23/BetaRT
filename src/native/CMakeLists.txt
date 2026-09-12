@@ -52,7 +52,7 @@ if(MCRTX_BUILD_JNI)
   endforeach()
   unset(CMAKE_REQUIRED_INCLUDES)
   add_library(mcrtx_jni SHARED
-    src/direct/submission.cpp src/direct/protocol.cpp src/direct/runtime.cpp
+    src/direct/submission.cpp src/direct/protocol.cpp src/direct/runtime.cpp src/direct/thread_affinity.cpp
     src/direct/jni.cpp src/direct/jni_terrain.cpp src/lifecycle/jni_perf.cpp)
   target_include_directories(mcrtx_jni PRIVATE ${JNI_INCLUDE_DIRS})
   target_compile_definitions(mcrtx_jni PRIVATE
@@ -83,6 +83,10 @@ foreach(target mcrtx_terrain mcrtx_jni)
 endforeach()
 
 if(MCRTX_BUILD_TESTS)
+  add_executable(mcrtx_thread_affinity_tests src/direct/thread_affinity.cpp tests/direct/thread_affinity_tests.cpp)
+  target_include_directories(mcrtx_thread_affinity_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+  target_link_libraries(mcrtx_thread_affinity_tests PRIVATE Threads::Threads)
+  add_test(NAME mcrtx_thread_affinity_tests COMMAND mcrtx_thread_affinity_tests)
   add_executable(mcrtx_direct_submission_tests src/direct/submission.cpp src/direct/protocol.cpp tests/direct/submission_tests.cpp)
   target_include_directories(mcrtx_direct_submission_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
   target_link_libraries(mcrtx_direct_submission_tests PRIVATE Threads::Threads)
