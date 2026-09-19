@@ -79,6 +79,13 @@ public final class DirectClientPatchTool implements Opcodes {
                 if(signature.equals("a(Ljava/awt/image/BufferedImage;I)V"))delegate(node,method,"DirectGameTextures","upload");
                 if(signature.equals("a([IIII)V"))delegate(node,method,"DirectGameTextures","uploadPixels");
                 if(signature.equals("a()V"))delegate(node,method,"DirectGameTextures","animate");
+                if(signature.equals("b(Ljava/lang/String;)I"))for(AbstractInsnNode instruction:method.instructions.toArray()) {
+                    if(instruction.getOpcode()!=IRETURN)continue;
+                    InsnList hook=new InsnList();hook.add(new InsnNode(DUP));
+                    hook.add(new VarInsnNode(ALOAD,0));hook.add(new VarInsnNode(ALOAD,1));
+                    hook.add(new MethodInsnNode(INVOKESTATIC,"DirectGameTextures","loaded","(ILji;Ljava/lang/String;)V",false));
+                    method.instructions.insertBefore(instruction,hook);
+                }
             } else if(node.name.equals("w")&&signature.equals("b()V"))delegate(node,method,"DirectGameGeometry","frustum");
             else if(node.name.equals("vy")) {
                 if(method.name.equals("<init>"))emptyConstructor(node,method);

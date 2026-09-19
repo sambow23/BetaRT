@@ -23,13 +23,13 @@ public final class DirectEmissionTest {
         int mask=DirectTextures.allocate();DirectTextures.image(mask,new int[]{0xffffffff},1,1,false,false);
         DirectRenderer.resources.clear();DirectRenderer.writeMaterial(123,texture,mask,3,2,1);
         ByteBuffer source=DirectRenderer.resources.buffer(),p=source.duplicate().order(ByteOrder.LITTLE_ENDIAN);
-        p.limit(source.position());p.position(0);require(p.getInt()==0x54435244&&p.getInt()==5,"Protocol 5");
+        p.limit(source.position());p.position(0);require(p.getInt()==0x54435244&&p.getInt()==6,"Protocol 6");
         int materials=0,textures=0;
         while(p.hasRemaining()) {
             int op=p.getInt(),size=p.getInt(),end=p.position()+size;
             if(op==1){++textures;require(size==20,"Texture command nested in material");}
             else if(op==2) {
-                ++materials;require(size==48&&p.getLong()==123,"Emission material framing");
+                ++materials;require(size==64&&p.getLong()==123,"Emission material framing");
                 p.getLong();p.getInt();p.getInt();p.getInt();require(p.getLong()!=0,"Emission texture not transmitted");
                 require(p.getFloat()==3&&p.getFloat()==2&&p.getFloat()==1,"Emission RGB not transmitted");
             } else throw new AssertionError("Unexpected resource command");

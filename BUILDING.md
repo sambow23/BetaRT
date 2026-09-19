@@ -65,7 +65,7 @@ and synchronization validation with the installed validation layer for GPU tests
 Set `MCRTX_RENDER_BACKEND=pathtrace` to exercise the in-memory world with lighting reuse; the transport, menu and exact raster-pixel fixtures retain raster. World tests allow cold driver compilation before timing warmup. The test classpath excludes all LWJGL modules; local audio therefore uses the
 vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
 
-The private JNI protocol is version 5, independently of the public Remix SDK.
+The private JNI protocol is version 6, independently of the public Remix SDK.
 Update the patched JAR and JNI together. The paired openremix runtime supplies
 camera environment metadata and tracing/denoising statistics. Lighting and sampling
 statistics are optional: CMake checks the SDK types, missing exports are non-fatal,
@@ -81,3 +81,26 @@ Unsupported full-ray counters, emitter sampling and glow remain unavailable.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.
+
+## PBR maps
+
+Set `MCRTX_LOAD_PBR=0` in `minecraft/mcrtx-runtime.env` to skip loading normal,
+roughness, metallic and authored emissive maps. Set it to `1` to enable them
+(the default). Restart the client after changing this setting. Base-color textures,
+default EON material parameters and procedural block emission remain available.
+
+The direct client loads `_normal`, `_roughness`, `_metallic` and `_emissive` DDS/PNG
+siblings from the selected texture pack and existing `mcrtx_assets` roots. DDS takes
+precedence within each source; selected-pack maps override bundled files. Set
+`MCRTX_ASSETS` for an additional asset root. Terrain, entity and item maps retain
+their existing layouts; compact water/lava/portal textures load their named siblings.
+Maps are cached by content under `mcrtx_texturepack_cache/direct` so reloads preserve
+queued resource lifetimes. Missing maps use roughness 1, metalness 0 and geometric normals.
+
+Use the paired OpenRemix EON/GGX runtime and protocol 6 JNI/client artifacts.
+Emissive maps retain intrinsic block intensities and the analytic-torch exclusion.
+Displacement is deferred. The existing `reblur-sh` setting enables separate PBR
+diffuse/specular denoising, followed by TAA/FSR. Mapped normals and roughness guide
+reflection filtering; visible emissive maps stay sharp. `localDenoiser` controls
+whether local PBR lighting joins the filter. Use an optimized OpenRemix release
+build for gameplay.

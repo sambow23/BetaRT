@@ -73,24 +73,31 @@ int main() {
     for (int i = 0; i < 9; ++i) append(bytes, std::uint32_t(0));
     return bytes;
   };
-  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 5 instance framing");
+  require(accepts(draw(17, 0, 0)) && accepts(draw(18, 1, 1)) && accepts(draw(0, 2, 1)), "Version 6 instance framing");
   require(!accepts(draw(0, 0, 1)) && !accepts(draw(0, 1, 1)) && !accepts(draw(18, 3, 1)) &&
           !accepts(draw(18, 1, 2)), "Malformed identities replaced an accepted frame");
   auto old = draw(18, 1, 1); old[4] = std::byte{1};
-  require(!accepts(old), "Version 1 client accepted by version 5 JNI");
-  old[4]=std::byte{2};require(!accepts(old), "Version 2 client accepted by version 5 JNI");
-  old[4]=std::byte{3};require(!accepts(old),"Version 3 material protocol accepted by version 5 JNI");
-  auto material=packet();append(material,std::uint32_t(Op::Material));append(material,std::uint32_t(48));
+  require(!accepts(old), "Version 1 client accepted by version 6 JNI");
+  old[4]=std::byte{2};require(!accepts(old), "Version 2 client accepted by version 6 JNI");
+  old[4]=std::byte{3};require(!accepts(old),"Version 3 material protocol accepted by version 6 JNI");
+  auto material=packet();append(material,std::uint32_t(Op::Material));append(material,std::uint32_t(64));
   append(material,std::uint64_t(9));append(material,std::uint64_t(10));
   append(material,std::uint32_t(0));append(material,std::uint32_t(1));append(material,std::uint32_t(1));
   append(material,std::uint64_t(11));append(material,3.f);append(material,2.f);append(material,1.f);
+  for(int i=0;i<4;++i)append(material,std::uint32_t(0));
   validatePacket(material,true);
   auto broken=material;broken.pop_back();rejected=false;
   try{validatePacket(broken,true);}catch(const std::invalid_argument &){rejected=true;}
   require(rejected,"Truncated emission accepted");
-  float negative=-1;std::memcpy(material.data()+material.size()-4,&negative,4);rejected=false;
+  float negative=-1;std::memcpy(material.data()+material.size()-20,&negative,4);rejected=false;
   try{validatePacket(material,true);}catch(const std::invalid_argument &){rejected=true;}
   require(rejected,"Negative emission accepted");
+  float restored=1;std::memcpy(material.data()+material.size()-20,&restored,4);
+  auto malformed=packet();append(malformed,std::uint32_t(Op::Material));append(malformed,std::uint32_t(64));
+  malformed.insert(malformed.end(),material.begin()+16,material.end());
+  std::uint32_t huge=32769;std::memcpy(malformed.data()+malformed.size()-16,&huge,4);
+  rejected=false;try{validatePacket(malformed,true);}catch(const std::invalid_argument &){rejected=true;}
+  require(rejected,"Unbounded material map path accepted");
   auto camera = [](std::uint64_t world, std::uint64_t reset) {
     auto bytes=packet();append(bytes,std::uint32_t(Op::Camera));append(bytes,std::uint32_t(188));append(bytes,std::uint32_t(0));
     for(int i=0;i<32;++i)append(bytes,i%5==0?1.f:0.f);

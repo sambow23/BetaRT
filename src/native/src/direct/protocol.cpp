@@ -31,6 +31,7 @@ void validatePacket(const Bytes &packet, bool resources) {
             payload.read<std::uint32_t>() > 4) throw std::invalid_argument("Invalid material state");
         payload.read<std::uint64_t>(); // emissive texture id, zero means constant
         for(int i=0;i<3;++i)if(payload.read<float>()<0)throw std::invalid_argument("Negative emission");
+        for(int i=0;i<4;++i)payload.text();
         break;
       case Op::Mesh: {
         payload.read<std::uint64_t>(); // material

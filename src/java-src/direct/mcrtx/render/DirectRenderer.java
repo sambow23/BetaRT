@@ -129,7 +129,9 @@ public final class DirectRenderer {
         writeMaterial(id, textureId); return id;
     }
     public static void writeMaterial(long id, int textureId) {
-        writeMaterial(id,textureId,0,0,0,0);
+        DirectTextures.Texture image=textureId==0?null:DirectTextures.pixels(textureId);
+        float emission=image!=null&&!image.pbr[3].isEmpty()?1:0;
+        writeMaterial(id,textureId,0,emission,emission,emission);
     }
     public static void writeMaterial(long id,int textureId,int emissionTexture,float r,float g,float b) {
         DirectTextures.Texture image = DirectTextures.get(textureId);
@@ -140,6 +142,7 @@ public final class DirectRenderer {
         resources.integer(image == null ? 1 : image.wrapU); resources.integer(image == null ? 1 : image.wrapV);
         resources.id(emissive==null?0:emissive.id);
         resources.number(r);resources.number(g);resources.number(b);
+        for(int i=0;i<4;++i)resources.text(image==null?"":image.pbr[i]);
         resources.end(command);
     }
     public static void textureStateChanged(int textureId) {

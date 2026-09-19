@@ -18,7 +18,8 @@ public final class DirectTransportTest {
             DirectPacket resources = new DirectPacket();
             int at = resources.command(2);
             resources.id(100); resources.id(0);
-            resources.integer(0); resources.integer(1); resources.integer(1); resources.id(0);resources.number(0f);resources.number(0f);resources.number(0f);resources.end(at);
+            resources.integer(0); resources.integer(1); resources.integer(1); resources.id(0);resources.number(0f);resources.number(0f);resources.number(0f);
+            for(int i=0;i<4;++i)resources.text("");resources.end(at);
             at = resources.command(3);
             resources.id(101); resources.id(100); resources.integer(3); resources.integer(3);
             float[][] vertices = {{-1, -1, 0.5f}, {1, -1, 0.5f}, {0, 1, 0.5f}};

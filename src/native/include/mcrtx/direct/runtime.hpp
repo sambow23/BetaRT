@@ -37,6 +37,7 @@ private:
     std::uint32_t filter, wrapU, wrapV;
     std::uint64_t emissionTexture=0;
     std::array<float,3> emission{};
+    std::array<std::filesystem::path,4> pbr{};
   };
   struct Torch { TerrainTorch source; std::uint64_t id = 0; };
   struct TerrainMesh {

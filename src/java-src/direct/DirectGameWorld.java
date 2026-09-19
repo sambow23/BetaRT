@@ -70,15 +70,25 @@ public final class DirectGameWorld {
         }
     }
 
+    private static long atlasPbrRevision=-1;
     private static void materials(ji textures){
         int current=textures.b("/terrain.png");
         DirectTextures.Texture source=DirectTextures.pixels(current);
         if(atlas!=current){
-            atlas=current;atlasRevision=-1;
+            atlas=current;atlasRevision=-1;atlasPbrRevision=-1;
             if(water==0){water=DirectTextures.allocate();lava=DirectTextures.allocate();portal=DirectTextures.allocate();}
         }
         if(atlasRevision==source.revision)return;atlasRevision=source.revision;
         extract(source,water,205,206);extract(source,lava,237,238);extract(source,portal,14);
+        if(atlasPbrRevision!=source.pbrRevision) {
+            atlasPbrRevision=source.pbrRevision;
+            DirectTextures.pixels(water).pbrLoaded=false;
+            DirectTextures.pixels(lava).pbrLoaded=false;
+            DirectTextures.pixels(portal).pbrLoaded=false;
+        }
+        DirectGameTextures.loaded(water,textures,"/water.png");
+        DirectGameTextures.loaded(lava,textures,"/lava.png");
+        DirectGameTextures.loaded(portal,textures,"/portal.png");
         for(int i=0;i<8;++i)DirectRenderer.writeMaterial(i+1,i==2?water:i==3?lava:i==5?portal:atlas);
         for(int block=0;block<uu.m.length&&block<256;++block) {
             int level=uu.s[block];if(uu.m[block]==null||level<=0)continue;

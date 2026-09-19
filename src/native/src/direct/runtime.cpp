@@ -463,6 +463,12 @@ void Runtime::material(std::uint64_t id) {
   opaque.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_OPAQUE_EXT;
   opaque.albedoConstant = {1, 1, 1};
   opaque.opacityConstant = 1;
+  opaque.roughnessConstant = 1;
+  opaque.metallicConstant = 0;
+  const auto &normalPath=source.pbr[0], &roughnessPath=source.pbr[1];
+  const auto &metallicPath=source.pbr[2], &authoredEmissionPath=source.pbr[3];
+  opaque.roughnessTexture=roughnessPath.empty()?nullptr:roughnessPath.c_str();
+  opaque.metallicTexture=metallicPath.empty()?nullptr:metallicPath.c_str();
   opaque.alphaTestType = 7;
   opaque.useDrawCallAlphaState = 1;
   remixapi_MaterialInfo info = {};
@@ -470,8 +476,9 @@ void Runtime::material(std::uint64_t id) {
   info.hash = id;
   info.pNext = &opaque;
   info.albedoTexture = source.texture ? path.c_str() : nullptr;
+  info.normalTexture=normalPath.empty()?nullptr:normalPath.c_str();
   const auto emissionPath=texturePath(source.emissionTexture);
-  info.emissiveTexture=source.emissionTexture?emissionPath.c_str():nullptr;
+  info.emissiveTexture=!authoredEmissionPath.empty()?authoredEmissionPath.c_str():source.emissionTexture?emissionPath.c_str():nullptr;
   info.emissiveColorConstant={source.emission[0],source.emission[1],source.emission[2]};
   info.emissiveIntensity=1;
   info.filterMode = source.filter;
@@ -518,6 +525,10 @@ void Runtime::resourcePacket(const Bytes &bytes) {
       value.wrapV = data.read<std::uint32_t>();
       value.emissionTexture=data.read<std::uint64_t>();
       for(auto &component:value.emission)component=data.read<float>();
+      for(auto &map:value.pbr) {
+        const auto text=data.text();
+        map=std::filesystem::path(std::u8string(text.begin(),text.end()));
+      }
       m_materials[id] = value;
       material(id);
       break;

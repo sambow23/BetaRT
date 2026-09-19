@@ -8,7 +8,7 @@ public final class DirectPacket {
     private static final int LIMIT = 256 * 1024 * 1024;
     private ByteBuffer data = ByteBuffer.allocateDirect(4096).order(ByteOrder.LITTLE_ENDIAN);
     public DirectPacket() { clear(); }
-    public void clear() { data.clear(); integer(0x54435244); integer(5); }
+    public void clear() { data.clear(); integer(0x54435244); integer(6); }
     public ByteBuffer buffer() { return data; }
     private void reserve(int count) {
         if (count < 0 || count > LIMIT - data.position()) throw new IllegalArgumentException("Submission too large");
@@ -36,6 +36,10 @@ public final class DirectPacket {
     public void number(double value) {
         if (Double.isNaN(value) || Double.isInfinite(value)) throw new IllegalArgumentException("Non-finite position");
         reserve(8); data.putDouble(value);
+    }
+    public void text(String value) {
+        byte[] bytes=value.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        integer(bytes.length);bytes(bytes);
     }
     public void bytes(byte[] values) { reserve(values.length); data.put(values); }
 }

@@ -6,10 +6,21 @@ import java.awt.image.BufferedImage;
 public final class DirectGameTextures {
     private DirectGameTextures() { }
     public static void upload(ji manager,BufferedImage image,int id) {
+        DirectTextures.pixels(id).pbrLoaded=false;
         DirectTextures.image(id,image,manager.k,manager.j);
     }
     public static void uploadPixels(ji manager,int[] pixels,int width,int height,int id) {
+        DirectTextures.pixels(id).pbrLoaded=false;
         DirectTextures.image(id,pixels,width,height,manager.k,manager.j);
+    }
+    public static void loaded(int id,final ji manager,String name) {
+        DirectTextures.Texture image=DirectTextures.pixels(id);
+        if(image.pbrLoaded&&image.asset.equals(name))return;
+        image.asset=name;image.pbrLoaded=true;++image.pbrRevision;
+        image.pbr=mcrtx.render.DirectPbr.load(name,new mcrtx.render.DirectPbr.Assets(){
+            public java.io.InputStream open(String path)throws java.io.IOException{return manager.l.a.a(path);}
+        });
+        DirectRenderer.textureStateChanged(id);
     }
     public static void animate(ji manager) {
         int previous=DirectRenderer.texture;

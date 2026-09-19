@@ -11,7 +11,10 @@ public final class DirectTextures {
         public final long id = DirectRenderer.allocateId();
         public int width = 1, height = 1, filter, wrapU = 1, wrapV = 1;
         public byte[] rgba = {(byte)255, 0, (byte)255, (byte)255};
-        public long revision;
+        public long revision, pbrRevision;
+        public String[] pbr={"","","",""};
+        public String asset="";
+        public boolean pbrLoaded;
         private boolean dirty = true, uploaded;
     }
     private static final Map<Integer, Texture> images = new LinkedHashMap<Integer, Texture>();

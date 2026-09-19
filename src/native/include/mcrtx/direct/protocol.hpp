@@ -1,16 +1,17 @@
 #pragma once
 #include "mcrtx/direct/submission.hpp"
 #include <array>
+#include <string>
 #include <cstring>
 #include <cmath>
 #include <stdexcept>
 #include <type_traits>
 
 namespace mcrtx::direct {
-// Private JNI protocol: little-endian, version 5, independent of public ABI.
+// Private JNI protocol: little-endian, version 6, independent of public ABI.
 // Header: magic/version. Commands: opcode, payload bytes, then tightly packed payload.
 inline constexpr std::uint32_t kMagic = 0x54435244; // DRCT
-inline constexpr std::uint32_t kVersion = 5;
+inline constexpr std::uint32_t kVersion = 6;
 enum class Op : std::uint32_t {
   Texture = 1, Material = 2, Mesh = 3,
   DestroyTexture = 4, DestroyMaterial = 5, DestroyMesh = 6,
@@ -31,6 +32,14 @@ public:
     if constexpr (std::is_floating_point_v<T>) {
       if (!std::isfinite(result)) throw std::invalid_argument("Non-finite submission value");
     }
+    return result;
+  }
+  std::string text() {
+    const auto length = read<std::uint32_t>();
+    if (length > 32768) throw std::invalid_argument("Material path too long");
+    auto bytes = slice(length);
+    std::string result(static_cast<const char *>(bytes.data()), length);
+    if (result.find('\0') != std::string::npos) throw std::invalid_argument("NUL in material path");
     return result;
   }
   void header() {
