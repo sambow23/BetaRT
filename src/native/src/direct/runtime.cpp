@@ -169,7 +169,17 @@ bool Runtime::events() {
 
 void Runtime::run(std::filesystem::path library, unsigned width, unsigned height) {
   try {
-    check(remixapi_lib_loadRemixDllAndInitialize(library.c_str(), &m_api, &m_library));
+    const auto loadResult = remixapi_lib_loadRemixDllAndInitialize(library.c_str(), &m_api, &m_library);
+#if !defined(_WIN32)
+    if (loadResult == REMIXAPI_ERROR_CODE_LOAD_LIBRARY_FAILURE) {
+      // The SDK helper leaves dlerror intact. Preserve the actual dependency or
+      // symbol-version failure before another loader call can overwrite it.
+      const char *reason = dlerror();
+      throw std::runtime_error("Cannot load Remix library '" + library.string() + "': " +
+                               (reason ? reason : "dynamic loader returned no details"));
+    }
+#endif
+    check(loadResult);
     m_poll = function<PFN_remixapi_PollInputEvents>(m_library, "remixapi_PollInputEvents");
     m_getMetrics = function<PFN_remixapi_GetWindowMetrics>(m_library, "remixapi_GetWindowMetrics");
     m_textInput = function<PFN_remixapi_SetTextInputEnabled>(m_library, "remixapi_SetTextInputEnabled");
@@ -213,8 +223,11 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
       else check(result);
     }
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
+        {"MCRTX_PT_UPSCALER", "upscaler"}, {"MCRTX_PT_DLSS_QUALITY", "dlssQuality"},
+        {"MCRTX_PT_DLSS_RR", "dlssRayReconstruction"},
         {"MCRTX_PT_LOCAL_LIGHTS", "localLights"}, {"MCRTX_PT_LOCAL_SAMPLES", "localSamples"},
         {"MCRTX_PT_LOCAL_DENOISER", "localDenoiser"}, {"MCRTX_PT_LOCAL_INTENSITY", "localIntensity"},
+        {"MCRTX_PT_SEPARATE_LOCAL_LIGHTING", "separateLocalLighting"},
         {"MCRTX_PT_LOCAL_RANGE", "localRange"}, {"MCRTX_PT_LOCAL_GUIDING", "localGuiding"},
         {"MCRTX_PT_SIGMA", "sigma"}, {"MCRTX_PT_SUN_DIAMETER", "sunAngularDiameter"},
         {"MCRTX_PT_SHADOW_DEBUG", "shadowDebug"}, {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},

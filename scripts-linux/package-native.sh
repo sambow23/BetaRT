@@ -40,6 +40,9 @@ fi
 mkdir -p "$output_directory"
 cmake --install "$build_directory" --prefix "$output_directory" >/dev/null
 cp -a "$remix_package_directory/lib"/libremix.so* "$remix_package_directory/lib"/libSDL3.so* "$output_directory/"
+if [[ -d "$remix_package_directory/lib/dlss" ]]; then
+  cp -a "$remix_package_directory/lib/dlss" "$output_directory/"
+fi
 mkdir -p "$output_directory/share/betart"
 cp "$source_directory/LICENSE" "$source_directory/README.md" "$source_directory/BUILDING.md" "$output_directory/share/betart/"
 cp "$source_directory/src/native/third_party/tracy/LICENSE" "$output_directory/share/betart/Tracy-LICENSE"

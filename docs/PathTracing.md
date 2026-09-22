@@ -34,9 +34,13 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_SIGMA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SUN_DIAMETER` | -1 inherit, 0–10 degrees override | -1 (game: 0.533) |
 | `MCRTX_PT_SHADOW_DEBUG` | 0 final, 1 raw visibility, 2 SIGMA visibility | 0 |
+| `MCRTX_PT_UPSCALER` | auto, dlss, fsr31, off | auto |
+| `MCRTX_PT_DLSS_QUALITY` | native-aa, quality, balanced, performance, ultra-performance | quality |
+| `MCRTX_PT_DLSS_RR` | 0 or 1 | 1 |
 | `MCRTX_PT_LOCAL_LIGHTS` | 0/1 or false/true | 1 |
 | `MCRTX_PT_LOCAL_SAMPLES` | 1–16 primary local samples | 2 |
 | `MCRTX_PT_LOCAL_DENOISER` | 0/1 or false/true (with REBLUR enabled) | 1 |
+| `MCRTX_PT_SEPARATE_LOCAL_LIGHTING` | 0 inline combined, 1 separate families/shared budget, 2 separate families/per-family budget, 3 combined in a separate pass | 0 |
 | `MCRTX_PT_LOCAL_INTENSITY` | 0–100 radiance multiplier | 1 |
 | `MCRTX_PT_SHARC` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SKY` | 0 or 1 | 1 |
@@ -72,6 +76,14 @@ guidance, samples and diagnostics. `MCRTX_PT_LOCAL_RANGE` and
 `MCRTX_PT_LOCAL_GUIDING` provide matching environment controls. See
 [local-light architecture](../../openremix/docs/features/local-lights.md) for
 radiance strengths, sampling, temporal behavior and current limitations.
+
+Set `MCRTX_PT_SEPARATE_LOCAL_LIGHTING=3` in `minecraft/mcrtx-runtime.env`
+to move opaque primary torch/emissive sampling into a dedicated compute pass.
+This keeps the combined sampler, light powers, candidate and ray budgets, and
+PBR diffuse/specular denoising. F12 **Torch / emissive lighting** also selects
+**Combined - separate pass**. Performance depends on the GPU and scene;
+mode `0` restores inline sampling. Without temporal resources, mode `3` uses
+inline combined lighting.
 
 Progressive accumulation bypasses SIGMA, REBLUR, TAA and SHARC while retaining their requested settings. It can improve a stationary scene,
 but camera motion, object animation, used animated textures or other scene changes
@@ -171,3 +183,9 @@ the CPU presentation interval is not a physical display timestamp.
 Keep screenshots, validation results and deployment manifests in ignored
 `_work/reports/`. Stage the renderer, JNI and patched JAR as a matched set with the
 instance closed; preserve its SDL binary, launcher settings and saved worlds.
+
+DLSS uses the renderer's isolated `libraries/dlss/310.9.1` release libraries. Auto
+selects DLSS Ray Reconstruction, then DLSS Super Resolution, then native rendering.
+F12 displays the active backend and fallback reason. Ray Reconstruction manages
+its denoisers and independent sampling while retaining the saved NRD, SIGMA, TAA,
+blue-noise and reuse settings for restoration. Progressive references bypass it.

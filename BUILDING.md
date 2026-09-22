@@ -42,6 +42,39 @@ combines the JNI library with the runtime's packaged SDL3/Remix libraries and
 license notices. It requires a fresh output directory. The system Vulkan loader
 and a Vulkan graphics driver are required on the target.
 
+## Portable Linux Prism instances
+
+Host builds can acquire newer glibc/libstdc++ requirements than other machines.
+Build both native libraries against the pinned glibc 2.28 container baseline:
+
+```sh
+JAVA_HOME=/path/to/compiler-jdk scripts-linux/build-portable-native.sh \
+  /path/to/openremix /path/to/new-portable-package
+python3 scripts-linux/create-portable-instance.py \
+  --template /path/to/working-BetaRT-instance \
+  --native /path/to/new-portable-package/native \
+  --output /path/to/PrismLauncher/instances/BetaRT-Portable-Linux \
+  --archive /path/to/BetaRT-Portable-Linux.zip
+python3 src/tests/python/test_portable_instance.py
+```
+
+The build requires Docker and a compiler JDK. It builds pinned SDL3 and the current
+renderer/bridge sources with Clang, includes static C++ runtimes and their license
+notices, and checks all packaged ELF libraries against the glibc ceiling. GPU
+drivers and the Vulkan loader remain host dependencies. `BETART_PORTABLE_BUILD_IMAGE`
+can select an already prepared image using the same Dockerfile/toolchain.
+
+The instance creator reads the template's custom client, component metadata and
+PBR assets, and writes fresh launch/runtime settings. It rejects host build paths
+and newer glibc dependencies, and materializes library symlinks for ZIP transport.
+It leaves the original instance intact. See [portable usage](docs/PortableLinux.md)
+for import, Java selection and re-export instructions.
+
+To verify loader diagnostics without a GPU, compile `DirectLibraryFailureTest`
+against the packaged client and run it with `MCRTX_REMIX_PATH` pointing at a
+nonexistent file, passing that same path as its argument. Keep the JNI library
+beside the JAR and run from a directory without `mcrtx-runtime.env` overrides.
+
 Optional environment settings: `MCRTX_VSYNC=0` disables VSync (or use the debug
 panel), `MCRTX_PERF=1` enables detailed timings, and `MCRTX_PERF_LOG` selects the
 log file. `MCRTX_GAMEPLAY_FOV` and `MCRTX_VIEWMODEL_FOV` retain camera FOV controls (30–120 degrees, default 70). Detailed profiling affects throughput. Old RTX, capture, lighting and
