@@ -126,7 +126,7 @@ public final class SharcProfileTest {
                 File destination = out;
                 if (!phase.isEmpty()) {
                     String[] values = phase.split(",");
-                    if ((values.length < 5 || values.length > 9) || !values[0].matches("[a-z0-9-]+"))
+                    if ((values.length < 5 || values.length > 11) || !values[0].matches("[a-z0-9-]+"))
                         throw new AssertionError("Invalid phase");
                     destination = new File(out, values[0]);
                     if (!destination.mkdir()) throw new AssertionError("Existing phase: " + destination);
@@ -145,6 +145,11 @@ public final class SharcProfileTest {
                     }
                     if (values.length >= 8) config("russianRoulette", values[7]);
                     if (values.length >= 9) config("rouletteMinBounces", values[8]);
+                    if (values.length >= 10) {
+                        config("torchSampler", values[9]);
+                        config("adaptiveLocalSampling", "0"); config("localSamples", "1");
+                    }
+                    if (values.length >= 11) config("rtxdiProposal", values[10]);
                     config("sharcReset", "1");
                     System.out.println("PHASE " + phase);
                 }

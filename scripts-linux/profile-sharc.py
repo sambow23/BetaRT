@@ -74,6 +74,17 @@ def summarize(out):
     # Trace already includes SHARC update/resolve. Never add them to this sum.
     keys = ('gpu_trace_ms', 'gpu_confidence_ms', 'gpu_nrd_ms', 'gpu_taa_ms')
     result['lighting_and_denoise_ms'] = sum(result['mean_ms'].get(k, 0) for k in keys)
+    if (out / 'lighting-timings.csv').exists():
+        with (out / 'lighting-timings.csv').open() as file:
+            lighting = [r for r in csv.DictReader(file)
+                        if window['start_ms'] <= int(r['time_ms']) < window['end_ms']]
+        if not lighting:
+            raise RuntimeError('No total GPU timings in measurement window')
+        result['lighting_timing_rows'] = len(lighting)
+        result['gpu_total_ms'] = statistics.mean(float(r['gpu_total_ms']) for r in lighting)
+        result['gpu_prepare_ms'] = statistics.mean(float(r['gpu_prepare_ms']) for r in lighting)
+        result['lighting_and_denoise_ms'] = result['gpu_total_ms'] + sum(
+            result['mean_ms'].get(k, 0) for k in keys[1:])
     if (out / 'stages.csv').exists():
         with (out / 'stages.csv').open() as file:
             stages = [r for r in csv.DictReader(file) if window['start_ms'] <= int(r['time_ms']) < window['end_ms']]
@@ -102,6 +113,8 @@ def main():
     parser.add_argument('--warmup', type=int, default=10000)
     parser.add_argument('--measure', type=int, default=20000)
     parser.add_argument('--stages', action='store_true')
+    parser.add_argument('--lighting-timings', action='store_true', help='Private total GPU timing using existing queries')
+    parser.add_argument('--restir-diagnostics', action='store_true', help='Diagnostic-only RTXDI counters and pass timings')
     parser.add_argument('--state', action='store_true', help='Per-frame pipeline/buffer state; also enables stage diagnostics')
     parser.add_argument('--device-local-scene', action='store_true', help='Experimental scene tables in device-local memory')
     parser.add_argument('--validation-layers', type=Path, help='Validation-only run: directory containing the Vulkan layer manifest')
@@ -112,7 +125,7 @@ def main():
     parser.add_argument('--split-indirect', action='store_true', help='Existing experimental separate continuation dispatch')
     parser.add_argument('--inline-indirect', action='store_true', help='Force inline continuation in either cache mode')
     parser.add_argument('--pipeline-stats', type=Path, help='Diagnostic Vulkan pipeline-statistics preload library')
-    parser.add_argument('--phases', type=Path, help='CSV: name,sharc,bounces,capacity,downscale[,dispatch[,placement[,roulette[,rouletteMin]]]]; dispatch 0=inline,1=split,a=auto; placement 0=host,1=device')
+    parser.add_argument('--phases', type=Path, help='CSV: name,sharc,bounces,capacity,downscale[,dispatch[,placement[,roulette[,rouletteMin[,torchSampler[,rtxdiProposal]]]]]]; dispatch 0=inline,1=split,a=auto; placement 0=host,1=device')
     parser.add_argument('--upscaler', choices=('dlss', 'off'), default='dlss')
     args = parser.parse_args()
     if args.split_indirect and args.inline_indirect:
@@ -122,10 +135,12 @@ def main():
     if args.warmup < 10000 or args.measure <= 0:
         parser.error('Use at least 10 seconds of warmup and a positive measurement duration')
     phases = [row for row in csv.reader(args.phases.read_text().splitlines()) if row] if args.phases else []
-    if any(not 5 <= len(row) <= 9 or (len(row) >= 6 and row[5] not in ('0', '1', 'a')) or
+    if any(not 5 <= len(row) <= 11 or (len(row) >= 6 and row[5] not in ('0', '1', 'a')) or
            (len(row) >= 7 and row[6] not in ('0', '1')) or
            (len(row) >= 8 and row[7] not in ('0', '1')) or
-           (len(row) >= 9 and row[8] not in ('1', '2', '3', '4')) for row in phases):
+           (len(row) >= 9 and row[8] not in ('1', '2', '3', '4')) or
+           (len(row) >= 10 and row[9] not in ('lightbvh', 'rtxdi')) or
+           (len(row) >= 11 and row[10] not in ('lightbvh', 'regir')) for row in phases):
         parser.error('Invalid phase CSV')
     camera = json.loads(args.camera.read_text()) if args.camera else None
     if camera is not None and (not isinstance(camera, list) or len(camera) != 5 or
@@ -154,6 +169,10 @@ def main():
                MANGOHUD='0', DISABLE_MANGOHUD='1')
     if args.stages or args.state:
         env['REMIX_STACK_PROFILE'] = str(out / 'stages.csv')
+    if args.lighting_timings:
+        env['REMIX_LIGHTING_TIMINGS'] = str(out / 'lighting-timings.csv')
+    if args.restir_diagnostics:
+        env['REMIX_RESTIR_DIAGNOSTICS'] = str(out / 'restir.csv')
     if args.state:
         env['REMIX_TRACE_STATE'] = str(out / 'state.csv')
     if args.device_local_scene:
@@ -224,17 +243,17 @@ def main():
     log_text = (out / 'client.log').read_text()
     if any(error in log_text for error in ('Validation Error', 'SYNC-HAZARD', 'VUID-',
                                          'Separate indirect pass unavailable', 'Separate indirect consumer unavailable',
-                                         'Adaptive termination unavailable')):
+                                         'Adaptive termination unavailable', 'using LightBVH')):
         raise RuntimeError(f'Validation error or dispatch fallback: {out / "client.log"}')
     for phase in phases or [None]:
         destination = out / phase[0] if phase else out
         expected = int(phase[1]) if phase else int(args.sharc)
         if phase:
-            for name in ('frames.csv', 'stages.csv', 'state.csv', 'rays.csv', 'load.json'):
+            for name in ('frames.csv', 'stages.csv', 'state.csv', 'rays.csv', 'load.json', 'lighting-timings.csv'):
                 if (out / name).exists():
                     (destination / name).symlink_to('../' + name)
             launch = json.loads((out / 'launch.json').read_text())
-            launch['phase'] = dict(zip(('name', 'sharc', 'bounces', 'capacity', 'downscale', 'dispatch', 'placement', 'roulette', 'rouletteMin'), phase))
+            launch['phase'] = dict(zip(('name', 'sharc', 'bounces', 'capacity', 'downscale', 'dispatch', 'placement', 'roulette', 'rouletteMin', 'torchSampler', 'rtxdiProposal'), phase))
             (destination / 'launch.json').write_text(json.dumps(launch, indent=2) + '\n')
         result = summarize(destination)
         assert result['sharc']['min'] == result['sharc']['max'] == expected

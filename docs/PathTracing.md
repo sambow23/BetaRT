@@ -41,6 +41,13 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_DLSS_QUALITY` | native-aa, quality, balanced, performance, ultra-performance | quality |
 | `MCRTX_PT_DLSS_RR` | 0 or 1 | 1 |
 | `MCRTX_PT_LOCAL_LIGHTS` | 0/1 or false/true | 1 |
+| `MCRTX_PT_TORCH_SAMPLER` | `lightbvh`, `rtxdi` (experimental) | `lightbvh` |
+| `MCRTX_PT_RTXDI_PROPOSAL` | `lightbvh`, `regir` | `lightbvh` |
+| `MCRTX_PT_RTXDI_CANDIDATES` | 1–32 primary candidates | 4 |
+| `MCRTX_PT_RTXDI_SECONDARY_CANDIDATES` | 1–32 fresh candidates at other hits | 4 |
+| `MCRTX_PT_RTXDI_TEMPORAL_REUSE` | 0 or 1 | 1 |
+| `MCRTX_PT_RTXDI_SPATIAL_SAMPLES` | 0–8 | 2 |
+| `MCRTX_PT_RTXDI_HISTORY_LENGTH` | 1–32 | 4 |
 | `MCRTX_PT_LOCAL_SAMPLES` | 1–16 primary local samples | 2 |
 | `MCRTX_PT_LOCAL_DIRECT_CLAMP` | finite 0–1,000,000 outgoing linear luminance; 0 disables | 0 |
 | `MCRTX_PT_INDIRECT_CLAMP` | finite 0–1,000,000 outgoing linear luminance; 0 disables | 0 |
@@ -54,6 +61,15 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_ACCUMULATE` | 0/1 or false/true | 0 |
 | `MCRTX_PT_FORCE_REBUILD` | Same booleans; dynamic TLAS profiling | 0 |
 | `MCRTX_PT_PROFILE` | Path to per-presentation CSV, overwritten on launch | disabled |
+
+The optional torch sampler uses NVIDIA RTXDI for ReSTIR DI. F12 shows the requested
+and active backend, any fallback reason, and a collapsed **ReSTIR DI settings** group.
+`MCRTX_PT_RTXDI=0/1` (or false/true) remains an alias; an explicit
+`MCRTX_PT_TORCH_SAMPLER` takes precedence. RTXDI preserves the explicit local sample
+budget, suspends adaptive local sampling and experimental PBR reuse, and leaves
+emissives on LightBVH. Backend and estimator changes clear lighting histories,
+progressive accumulation, and SHARC. No JNI protocol or public ABI changes are needed.
+See [ReSTIR DI details](../../openremix/docs/features/restir-di.md).
 
 F12 exposes **Maximum indirect bounces**, **Adaptive indirect termination**, and
 **Bounces before adaptive termination**. Leave adaptation off for the existing
@@ -203,7 +219,7 @@ changes are required. See [cache behavior](../../openremix/docs/features/sharc.m
 `MCRTX_PT_PROFILE` records per-presentation CSV with fresh/redraw status,
 presentation intervals, tracing/confidence/NRD/TAA timings, history resets,
 resource traffic and acceleration statistics. Unsupported lighting/sampling
-statistics fields are `unavailable`, never fabricated zero counters. Legacy RTXDI, general emissive-mesh sampling and checkerboard-sampling controls
+statistics fields are `unavailable`, never fabricated zero counters. General emissive-mesh sampling and checkerboard-sampling controls
 belong to other companion runtimes. The separate local-light diagnostics report
 light count, sample budget, BVH builds/refits, CPU update cost and torch NRD time.
 The trailing `submission_sequence` and `presentation_count` columns link a row

@@ -225,6 +225,12 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     for (const auto &[environment, setting] : {std::pair{"MCRTX_PT_SAMPLES", "samples"},
         {"MCRTX_PT_UPSCALER", "upscaler"}, {"MCRTX_PT_DLSS_QUALITY", "dlssQuality"},
         {"MCRTX_PT_DLSS_RR", "dlssRayReconstruction"},
+        {"MCRTX_PT_TORCH_SAMPLER", "torchSampler"}, {"MCRTX_PT_RTXDI_PROPOSAL", "rtxdiProposal"},
+        {"MCRTX_PT_RTXDI_CANDIDATES", "rtxdiCandidates"},
+        {"MCRTX_PT_RTXDI_SECONDARY_CANDIDATES", "rtxdiSecondaryCandidates"},
+        {"MCRTX_PT_RTXDI_TEMPORAL_REUSE", "rtxdiTemporalReuse"},
+        {"MCRTX_PT_RTXDI_SPATIAL_SAMPLES", "rtxdiSpatialSamples"},
+        {"MCRTX_PT_RTXDI_HISTORY_LENGTH", "rtxdiHistoryLength"},
         {"MCRTX_PT_LOCAL_LIGHTS", "localLights"}, {"MCRTX_PT_LOCAL_SAMPLES", "localSamples"},
         {"MCRTX_PT_LOCAL_DIRECT_CLAMP", "localDirectClamp"},
         {"MCRTX_PT_INDIRECT_CLAMP", "indirectClamp"},
@@ -242,6 +248,9 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         {"MCRTX_PT_SHARC_CAPACITY_LOG2", "sharcCapacityLog2"}, {"MCRTX_PT_SHARC_DEBUG", "sharcDebug"},
         {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"}}) {
       auto value = detail::readEnvironmentVariable(environment);
+      // An explicit backend wins even if the legacy alias is also supplied.
+      if (std::strcmp(environment, "MCRTX_PT_RTXDI") == 0 &&
+          !detail::readEnvironmentVariable("MCRTX_PT_TORCH_SAMPLER").empty()) continue;
       if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
     }
     remixapi_LightInfoDistantEXT distant = {};
