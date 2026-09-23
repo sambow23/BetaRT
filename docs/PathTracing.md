@@ -39,6 +39,9 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_DLSS_RR` | 0 or 1 | 1 |
 | `MCRTX_PT_LOCAL_LIGHTS` | 0/1 or false/true | 1 |
 | `MCRTX_PT_LOCAL_SAMPLES` | 1–16 primary local samples | 2 |
+| `MCRTX_PT_LOCAL_DIRECT_CLAMP` | finite 0–1,000,000 outgoing linear luminance; 0 disables | 0 |
+| `MCRTX_PT_INDIRECT_CLAMP` | finite 0–1,000,000 outgoing linear luminance; 0 disables | 0 |
+| `MCRTX_PT_LOCAL_FIREFLY_FILTER` | 0/1 or false/true; PBR REBLUR pre-blur experiment | 0 |
 | `MCRTX_PT_LOCAL_DENOISER` | 0/1 or false/true (with REBLUR enabled) | 1 |
 | `MCRTX_PT_SEPARATE_LOCAL_LIGHTING` | 0 inline combined, 1 separate families/shared budget, 2 separate families/per-family budget, 3 combined in a separate pass | 0 |
 | `MCRTX_PT_LOCAL_INTENSITY` | 0–100 radiance multiplier | 1 |
@@ -189,3 +192,20 @@ selects DLSS Ray Reconstruction, then DLSS Super Resolution, then native renderi
 F12 displays the active backend and fallback reason. Ray Reconstruction manages
 its denoisers and independent sampling while retaining the saved NRD, SIGMA, TAA,
 blue-noise and reuse settings for restoration. Progressive references bypass it.
+
+### Optional firefly suppression
+
+The direct clamp covers weighted torch and emissive samples; the indirect clamp
+covers complete continuation paths. Lower thresholds reduce more brightness and
+may dim legitimate highlights. Primary sunlight and directly visible emission
+remain unchanged. Both clamps preserve RGB ratios and share their scale between
+diffuse and specular contributions. Sample counts do not rescale the thresholds.
+
+F12 exposes both numeric thresholds and **PBR local-light firefly filter (REBLUR)**.
+The independent filter preserves specular motion estimation while bypassing
+radiance pre-blur; it is inactive when REBLUR is bypassed, including DLSS RR.
+Changing any setting resets temporal history and progressive accumulation.
+Either clamp bypasses experimental PBR lighting reuse; indirect clamping also
+bypasses water irradiance sharing, which can increase GPU time. Defaults remain
+disabled. These environment variables forward existing configuration strings;
+the JNI protocol is unchanged.
