@@ -143,12 +143,20 @@ cache resets before measurement, then checks that GPU lighting actually ran. Use
 `--phases FILE` for repeated settings in one process: each headerless CSV row is
 `name,sharc,bounces,capacityLog2,downscale`. Alternate off/on and on/off pairs.
 An optional sixth column chooses dispatch: `0` inline, `1` split, `a` automatic.
+The seventh column selects scene-table placement (`0` host, `1` device), the
+eighth toggles adaptive indirect termination (`0` fixed, `1` adaptive), and the
+ninth sets its minimum completed bounces (`1`–`4`). `--roulette` and `--roulette-min`
+set launch defaults. `--camera FILE` selects another view of the same immutable
+snapshot from a JSON array `[eyeX, eyeY, eyeZ, yaw, pitch]`; the driver records its
+hash. Keep cache, dispatch, placement and reconstruction settings fixed within
+each comparison. Use three alternating fixed/adaptive pairs with ten-second
+stable warmups and twenty-second measurements. Record individual pairs and run
+HDR captures, validation and `--rays`/`--state` diagnostics separately from timing.
 The driver creates the renderer's diagnostic control file and the fixture replaces
 it atomically before each cache reset. `--state` adds completed-frame pipeline and
 buffer state to stage diagnostics. `--device-local-scene` enables the companion
 renderer's opt-in GPU-local scene-table placement experiment.
-An optional seventh column selects scene-table placement (`0` host, `1` device),
-allowing repeated placement pairs in one process. `--validation-layers` and
+`--validation-layers` and
 `--validation-libraries` select explicit layer directories for separate validation
 runs; exclude those runs from performance comparisons. The fixture rejects a
 missing reconstruction backend before measurement, and the driver rejects

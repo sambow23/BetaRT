@@ -91,6 +91,15 @@ public final class SharcProfileTest {
             int chunks = in.readInt();
             x = in.readDouble(); y = in.readDouble(); z = in.readDouble();
             yaw = in.readFloat(); pitch = in.readFloat();
+            String camera = System.getProperty("mcrtx.test.camera", "");
+            if (!camera.isEmpty()) {
+                String[] pose = camera.split(",");
+                if (pose.length != 5) throw new AssertionError("Invalid camera override");
+                x = Double.parseDouble(pose[0]); y = Double.parseDouble(pose[1]); z = Double.parseDouble(pose[2]);
+                yaw = Float.parseFloat(pose[3]); pitch = Float.parseFloat(pose[4]);
+                if (!Double.isFinite(x) || !Double.isFinite(y) || !Double.isFinite(z) ||
+                        !Float.isFinite(yaw) || !Float.isFinite(pitch)) throw new AssertionError("Nonfinite camera");
+            }
             World world = new World(in.readLong()); world.B = true; world.a(in.readLong());
             for (int i = 0; i < chunks; ++i) {
                 int cx = in.readInt(), cz = in.readInt();
@@ -117,7 +126,7 @@ public final class SharcProfileTest {
                 File destination = out;
                 if (!phase.isEmpty()) {
                     String[] values = phase.split(",");
-                    if ((values.length < 5 || values.length > 7) || !values[0].matches("[a-z0-9-]+"))
+                    if ((values.length < 5 || values.length > 9) || !values[0].matches("[a-z0-9-]+"))
                         throw new AssertionError("Invalid phase");
                     destination = new File(out, values[0]);
                     if (!destination.mkdir()) throw new AssertionError("Existing phase: " + destination);
@@ -125,15 +134,17 @@ public final class SharcProfileTest {
                     config("sharcCapacityLog2", values[3]); config("sharcDownscale", values[4]);
                     if (values.length >= 6) {
                         if (!values[5].matches("[01a]")) throw new AssertionError("Invalid dispatch mode");
-                        if (values.length == 7 && !values[6].matches("[01]"))
+                        if (values.length >= 7 && !values[6].matches("[01]"))
                             throw new AssertionError("Invalid placement mode");
                         java.nio.file.Path mode = new File(System.getenv("REMIX_INDIRECT_MODE_FILE")).toPath();
                         java.nio.file.Path next = mode.resolveSibling(mode.getFileName() + ".next");
-                        String controls = values[5] + (values.length == 7 ? "," + values[6] : "");
+                        String controls = values[5] + (values.length >= 7 ? "," + values[6] : "");
                         Files.write(next, controls.getBytes("UTF-8"));
                         Files.move(next, mode, java.nio.file.StandardCopyOption.ATOMIC_MOVE,
                                 java.nio.file.StandardCopyOption.REPLACE_EXISTING);
                     }
+                    if (values.length >= 8) config("russianRoulette", values[7]);
+                    if (values.length >= 9) config("rouletteMinBounces", values[8]);
                     config("sharcReset", "1");
                     System.out.println("PHASE " + phase);
                 }

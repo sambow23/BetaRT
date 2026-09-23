@@ -15,6 +15,7 @@ import os
 from pathlib import Path
 import signal
 import statistics
+import struct
 import subprocess
 import time
 
@@ -93,6 +94,9 @@ def main():
     parser.add_argument('--renderer', type=Path, required=True, help='Build supporting REMIX_PROFILE_EVERY_FRAME')
     parser.add_argument('--sharc', choices=('0', '1'), required=True)
     parser.add_argument('--bounces', type=int, default=1)
+    parser.add_argument('--roulette', choices=('0', '1'), default='0')
+    parser.add_argument('--roulette-min', type=int, choices=range(1, 5), default=1)
+    parser.add_argument('--camera', type=Path, help='JSON array [eyeX,eyeY,eyeZ,yaw,pitch] overriding the snapshot camera')
     parser.add_argument('--capacity', type=int, default=22)
     parser.add_argument('--downscale', type=int, default=5)
     parser.add_argument('--warmup', type=int, default=10000)
@@ -108,7 +112,7 @@ def main():
     parser.add_argument('--split-indirect', action='store_true', help='Existing experimental separate continuation dispatch')
     parser.add_argument('--inline-indirect', action='store_true', help='Force inline continuation in either cache mode')
     parser.add_argument('--pipeline-stats', type=Path, help='Diagnostic Vulkan pipeline-statistics preload library')
-    parser.add_argument('--phases', type=Path, help='CSV: name,sharc,bounces,capacity,downscale[,dispatch[,placement]]; dispatch 0=inline,1=split,a=auto; placement 0=host,1=device')
+    parser.add_argument('--phases', type=Path, help='CSV: name,sharc,bounces,capacity,downscale[,dispatch[,placement[,roulette[,rouletteMin]]]]; dispatch 0=inline,1=split,a=auto; placement 0=host,1=device')
     parser.add_argument('--upscaler', choices=('dlss', 'off'), default='dlss')
     args = parser.parse_args()
     if args.split_indirect and args.inline_indirect:
@@ -118,9 +122,15 @@ def main():
     if args.warmup < 10000 or args.measure <= 0:
         parser.error('Use at least 10 seconds of warmup and a positive measurement duration')
     phases = [row for row in csv.reader(args.phases.read_text().splitlines()) if row] if args.phases else []
-    if any(len(row) not in (5, 6, 7) or (len(row) >= 6 and row[5] not in ('0', '1', 'a')) or
-           (len(row) == 7 and row[6] not in ('0', '1')) for row in phases):
+    if any(not 5 <= len(row) <= 9 or (len(row) >= 6 and row[5] not in ('0', '1', 'a')) or
+           (len(row) >= 7 and row[6] not in ('0', '1')) or
+           (len(row) >= 8 and row[7] not in ('0', '1')) or
+           (len(row) >= 9 and row[8] not in ('1', '2', '3', '4')) for row in phases):
         parser.error('Invalid phase CSV')
+    camera = json.loads(args.camera.read_text()) if args.camera else None
+    if camera is not None and (not isinstance(camera, list) or len(camera) != 5 or
+                               any(type(v) not in (int, float) or not math.isfinite(v) for v in camera)):
+        parser.error('Camera must contain five finite numbers')
     require_idle_profile()
     root, libraries = args.root.resolve(), args.libraries.resolve()
     out = root / args.label
@@ -134,6 +144,7 @@ def main():
                MCRTX_PT_LOCAL_DIRECT_CLAMP='0', MCRTX_PT_INDIRECT_CLAMP='0', MCRTX_PT_LOCAL_FIREFLY_FILTER='1',
                MCRTX_PT_DENOISER='reblur-sh', MCRTX_PT_TAA='1', MCRTX_PT_SAMPLES='1',
                MCRTX_PT_BOUNCES=str(args.bounces), MCRTX_PT_ACCUMULATE='0',
+               MCRTX_PT_RUSSIAN_ROULETTE=args.roulette, MCRTX_PT_ROULETTE_MIN_BOUNCES=str(args.roulette_min),
                MCRTX_PT_SHARC=args.sharc, MCRTX_PT_SHARC_CAPACITY_LOG2=str(args.capacity),
                MCRTX_PT_SHARC_DOWNSCALE=str(args.downscale), MCRTX_PT_SHARC_SCALE='50',
                MCRTX_JNI_PATH=str(libraries / 'libmcrtx_jni.so'), MCRTX_REMIX_PATH=str(renderer),
@@ -175,10 +186,14 @@ def main():
                'SharcProfileTest', str(out), str(root / 'terrain-snapshot.bin')]
     if args.phases:
         command.insert(1, '-Dmcrtx.test.phases=' + str(args.phases.resolve()))
+    if camera is not None:
+        command.insert(1, '-Dmcrtx.test.camera=' + ','.join(map(str, camera)))
     artifacts = [renderer, libraries / 'libmcrtx_jni.so', libraries / 'customjar-1.jar', root / 'terrain-snapshot.bin',
                  root / 'classes/SharcProfileTest.class', root / 'libsharc_profile.so']
     if args.pipeline_stats:
         artifacts.append(args.pipeline_stats.resolve())
+    if args.camera:
+        artifacts.append(args.camera.resolve())
     (out / 'launch.json').write_text(json.dumps(dict(command=command, settings=vars(args),
         env={k: v for k, v in env.items() if k.startswith(('MCRTX_', 'REMIX_', 'VK_', 'SDL_')) or k == 'LD_PRELOAD'},
         sha256={str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in artifacts}), indent=2, default=str) + '\n')
@@ -208,7 +223,8 @@ def main():
         raise RuntimeError(f'Profiling failed ({process.returncode}): {out / "client.log"}')
     log_text = (out / 'client.log').read_text()
     if any(error in log_text for error in ('Validation Error', 'SYNC-HAZARD', 'VUID-',
-                                         'Separate indirect pass unavailable', 'Separate indirect consumer unavailable')):
+                                         'Separate indirect pass unavailable', 'Separate indirect consumer unavailable',
+                                         'Adaptive termination unavailable')):
         raise RuntimeError(f'Validation error or dispatch fallback: {out / "client.log"}')
     for phase in phases or [None]:
         destination = out / phase[0] if phase else out
@@ -218,7 +234,7 @@ def main():
                 if (out / name).exists():
                     (destination / name).symlink_to('../' + name)
             launch = json.loads((out / 'launch.json').read_text())
-            launch['phase'] = dict(zip(('name', 'sharc', 'bounces', 'capacity', 'downscale', 'dispatch', 'placement'), phase))
+            launch['phase'] = dict(zip(('name', 'sharc', 'bounces', 'capacity', 'downscale', 'dispatch', 'placement', 'roulette', 'rouletteMin'), phase))
             (destination / 'launch.json').write_text(json.dumps(launch, indent=2) + '\n')
         result = summarize(destination)
         assert result['sharc']['min'] == result['sharc']['max'] == expected
@@ -234,8 +250,17 @@ def main():
             assert state
             if phase[5] != 'a':
                 assert all(int(row['split']) == int(phase[5]) for row in state)
-            if len(phase) == 7:
+            if len(phase) >= 7:
                 assert all(int(row['scene_device_local']) == int(phase[6]) for row in state)
+            if len(phase) >= 8:
+                minimum = int(phase[8]) if len(phase) >= 9 else args.roulette_min
+                active = int(phase[7]) and minimum < int(phase[2])
+                for row in state:
+                    # Private renderer frame: verify the effective controls, not
+                    # just the requested launch variables. No SDK/JNI extension.
+                    frame = bytes.fromhex(row['frame_hex'])
+                    assert len(frame) == 544, 'Update diagnostic private-frame decoder'
+                    assert struct.unpack_from('<II', frame, 528) == (int(active), minimum)
         print(json.dumps(dict(phase=phase[0] if phase else args.label, result=result)), flush=True)
 
 

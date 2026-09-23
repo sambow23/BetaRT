@@ -30,7 +30,9 @@ environment. F12 also permits switching at a completed native frame boundary.
 | --- | --- | --- |
 | `MCRTX_RENDER_BACKEND` | `raster`, `pathtrace` | `raster` |
 | `MCRTX_PT_SAMPLES` | 1–16 | 1 |
-| `MCRTX_PT_BOUNCES` | 0–4 indirect bounces | 2 |
+| `MCRTX_PT_BOUNCES` | 0–4 maximum indirect bounces per sample | 2 |
+| `MCRTX_PT_RUSSIAN_ROULETTE` | 0/1 or false/true; adaptive indirect termination | 0 |
+| `MCRTX_PT_ROULETTE_MIN_BOUNCES` | 1–4 completed bounces before adaptive termination | 1 |
 | `MCRTX_PT_DENOISER` | `off`, `reblur-sh` | `reblur-sh` |
 | `MCRTX_PT_SIGMA` | 0/1 or false/true | 1 |
 | `MCRTX_PT_SUN_DIAMETER` | -1 inherit, 0–10 degrees override | -1 (game: 0.533) |
@@ -52,6 +54,21 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_ACCUMULATE` | 0/1 or false/true | 0 |
 | `MCRTX_PT_FORCE_REBUILD` | Same booleans; dynamic TLAS profiling | 0 |
 | `MCRTX_PT_PROFILE` | Path to per-presentation CSV, overwritten on launch | disabled |
+
+F12 exposes **Maximum indirect bounces**, **Adaptive indirect termination**, and
+**Bounces before adaptive termination**. Leave adaptation off for the existing
+fixed maximum. When enabled, low-throughput paths can stop after the minimum;
+survivors are weighted to preserve expected unclamped brightness. The first
+indirect hit and its lighting remain intact. A minimum at or above the maximum
+disables adaptation. SHARC training is unchanged, and a cache hit may include
+lighting beyond the traced bounce limit. Changes reset temporal and progressive
+histories without changing the JNI protocol.
+
+This trades additional noise for less tracing work. Savings vary with materials,
+bounce count and cache hits; REBLUR and brightness clamps can change the appearance
+of the stronger surviving samples. Defaults remain fixed-depth. This control is
+unrelated to DLSS Ray Reconstruction. See the companion renderer's
+[sampling details](../../openremix/docs/path-tracing.md).
 
 Tracing requires Vulkan 1.2, acceleration structures, ray queries, buffer device
 addresses, nonuniform texture indexing, sufficient descriptors and a combined

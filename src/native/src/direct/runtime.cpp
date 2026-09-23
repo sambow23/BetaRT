@@ -234,6 +234,8 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         {"MCRTX_PT_LOCAL_RANGE", "localRange"}, {"MCRTX_PT_LOCAL_GUIDING", "localGuiding"},
         {"MCRTX_PT_SIGMA", "sigma"}, {"MCRTX_PT_SUN_DIAMETER", "sunAngularDiameter"},
         {"MCRTX_PT_SHADOW_DEBUG", "shadowDebug"}, {"MCRTX_PT_BOUNCES", "bounces"}, {"MCRTX_PT_ACCUMULATE", "accumulate"},
+        {"MCRTX_PT_RUSSIAN_ROULETTE", "russianRoulette"},
+        {"MCRTX_PT_ROULETTE_MIN_BOUNCES", "rouletteMinBounces"},
         {"MCRTX_PT_FORCE_REBUILD", "forceRebuild"}, {"MCRTX_PT_DENOISER", "denoiser"}, {"MCRTX_PT_TAA", "taa"}, {"MCRTX_PT_RTXDI", "rtxdi"}, {"MCRTX_PT_SHARC", "sharc"},
         {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
         {"MCRTX_PT_SHARC_DOWNSCALE", "sharcDownscale"}, {"MCRTX_PT_SHARC_SCALE", "sharcSceneScale"},
