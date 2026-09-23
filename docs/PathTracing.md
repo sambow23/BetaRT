@@ -13,7 +13,8 @@ celestial angle in radians. White noon intensity remains pi, scaled by
 Dimensions without a sky disable both sources; night ambient uses only Minecraft's
 night-sky color. F12 retains the manual sunlight override and adds a sky toggle.
 Sun/moon/star sprites remain visual backgrounds. REBLUR SH and native-resolution
-TAA default on. SHARC caches indirect diffuse radiance; SIGMA filters primary
+TAA default on. SHARC caches indirect lighting on static diffuse and rough PBR
+surfaces; SIGMA filters primary
 opaque sun visibility with distance-dependent penumbra. BetaRT supplies a
 0.533-degree sun diameter. F12 exposes SIGMA and a sun-size override; zero diameter
 retains hard shadows. See [SIGMA details](../../openremix/docs/features/sigma.md).
@@ -169,6 +170,16 @@ python3 scripts-linux/stage-pathtrace-profile.py rollback \
 The payload contains `customjar-1.jar`, `libmcrtx_jni.so`, `libremix.so.0.1003.0` and
 `libSDL3.so.0.4.14`. Build normal runtime/JNI/client artifacts first; staging does
 not compile or change launcher options. The default remains raster after staging.
+
+### SHARC with PBR
+
+The companion renderer's directional SHARC cache supports static opaque EON/GGX
+surfaces with sampled roughness at least 0.5, including metals and normal maps.
+Sharp surfaces continue tracing; reflection footprint checks decide when a later
+rough hit can reuse the cache. F12 distinguishes **Caching** from **Enabled (idle)**.
+The default 4,194,304-entry directional cache uses 256 MiB. Progressive references
+and zero indirect bounces bypass it. No new launch variables or JNI protocol
+changes are required. See [cache behavior](../../openremix/docs/features/sharc.md).
 
 ## Optional diagnostics
 

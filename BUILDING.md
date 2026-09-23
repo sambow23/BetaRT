@@ -105,7 +105,8 @@ statistics are optional: CMake checks the SDK types, missing exports are non-fat
 and unsupported CSV fields read `unavailable`.
 Path tracing uses Minecraft sun/sky illumination with REBLUR SH and TAA enabled by
 default. `MCRTX_PT_SKY=0` disables indirect sky lighting; `MCRTX_PT_DENOISER=off` and
-`MCRTX_PT_TAA=0` select raw output. Openremix supports optional SHARC diffuse radiance caching (`MCRTX_PT_SHARC=0/1`),
+`MCRTX_PT_TAA=0` select raw output. Openremix supports optional SHARC radiance caching
+for static diffuse and rough PBR surfaces (`MCRTX_PT_SHARC=0/1`),
 with `MCRTX_PT_SHARC_DOWNSCALE`, `MCRTX_PT_SHARC_SCALE`, and
 `MCRTX_PT_SHARC_CAPACITY_LOG2` controls. Progressive accumulation bypasses SHARC.
 The profiling CSV reports SHARC timings, memory, occupancy and resets when the
@@ -114,6 +115,48 @@ Unsupported full-ray counters, emitter sampling and glow remain unavailable.
 Use client and JNI artifacts from the same build and the companion runtime with
 `remix_native_ext.h` exports. Windows client parity and arbitrary mods issuing GL
 calls are outside this Linux migration.
+
+For repeatable SHARC timings, `scripts-linux/profile-sharc.py` runs
+`src/tests/java/direct/SharcProfileTest.java` against an immutable terrain snapshot
+in RAM. It never connects to the server or opens a game save. Compile that class
+with `javac --release 8 -cp LIBRARIES/customjar-1.jar -d ROOT/classes`, supplying
+the Java source path, and compile `src/tests/native/sharc_profile.cpp` with
+`clang++ -shared -fPIC -O2`, the JDK `include` and `include/linux` paths,
+OpenRemix's `public/include`, and `-ldl -o ROOT/libsharc_profile.so`.
+Run the driver with `ROOT LABEL --libraries LIBRARIES --java JAVA8
+--renderer RENDERER --sharc 0` (or `1`). The renderer must support
+`REMIX_PROFILE_EVERY_FRAME=1`; fresh packet counts can otherwise include reused
+lighting. The standalone native helper reads existing diagnostics and sets
+configuration without changing the game's JNI protocol.
+
+`ROOT/terrain-snapshot.bin` uses Java `DataInputStream` byte order: version `1`
+and chunk count as 32-bit integers; camera eye XYZ as doubles; yaw/pitch as
+floats; world seed and time as 64-bit integers; then each chunk's integer X/Z
+and five length-prefixed byte arrays (blocks, metadata, block light, sky light,
+height map). Use already-saved, stable chunk data and include the requested view
+plus a loading margin. Entities and game ticks are not replayed. Keep source
+hashes and the camera pose beside the snapshot.
+
+The driver records exact settings, artifact hashes, GPU clocks and frame windows.
+It requires at least ten seconds and 128 GPU frames with stable geometry/lights/
+cache resets before measurement, then checks that GPU lighting actually ran. Use
+`--phases FILE` for repeated settings in one process: each headerless CSV row is
+`name,sharc,bounces,capacityLog2,downscale`. Alternate off/on and on/off pairs.
+An optional sixth column chooses dispatch: `0` inline, `1` split, `a` automatic.
+The driver creates the renderer's diagnostic control file and the fixture replaces
+it atomically before each cache reset. `--state` adds completed-frame pipeline and
+buffer state to stage diagnostics. `--device-local-scene` enables the companion
+renderer's opt-in GPU-local scene-table placement experiment.
+An optional seventh column selects scene-table placement (`0` host, `1` device),
+allowing repeated placement pairs in one process. `--validation-layers` and
+`--validation-libraries` select explicit layer directories for separate validation
+runs; exclude those runs from performance comparisons. The fixture rejects a
+missing reconstruction backend before measurement, and the driver rejects
+validation errors or a separate-indirect fallback.
+Captures occur after measurement; use `--stages`, `--rays` and pipeline statistics
+only in separate diagnostic runs. Trace timing already includes SHARC update and
+resolve. Disabled SHARC retains its allocations and last diagnostics, so stale
+update/resolve times and hit counts must not be attributed to an off phase.
 
 ## PBR maps
 
