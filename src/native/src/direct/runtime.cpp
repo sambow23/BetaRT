@@ -502,6 +502,16 @@ void Runtime::material(std::uint64_t id) {
   info.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO;
   info.hash = id;
   info.pNext = &opaque;
+  // Reserved terrain material IDs encode block, intrinsic light level and
+  // material class. Torches already have stable sphere lights; only suppress
+  // their generated area lights, keeping authored/procedural visible emission.
+  constexpr std::uint64_t terrainMaterialBase = 0x6000000000000000ull;
+  const auto block = id >= terrainMaterialBase && id < terrainMaterialBase + 256 * 16 * 8
+      ? (id - terrainMaterialBase) / (16 * 8) : 0;
+  remixapi_MaterialInfoEmissionEXT emission{};
+  emission.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_EMISSION_EXT;
+  emission.suppressLightGeneration = 1;
+  if (block == 50 || block == 76) opaque.pNext = &emission;
   info.albedoTexture = source.texture ? path.c_str() : nullptr;
   info.normalTexture=normalPath.empty()?nullptr:normalPath.c_str();
   const auto emissionPath=texturePath(source.emissionTexture);

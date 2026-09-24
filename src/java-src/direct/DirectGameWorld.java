@@ -100,13 +100,9 @@ public final class DirectGameWorld {
                 DirectTextures.image(emissionTextures[block],mask,image.width,image.height,false,false);
                 emissionPixels[block]=mask;
             }
-            float power=mcrtx.render.DirectEmission.radiance(level);
-            // These blocks already own stable analytic sphere lights. Do not
-            // add a second emitter through their material masks.
-            if(block==50||block==76)power=0;
             for(int material=0;material<8;++material)
-                DirectRenderer.writeMaterial(0x6000000000000000L+(block*16+level)*8+material,
-                    material==2?water:material==3?lava:material==5?portal:atlas,emissionTextures[block],power,power,power);
+                mcrtx.render.DirectEmission.writeMaterial(block,level,material,
+                    material==2?water:material==3?lava:material==5?portal:atlas,emissionTextures[block]);
         }
     }
     private static void extract(DirectTextures.Texture source,int id,int... tiles){

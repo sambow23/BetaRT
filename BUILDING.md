@@ -185,7 +185,11 @@ Maps are cached by content under `mcrtx_texturepack_cache/direct` so reloads pre
 queued resource lifetimes. Missing maps use roughness 1, metalness 0 and geometric normals.
 
 Use the paired OpenRemix EON/GGX runtime and protocol 6 JNI/client artifacts.
-Emissive maps retain intrinsic block intensities and the analytic-torch exclusion.
+Emissive maps retain intrinsic block intensities. Torch and lit redstone-torch tips
+use authored maps or procedural masks for their visible glow. Their reserved terrain
+material IDs select OpenRemix's `MaterialInfoEmissionEXT` policy to suppress duplicate
+area lights; the existing analytic sphere lights keep their brightness and placement.
+Use the matching updated client, JNI and OpenRemix together; protocol 6 is unchanged.
 Displacement is deferred. The existing `reblur-sh` setting enables separate PBR
 diffuse/specular denoising, followed by TAA/FSR. Mapped normals and roughness guide
 reflection filtering; visible emissive maps stay sharp. `localDenoiser` controls

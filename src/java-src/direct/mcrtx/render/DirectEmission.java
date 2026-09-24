@@ -7,6 +7,13 @@ public final class DirectEmission {
         float normalized=Math.max(0,Math.min(15,level))/15f;
         return (float)(16*Math.PI)*normalized*normalized;
     }
+    public static void writeMaterial(int block,int level,int materialClass,int texture,int mask) {
+        float power=radiance(level);
+        // The native material policy suppresses duplicate area lights for
+        // analytic torches without disabling their visible emission maps.
+        DirectRenderer.writeMaterial(0x6000000000000000L+(block*16+level)*8+materialClass,
+            texture,mask,power,power,power);
+    }
     public static int[] mask(DirectTextures.Texture image,int block) {
         int[] pixels=new int[image.width*image.height];
         int tileWidth=Math.max(1,image.width/16),tileHeight=Math.max(1,image.height/16);

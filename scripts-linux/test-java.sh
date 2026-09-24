@@ -33,7 +33,7 @@ if [[ ${MCRTX_TEST_GPU:-0} == 1 ]]; then
   "$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" "${test_sources[@]}"
   test_names=(DirectTransportTest DirectClientTest DirectStartupTest DirectWorldTest)
   if [[ ${MCRTX_RENDER_BACKEND:-raster} == pathtrace ]]; then
-    test_names+=(DirectNormalsTest)
+    test_names+=(DirectNormalsTest DirectTorchEmissionTest)
   fi
   for test_name in "${test_names[@]}"; do
     test_data="$test_output/$test_name"
@@ -45,11 +45,13 @@ if [[ ${MCRTX_TEST_GPU:-0} == 1 ]]; then
       test_backend=${MCRTX_RENDER_BACKEND:-raster}
       test_timeout=300
     fi
-    if [[ $test_name == DirectNormalsTest ]]; then
+    if [[ $test_name == DirectNormalsTest || $test_name == DirectTorchEmissionTest ]]; then
       test_backend=pathtrace
       test_timeout=300
+      test_local_lights=0
+      [[ $test_name != DirectTorchEmissionTest ]] || test_local_lights=1
       test_settings=(MCRTX_PT_UPSCALER=off MCRTX_PT_DENOISER=off MCRTX_PT_TAA=0
-        MCRTX_PT_SHARC=0 MCRTX_PT_SIGMA=0 MCRTX_PT_SKY=0 MCRTX_PT_LOCAL_LIGHTS=0
+        MCRTX_PT_SHARC=0 MCRTX_PT_SIGMA=0 MCRTX_PT_SKY=0 MCRTX_PT_LOCAL_LIGHTS="$test_local_lights"
         MCRTX_PT_SUN_DIAMETER=0 MCRTX_PT_SHADOW_DEBUG=0 MCRTX_PT_SHARC_DEBUG=0)
     fi
     timeout "$test_timeout" env REMIX_CONFIG_DIR="$test_output/$test_name-config" \

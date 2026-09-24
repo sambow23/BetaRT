@@ -36,6 +36,17 @@ public final class DirectEmissionTest {
             p.position(end);
         }
         require(materials==1&&textures==2,"Texture dependencies must precede their material");
+        for(int block:new int[]{50,76,89}) {
+            int level=block==76?7:14;
+            DirectRenderer.resources.clear();DirectEmission.writeMaterial(block,level,0,texture,mask);
+            source=DirectRenderer.resources.buffer();p=source.duplicate().order(ByteOrder.LITTLE_ENDIAN);
+            p.limit(source.position());p.position(8);
+            require(p.getInt()==2,"Placed block material packet missing");p.getInt();
+            require(p.getLong()==0x6000000000000000L+(block*16+level)*8,"Placed material identity changed");
+            p.getLong();p.getInt();p.getInt();p.getInt();
+            require(p.getLong()!=0,"Placed emission mask missing");
+            for(int c=0;c<3;++c)require(p.getFloat()==DirectEmission.radiance(level),"Torch visible emission disabled");
+        }
         System.out.println("Placed-block masks, intrinsic emission and protocol dependencies passed");
     }
 }
