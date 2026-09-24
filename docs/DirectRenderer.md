@@ -54,7 +54,12 @@ invalidate widths/meshes when their atlas changes. Generated item/sprite geometr
 has a 512-entry, 8 MiB cache. Terrain residency belongs to loaded chunks and
 camera distance; see [terrain ownership](TerrainPipeline.md).
 
-The private JNI protocol uses version 5, a bounded little-endian packet format. Camera packets carry world/reset epochs and complete enabled sky RGB/sun direction/sun RGB state on every submission; client and JNI must be updated together.
+The private JNI protocol uses version 6, a bounded little-endian packet format. Camera packets carry world/reset epochs and complete enabled sky RGB/sun direction/sun RGB state on every submission; client and JNI must be updated together.
+Streamed mesh vertices contain position, UV and color, without authored normals.
+The bridge leaves their normals zero so OpenRemix derives geometric face normals
+after the instance transform. Terrain meshes retain their explicitly computed
+normals. Substituting a fixed normal for streamed faces produces incorrect
+lighting and a discontinuity where that normal turns away from the camera.
 Version 2 adds stable instance identities, classification, independent raster
 visibility and separate camera/object transforms; mismatched clients are rejected.
 JNI copies its input before returning. The mailbox holds one executing frame

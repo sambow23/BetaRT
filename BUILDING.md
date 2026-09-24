@@ -97,6 +97,9 @@ works with a compatible software Vulkan driver. Enable `REMIX_VULKAN_VALIDATION=
 and synchronization validation with the installed validation layer for GPU tests.
 Set `MCRTX_RENDER_BACKEND=pathtrace` to exercise the in-memory world with lighting reuse; the transport, menu and exact raster-pixel fixtures retain raster. World tests allow cold driver compilation before timing warmup. The test classpath excludes all LWJGL modules; local audio therefore uses the
 vanilla silent fallback. Verify OpenAL separately in the installed Prism client.
+The pathtrace run also checks streamed dynamic faces across the camera horizon,
+including mirrored transforms and both raster/ray primary visibility. GPU tests
+use isolated OpenRemix configuration directories under their output directory.
 
 The private JNI protocol is version 6, independently of the public Remix SDK.
 Update the patched JAR and JNI together. The paired openremix runtime supplies

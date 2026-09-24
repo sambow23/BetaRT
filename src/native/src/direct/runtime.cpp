@@ -571,7 +571,10 @@ void Runtime::resourcePacket(const Bytes &bytes) {
         for (float &position : vertex.position) position = data.read<float>();
         vertex.texcoord[0] = data.read<float>(); vertex.texcoord[1] = data.read<float>();
         vertex.color = data.read<std::uint32_t>();
-        vertex.normal[1] = 1;
+        // The streamed xyz/uv/color format has no authored normals. Leave the
+        // zero normal so Remix derives each triangle's geometric normal. An
+        // invented +Y normal makes vertical faces change lighting at the
+        // camera horizon when the renderer rejects backfacing shading normals.
       }
       for (auto &index : indices) index = data.read<std::uint32_t>();
       surface.vertices_values = vertices.data(); surface.indices_values = indices.data();
