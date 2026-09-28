@@ -80,6 +80,15 @@ panel), `MCRTX_PERF=1` enables detailed timings, and `MCRTX_PERF_LOG` selects th
 log file. `MCRTX_GAMEPLAY_FOV` and `MCRTX_VIEWMODEL_FOV` retain camera FOV controls (30–120 degrees, default 70). Detailed profiling affects throughput. Old RTX, capture, lighting and
 vanilla-suppression settings have no effect and should be removed.
 
+CPU-side options for runtimes that provide them (older runtimes ignore them with a
+log line): terrain sections are registered once as retained instances and replayed
+by the runtime when it exports them (`MCRTX_RETAINED_TERRAIN=0` restores per-frame
+draws). `MCRTX_PERSISTENT_STATIC=1` lets the path tracer keep those static sections
+between frames, `MCRTX_ASYNC_PRESENT=1` records and presents on a runtime render
+thread while the next frame is built, and `MCRTX_PT_SHADOW_EARLY_OUT=1` stops shadow
+rays at the first blocker. `MCRTX_PT_HARDWARE_FACE_CULLING=1` culls back faces of
+one-sided entity models in traversal; terrain is double-sided and unaffected.
+
 ## Verification
 
 ```sh

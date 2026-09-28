@@ -28,6 +28,9 @@ private:
   void framePacket(const Bytes &bytes);
   bool terrainPublish();
   void drawTerrain();
+  remixapi_Transform terrainTransform(const ChunkKey &key) const;
+  static void terrainBlend(remixapi_InstanceInfoBlendEXT &blend, unsigned pass);
+  bool rasterBackend() const;
   bool events();
   void setError(const std::string &message);
   void material(std::uint64_t id);
@@ -46,7 +49,17 @@ private:
     std::uint64_t lifetime = 0, world = 0;
     std::array<std::uint64_t, 2> identities {};
     std::vector<Torch> torches;
+    // Retained instances (MCRTX_RETAINED_TERRAIN): one per pass, replayed by the
+    // runtime each frame. The runtime derives temporal identity from the handle,
+    // which lets static chunks join its persistent static set.
+    std::array<std::uint64_t, 2> retained {};
+    std::array<remixapi_MeshHandle, 2> retainedMeshes {};
+    bool visible = true;
   };
+#if MCRTX_HAS_RETAINED_INSTANCES
+  void retainTerrain(const ChunkKey &key, TerrainMesh &chunk);
+  void releaseTerrain(TerrainMesh &chunk);
+#endif
   mutable std::mutex m_mutex;
   std::condition_variable m_started;
   std::thread m_worker;
@@ -85,6 +98,16 @@ private:
 #if MCRTX_HAS_SAMPLING_STATISTICS
   PFN_remixapi_GetSamplingStatisticsEXT m_samplingStats = nullptr;
 #endif
+  PFN_remixapi_GetBackendCapabilitiesEXT m_backendCaps = nullptr;
+#if MCRTX_HAS_RETAINED_INSTANCES
+  PFN_remixapi_CreateRetainedInstance m_createRetained = nullptr;
+  PFN_remixapi_UpdateRetainedInstance m_updateRetained = nullptr;
+  PFN_remixapi_UpdateRetainedInstances m_updateRetainedMany = nullptr;
+  PFN_remixapi_DestroyRetainedInstances m_destroyRetained = nullptr;
+  PFN_remixapi_DrawRetainedInstances m_drawRetained = nullptr;
+#endif
+  bool m_useRetained = false;
+  std::array<double, 3> m_retainedOrigin {};
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;
   std::unordered_map<ChunkKey, TerrainMesh, ChunkKeyHash> m_chunks;

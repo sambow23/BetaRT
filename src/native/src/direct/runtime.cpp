@@ -6,6 +6,7 @@
 #include <sstream>
 #include <fstream>
 #include <iomanip>
+#include <utility>
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/runtime_config.hpp"
 
@@ -51,6 +52,7 @@ bool Runtime::start(const std::filesystem::path &library, unsigned width, unsign
   m_lastSequence = m_pendingSequence = 0;
   m_grabRequested = m_grabApplied = m_debugVisible = false;
   m_origin = {}; m_floatingOrigin = {}; m_view = {}; m_projection = {};
+  m_retainedOrigin = {};
   {
     std::lock_guard lock(m_mutex);
     m_error.clear();
@@ -204,6 +206,21 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
 #if MCRTX_HAS_SHARC_STATISTICS
     m_sharcStats = function<PFN_remixapi_GetSharcStatisticsEXT>(m_library, "remixapi_GetSharcStatisticsEXT", false);
 #endif
+    m_backendCaps = function<PFN_remixapi_GetBackendCapabilitiesEXT>(m_library, "remixapi_GetBackendCapabilitiesEXT", false);
+#if MCRTX_HAS_RETAINED_INSTANCES
+    m_createRetained = function<PFN_remixapi_CreateRetainedInstance>(m_library, "remixapi_CreateRetainedInstance", false);
+    m_updateRetained = function<PFN_remixapi_UpdateRetainedInstance>(m_library, "remixapi_UpdateRetainedInstance", false);
+    m_updateRetainedMany = function<PFN_remixapi_UpdateRetainedInstances>(m_library, "remixapi_UpdateRetainedInstances", false);
+    m_destroyRetained = function<PFN_remixapi_DestroyRetainedInstances>(m_library, "remixapi_DestroyRetainedInstances", false);
+    m_drawRetained = function<PFN_remixapi_DrawRetainedInstances>(m_library, "remixapi_DrawRetainedInstances", false);
+    // Chunks are registered once and replayed by the runtime; MCRTX_RETAINED_TERRAIN=0 keeps per-frame draws.
+    const auto retained = detail::readEnvironmentVariable("MCRTX_RETAINED_TERRAIN");
+    m_useRetained = m_createRetained && m_updateRetained && m_updateRetainedMany && m_destroyRetained && m_drawRetained &&
+                    (retained.empty() || detail::isTruthyEnvValue(retained.c_str()));
+    std::fprintf(stderr, "[mcrtx] terrain submission: %s\n", m_useRetained ? "retained instances" : "per-frame draws");
+#else
+    m_useRetained = false;
+#endif
     remixapi_StartupInfo startup = {};
     startup.sType = REMIXAPI_STRUCT_TYPE_STARTUP_INFO;
 #if !defined(_WIN32)
@@ -246,12 +263,29 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
         {"MCRTX_PT_SHARC_DOWNSCALE", "sharcDownscale"}, {"MCRTX_PT_SHARC_SCALE", "sharcSceneScale"},
         {"MCRTX_PT_SHARC_CAPACITY_LOG2", "sharcCapacityLog2"}, {"MCRTX_PT_SHARC_DEBUG", "sharcDebug"},
-        {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"}}) {
+        {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"},
+        {"MCRTX_PT_SHADOW_EARLY_OUT", "shadowEarlyOut"}, {"MCRTX_PT_HARDWARE_FACE_CULLING", "hardwareFaceCulling"}}) {
       auto value = detail::readEnvironmentVariable(environment);
       // An explicit backend wins even if the legacy alias is also supplied.
       if (std::strcmp(environment, "MCRTX_PT_RTXDI") == 0 &&
           !detail::readEnvironmentVariable("MCRTX_PT_TORCH_SAMPLER").empty()) continue;
-      if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
+      if (value.empty()) continue;
+      const auto key = std::string("rtx.native.pathtrace.") + setting;
+      const auto result = m_api.SetConfigVariable(key.c_str(), value.c_str());
+      // Settings newer runtimes add are optional; an older runtime keeps its defaults.
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS && (std::strcmp(setting, "shadowEarlyOut") == 0 ||
+                                                    std::strcmp(setting, "hardwareFaceCulling") == 0))
+        std::fprintf(stderr, "[mcrtx] %s unavailable in this runtime (%u)\n", key.c_str(), unsigned(result));
+      else check(result);
+    }
+    // Opt-in runtime features for CPU-limited systems. Unsupported runtimes keep their defaults.
+    for (const auto &[environment, key] : {std::pair{"MCRTX_ASYNC_PRESENT", "rtx.native.asyncPresent"},
+        {"MCRTX_PERSISTENT_STATIC", "rtx.native.scene.persistentStatic"}}) {
+      const auto value = detail::readEnvironmentVariable(environment);
+      if (value.empty()) continue;
+      const auto result = m_api.SetConfigVariable(key, detail::isTruthyEnvValue(value.c_str()) ? "1" : "0");
+      if (result != REMIXAPI_ERROR_CODE_SUCCESS)
+        std::fprintf(stderr, "[mcrtx] %s unavailable in this runtime (%u)\n", key, unsigned(result));
     }
     remixapi_LightInfoDistantEXT distant = {};
     distant.sType = REMIXAPI_STRUCT_TYPE_LIGHT_INFO_DISTANT_EXT;
@@ -729,6 +763,9 @@ bool Runtime::terrainPublish() {
   for (const auto &key : m_terrain.takeResidencyChanges()) {
     const auto found = m_chunks.find(key);
     if (found != m_chunks.end() && found->second.lifetime != m_terrain.lifetime(key)) {
+#if MCRTX_HAS_RETAINED_INSTANCES
+      releaseTerrain(found->second); // Before the meshes it names.
+#endif
       for (const auto mesh : found->second.handles) if (mesh) check(m_api.DestroyMesh(mesh));
       m_chunks.erase(found);
       changed = true;
@@ -794,8 +831,21 @@ bool Runtime::terrainPublish() {
     bytes += result->bytes; m_uploadBytes += result->bytes;
     bool committed = m_terrain.finish(*result, [&] {
       auto &previous = m_chunks[result->inputs.key];
+      // A rebuilt section keeps its retained instances (and so its temporal
+      // identity) exactly when it keeps its identities above.
+      if (sameLifetime) {
+        next.retained = std::exchange(previous.retained, {});
+        next.retainedMeshes = previous.retainedMeshes;
+        next.visible = previous.visible;
+      }
       std::swap(previous, next);
     });
+#if MCRTX_HAS_RETAINED_INSTANCES
+    // Point retained instances at the new meshes, and retire the previous
+    // section's own ones, before any mesh they name is destroyed.
+    if (committed && m_useRetained) retainTerrain(result->inputs.key, m_chunks[result->inputs.key]);
+    if (committed) releaseTerrain(next);
+#endif
     // Destroy discarded allocations or the previous committed section after swapping.
     for (unsigned p = 0; p < 2; ++p) if (next.handles[p] && !reused[p]) check(m_api.DestroyMesh(next.handles[p]));
     changed |= committed;
@@ -804,9 +854,87 @@ bool Runtime::terrainPublish() {
   return changed;
 }
 
+remixapi_Transform Runtime::terrainTransform(const ChunkKey &key) const {
+  remixapi_Transform transform = {};
+  const double absolute[3] = {double(key.originX), double(key.originY), double(key.originZ)};
+  for (unsigned row = 0; row < 3; ++row) {
+    for (unsigned col = 0; col < 3; ++col) transform.matrix[row][col] = row == col ? 1.f : 0.f;
+    transform.matrix[row][3] = float(absolute[row] - m_floatingOrigin[row]);
+  }
+  return transform;
+}
+
+void Runtime::terrainBlend(remixapi_InstanceInfoBlendEXT &blend, unsigned pass) {
+  blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
+  blend.alphaTestEnabled = 1; blend.alphaTestCompareOp = 4; blend.alphaTestReferenceValue = 1;
+  blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = 6;
+  blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = 7;
+  blend.alphaBlendEnabled = pass != 0;
+}
+
+bool Runtime::rasterBackend() const {
+  if (!m_backendCaps) return false;
+  remixapi_BackendCapabilitiesEXT capabilities = {};
+  capabilities.structSize = sizeof(capabilities);
+  return m_backendCaps(&capabilities) == REMIXAPI_ERROR_CODE_SUCCESS && capabilities.activeBackend == 0;
+}
+
+#if MCRTX_HAS_RETAINED_INSTANCES
+void Runtime::retainTerrain(const ChunkKey &key, TerrainMesh &chunk) {
+  for (unsigned pass = 0; pass < 2; ++pass) {
+    auto &handle = chunk.retained[pass];
+    const auto mesh = chunk.handles[pass];
+    if (!mesh) {
+      if (handle) check(m_destroyRetained(&handle, 1));
+      handle = 0;
+      chunk.retainedMeshes[pass] = nullptr;
+      continue;
+    }
+    if (handle && chunk.retainedMeshes[pass] == mesh) continue;
+    // No InstanceIdentityEXT: the runtime classifies the chunk static and keeps
+    // its temporal identity with the handle, across mesh replacements.
+    remixapi_InstanceInfoBlendEXT blend = {};
+    terrainBlend(blend, pass);
+    remixapi_InstanceInfo info = {};
+    info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;
+    info.pNext = &blend;
+    info.mesh = mesh;
+    info.transform = terrainTransform(key);
+    info.doubleSided = 1;
+    if (handle) check(m_updateRetained(handle, &info)); // Keeps its visibility.
+    else {
+      check(m_createRetained(&info, &handle));
+      if (!chunk.visible) {
+        remixapi_RetainedInstanceUpdate hidden = {};
+        hidden.handle = handle;
+        hidden.flags = REMIXAPI_RETAINED_UPDATE_VISIBILITY;
+        check(m_updateRetainedMany(&hidden, 1));
+      }
+    }
+    chunk.retainedMeshes[pass] = mesh;
+  }
+}
+
+void Runtime::releaseTerrain(TerrainMesh &chunk) {
+  std::uint64_t handles[2];
+  unsigned count = 0;
+  for (auto &handle : chunk.retained)
+    if (handle) handles[count++] = std::exchange(handle, 0);
+  chunk.retainedMeshes = {};
+  if (count) check(m_destroyRetained(handles, count));
+}
+#endif
+
 void Runtime::drawTerrain() {
   for (auto& [id, light] : m_torchLights) light.seen = false;
-  for (const auto &[key, chunk] : m_chunks) {
+#if MCRTX_HAS_RETAINED_INSTANCES
+  // Retained chunks: frustum culling hides raster-only terrain. Traced terrain
+  // must stay resident, and raster skips traced draws while tracing anyway.
+  const bool cullRetained = m_useRetained && rasterBackend();
+  const bool shifted = m_useRetained && m_floatingOrigin != m_retainedOrigin;
+  std::vector<remixapi_RetainedInstanceUpdate> updates;
+#endif
+  for (auto &[key, chunk] : m_chunks) {
     // Submit all resident lights, independent of the raster frustum. API changes
     // happen only here, after terrainPublish has accepted a complete section.
     for (const auto& torch : chunk.torches) {
@@ -856,30 +984,51 @@ void Runtime::drawTerrain() {
           unsigned(clip[1] < -clip[3]) << 2 | unsigned(clip[1] > clip[3]) << 3 |
           unsigned(clip[2] < 0) << 4 | unsigned(clip[2] > clip[3]) << 5;
     }
+#if MCRTX_HAS_RETAINED_INSTANCES
+    if (m_useRetained) {
+      const bool visible = !cullRetained || !outside;
+      const auto transform = terrainTransform(key);
+      for (const auto handle : chunk.retained) {
+        if (!handle) continue;
+        remixapi_RetainedInstanceUpdate update = {};
+        update.handle = handle;
+        if (shifted) {
+          update.flags |= REMIXAPI_RETAINED_UPDATE_TRANSFORM;
+          update.transform = transform;
+        }
+        if (visible != chunk.visible) {
+          update.flags |= REMIXAPI_RETAINED_UPDATE_VISIBILITY;
+          update.visible = visible;
+        }
+        if (update.flags) updates.push_back(update);
+      }
+      chunk.visible = visible;
+      continue;
+    }
+#endif
     // Residency supplies all traced terrain; visibility only controls raster draws.
     remixapi_InstanceIdentityEXT identity = {};
     identity.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_IDENTITY_EXT;
     identity.classification = REMIXAPI_INSTANCE_STATIC_EXT; identity.rasterVisible = !outside;
-    for (unsigned row = 0; row < 3; ++row) {
-      for (unsigned col = 0; col < 3; ++col) draw.transform.matrix[row][col] = row == col ? 1.f : 0.f;
-      const double absolute[3] = {double(key.originX), double(key.originY), double(key.originZ)};
-      draw.transform.matrix[row][3] = float(absolute[row] - m_floatingOrigin[row]);
-    }
+    draw.transform = terrainTransform(key);
     draw.doubleSided = 1;
     remixapi_InstanceInfoBlendEXT blend = {};
-    blend.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO_BLEND_EXT;
-    blend.alphaTestEnabled = 1; blend.alphaTestCompareOp = 4; blend.alphaTestReferenceValue = 1;
-    blend.srcColorBlendFactor = blend.srcAlphaBlendFactor = 6;
-    blend.dstColorBlendFactor = blend.dstAlphaBlendFactor = 7;
     draw.pNext = &blend;
-    blend.pNext = &identity;
     for (unsigned pass = 0; pass < 2; ++pass) {
+      terrainBlend(blend, pass);
+      blend.pNext = &identity;
       draw.mesh = chunk.handles[pass];
       identity.instanceId = chunk.identities[pass];
-      blend.alphaBlendEnabled = pass != 0;
       if (draw.mesh) check(m_api.DrawInstance(&draw));
     }
   }
+#if MCRTX_HAS_RETAINED_INSTANCES
+  if (m_useRetained) {
+    if (!updates.empty()) check(m_updateRetainedMany(updates.data(), std::uint32_t(updates.size())));
+    m_retainedOrigin = m_floatingOrigin;
+    check(m_drawRetained(nullptr));
+  }
+#endif
   for (auto it = m_torchLights.begin(); it != m_torchLights.end();) {
     if (!it->second.seen) {
       check(m_api.DestroyLight(it->second.handle));
