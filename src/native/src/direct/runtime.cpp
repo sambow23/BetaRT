@@ -53,6 +53,8 @@ bool Runtime::start(const std::filesystem::path &library, unsigned width, unsign
   m_grabRequested = m_grabApplied = m_debugVisible = false;
   m_origin = {}; m_floatingOrigin = {}; m_view = {}; m_projection = {};
   m_retainedOrigin = {};
+  m_observedPresentations = 0;
+  m_asyncPresentation = false;
   {
     std::lock_guard lock(m_mutex);
     m_error.clear();
@@ -263,27 +265,23 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         {"MCRTX_PT_EMISSIVE_SAMPLER", "emissiveSampler"}, {"MCRTX_PT_EMISSIVE_DOWNSCALE", "emissiveDownscale"},
         {"MCRTX_PT_SHARC_DOWNSCALE", "sharcDownscale"}, {"MCRTX_PT_SHARC_SCALE", "sharcSceneScale"},
         {"MCRTX_PT_SHARC_CAPACITY_LOG2", "sharcCapacityLog2"}, {"MCRTX_PT_SHARC_DEBUG", "sharcDebug"},
-        {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"},
-        {"MCRTX_PT_SHADOW_EARLY_OUT", "shadowEarlyOut"}, {"MCRTX_PT_HARDWARE_FACE_CULLING", "hardwareFaceCulling"}}) {
+        {"MCRTX_PT_LIGHT_CANDIDATES", "lightCandidates"}, {"MCRTX_PT_INDIRECT_SAMPLING", "indirectSampling"}, {"MCRTX_PT_SKY", "sky"}}) {
       auto value = detail::readEnvironmentVariable(environment);
       // An explicit backend wins even if the legacy alias is also supplied.
       if (std::strcmp(environment, "MCRTX_PT_RTXDI") == 0 &&
           !detail::readEnvironmentVariable("MCRTX_PT_TORCH_SAMPLER").empty()) continue;
-      if (value.empty()) continue;
-      const auto key = std::string("rtx.native.pathtrace.") + setting;
-      const auto result = m_api.SetConfigVariable(key.c_str(), value.c_str());
-      // Settings newer runtimes add are optional; an older runtime keeps its defaults.
-      if (result != REMIXAPI_ERROR_CODE_SUCCESS && (std::strcmp(setting, "shadowEarlyOut") == 0 ||
-                                                    std::strcmp(setting, "hardwareFaceCulling") == 0))
-        std::fprintf(stderr, "[mcrtx] %s unavailable in this runtime (%u)\n", key.c_str(), unsigned(result));
-      else check(result);
+      if (!value.empty()) check(m_api.SetConfigVariable((std::string("rtx.native.pathtrace.") + setting).c_str(), value.c_str()));
     }
-    // Opt-in runtime features for CPU-limited systems. Unsupported runtimes keep their defaults.
+    // Runtime features BetaRT enables by default; =0 disables one. They apply at
+    // every launch, over the loaded OpenRemix profile (the API cannot read it).
+    // Runtimes without a setting keep their own default.
     for (const auto &[environment, key] : {std::pair{"MCRTX_ASYNC_PRESENT", "rtx.native.asyncPresent"},
-        {"MCRTX_PERSISTENT_STATIC", "rtx.native.scene.persistentStatic"}}) {
+        {"MCRTX_PERSISTENT_STATIC", "rtx.native.scene.persistentStatic"},
+        {"MCRTX_PT_SHADOW_EARLY_OUT", "rtx.native.pathtrace.shadowEarlyOut"},
+        {"MCRTX_PT_HARDWARE_FACE_CULLING", "rtx.native.pathtrace.hardwareFaceCulling"}}) {
       const auto value = detail::readEnvironmentVariable(environment);
-      if (value.empty()) continue;
-      const auto result = m_api.SetConfigVariable(key, detail::isTruthyEnvValue(value.c_str()) ? "1" : "0");
+      const bool enabled = value.empty() || detail::isTruthyEnvValue(value.c_str());
+      const auto result = m_api.SetConfigVariable(key, enabled ? "1" : "0");
       if (result != REMIXAPI_ERROR_CODE_SUCCESS)
         std::fprintf(stderr, "[mcrtx] %s unavailable in this runtime (%u)\n", key, unsigned(result));
     }
@@ -369,9 +367,14 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
         check(m_api.DrawLightInstance(m_daylight));
         std::uint64_t before = 0, after = 0;
         check(m_presentCount(&before));
+        // A count that advanced since the last Present returned means the runtime
+        // presents asynchronously (rtx.native.asyncPresent): Present hands the frame
+        // to its render thread and the count follows. There, success means handed off.
+        m_asyncPresentation |= before != m_observedPresentations;
         check(m_api.Present(nullptr));
         check(m_presentCount(&after));
-        if (after == before) continue;
+        m_observedPresentations = after;
+        if (after == before && !m_asyncPresentation) continue;
         ++m_presented;
         const bool fresh = m_pendingSequence != m_lastSequence;
         if (fresh) {

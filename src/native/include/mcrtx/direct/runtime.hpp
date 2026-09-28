@@ -127,5 +127,9 @@ private:
   std::atomic<std::uint64_t> m_presented {0}, m_fresh {0};
   std::uint64_t m_lastSequence = 0;
   std::uint64_t m_pendingSequence = 0, m_uploadBytes = 0;
+  // Presentation count after the last Present, and whether it has advanced
+  // between Presents (asynchronous presentation).
+  std::uint64_t m_observedPresentations = 0;
+  bool m_asyncPresentation = false;
 };
 }
