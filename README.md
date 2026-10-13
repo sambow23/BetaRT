@@ -1,35 +1,26 @@
-# BetaRT — direct Remix client
+> This project uses AI-generated code.
 
-Minecraft Beta 1.7.3 with direct rendering through the Remix 0.1003 API.
-SDL3 owns the window and input; Vulkan draws terrain, vanilla models, materials,
-particles, skies, held items, menus and HUD. Unlit raster is the default; opt-in
-Vulkan path tracing adds diffuse world lighting, distant-light shadows and basic
-tinted transparency. Gameplay, networking and audio stay in the Java 8 client.
+<p align="center">
+  <img src="https://github.com/user-attachments/assets/62f9868d-cc27-4613-a55d-efabc3fa2182" width="400" />
+</p>
 
-The patcher redirects vanilla geometry producers to CPU transforms and direct
-resource/draw submissions. The packaged client has no OpenGL or GLFW dependency
-and no capture-renderer fallback. Unchanged terrain and model resources persist;
-only fresh game frames and explicit redraw requests are presented.
+#
+A mod that brings Path Tracing to Minecraft Beta 1.7.3 using OpenRemix, aiming to keep the beta aesthetic as much as possible (with a few optional extras).
 
-See [building and installation](BUILDING.md), [renderer design](docs/DirectRenderer.md)
-and [terrain ownership](docs/TerrainPipeline.md). Linux x64 is the first supported
-client target. Windows client packaging and gameplay validation are deferred.
+<table>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/ad1d7dc5-a24b-49fb-9079-863f5cdd2b26" width="300" alt="sc1"></td>
+    <td><img src="https://github.com/user-attachments/assets/fc81b598-7ee7-4f49-89f8-aeb99eeef736" width="300" alt="sc2"></td>
+  </tr>
+  <tr>
+    <td><img src="https://github.com/user-attachments/assets/b66fd47c-a186-491b-b068-9412bd9201f9" width="300" alt="sc3"></td>
+    <td><img src="https://github.com/user-attachments/assets/cb08e6f7-2f31-4369-a7fa-83fb073c5ac9" width="300" alt="sc3"></td>
+  </tr>
+</table>
 
-F12 opens the native debug panel. Closing it restores gameplay mouse capture.
-F2 queues a PNG screenshot in the instance's screenshots directory. Vanilla
-menus, texture packs, key bindings, fullscreen and text editing use SDL input.
-
-Set `MCRTX_RENDER_BACKEND=pathtrace` at launch, or select Path trace in F12.
-Unsupported devices explain the missing capability and retain raster. Defaults are
-native resolution, one sample per pixel and two indirect bounces, with accumulation
-disabled. [Path-tracing controls, ownership and profiling](docs/PathTracing.md)
-describe the paired client/JNI requirement and tested limits.
-
-This project includes AI-assisted code. Historical path-tracing measurements are
-in `docs/history`; they describe the removed capture renderer.
+### PBR Texture packs:
+https://github.com/Veitaserum4/Jacobs-BetaRT-PBR
 
 ## Credits
-
-- [sparkles](https://github.com/Kim2091) and [Remix Plus](https://github.com/RemixProjGroup/dxvk-remix).
-- jacob for guidance and the original project logo/PBR pack.
-- Minecraft and its original client remain Mojang's work; supply your own original JAR.
+- [sparkles](https://github.com/Kim2091) for their remix branch [Remix Plus](https://github.com/RemixProjGroup/dxvk-remix) and PRs.
+- jacob on the RTX Remix Showcase Discord for guidance, project logo, the PBR pack, and finally, all of bug fixes and feature PRs. 
