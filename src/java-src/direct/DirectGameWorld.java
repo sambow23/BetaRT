@@ -15,7 +15,7 @@ public final class DirectGameWorld {
     private static final int[][] emissionPixels=new int[256][];
     private static DirectRenderer.Mesh dome,stars,sun,moon;
     private DirectGameWorld() { }
-    public static void reset(){atlas=water=lava=portal=0;atlasRevision=-1;Arrays.fill(emissionTextures,0);Arrays.fill(emissionPixels,null);}
+    public static void reset(){atlas=water=lava=portal=0;atlasRevision=-1;Arrays.fill(emissionTextures,0);Arrays.fill(emissionPixels,null);DirectWaterNormal.reset();}
     public static void initialize(n renderer,Minecraft game,ji textures){
         renderer.t=game;renderer.l=textures;renderer.a=new ArrayList();renderer.m=new ArrayList();
         renderer.H=-1;renderer.f=renderer.g=renderer.h=-9999;renderer.c=ge.d(0);
@@ -78,6 +78,7 @@ public final class DirectGameWorld {
             atlas=current;atlasRevision=-1;atlasPbrRevision=-1;
             if(water==0){water=DirectTextures.allocate();lava=DirectTextures.allocate();portal=DirectTextures.allocate();}
         }
+        DirectWaterNormal.animate();
         if(atlasRevision==source.revision)return;atlasRevision=source.revision;
         extract(source,water,205,206);extract(source,lava,237,238);extract(source,portal,14);
         if(atlasPbrRevision!=source.pbrRevision) {
@@ -87,6 +88,7 @@ public final class DirectGameWorld {
             DirectTextures.pixels(portal).pbrLoaded=false;
         }
         DirectGameTextures.loaded(water,textures,"/water.png");
+        DirectWaterNormal.attach(water);
         DirectGameTextures.loaded(lava,textures,"/lava.png");
         DirectGameTextures.loaded(portal,textures,"/portal.png");
         for(int i=0;i<8;++i)DirectRenderer.writeMaterial(i+1,i==2?water:i==3?lava:i==5?portal:atlas);

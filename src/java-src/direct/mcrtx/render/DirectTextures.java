@@ -15,6 +15,7 @@ public final class DirectTextures {
         public String[] pbr={"","","",""};
         public String asset="";
         public boolean pbrLoaded;
+        public boolean linear; // normal maps: uploaded as linear data, not sRGB
         private boolean dirty = true, uploaded;
     }
     private static final Map<Integer, Texture> images = new LinkedHashMap<Integer, Texture>();
@@ -93,7 +94,7 @@ public final class DirectTextures {
     }
     private static void upload(Texture image) {
         if (!image.dirty) return;
-        int at=DirectRenderer.resources.command(1);
+        int at=DirectRenderer.resources.command(image.linear?7:1);
         DirectRenderer.resources.id(image.id); DirectRenderer.resources.integer(image.width); DirectRenderer.resources.integer(image.height);
         DirectRenderer.resources.bytes(image.rgba); DirectRenderer.resources.end(at); image.dirty=false;image.uploaded=true;
     }

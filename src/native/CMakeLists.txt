@@ -53,6 +53,9 @@ if(MCRTX_BUILD_JNI)
   check_cxx_source_compiles("#include <remix/remix_c.h>
     int main() { return sizeof(remixapi_RetainedInstanceUpdate) + sizeof(PFN_remixapi_DrawRetainedInstances); }"
     MCRTX_HAS_RETAINED_INSTANCES)
+  check_cxx_source_compiles("#include <remix/remix_native_ext.h>
+    int main() { return sizeof(remixapi_CameraMediumEXT); }"
+    MCRTX_HAS_CAMERA_MEDIUM)
   unset(CMAKE_REQUIRED_INCLUDES)
   add_library(mcrtx_jni SHARED
     src/direct/submission.cpp src/direct/protocol.cpp src/direct/runtime.cpp src/direct/thread_affinity.cpp
@@ -65,7 +68,8 @@ if(MCRTX_BUILD_JNI)
     MCRTX_HAS_SHARC_STATISTICS=$<BOOL:${MCRTX_HAS_SHARC_STATISTICS}>
     MCRTX_HAS_LIGHTING_STATISTICS=$<BOOL:${MCRTX_HAS_LIGHTING_STATISTICS}>
     MCRTX_HAS_SAMPLING_STATISTICS=$<BOOL:${MCRTX_HAS_SAMPLING_STATISTICS}>
-    MCRTX_HAS_RETAINED_INSTANCES=$<BOOL:${MCRTX_HAS_RETAINED_INSTANCES}>)
+    MCRTX_HAS_RETAINED_INSTANCES=$<BOOL:${MCRTX_HAS_RETAINED_INSTANCES}>
+    MCRTX_HAS_CAMERA_MEDIUM=$<BOOL:${MCRTX_HAS_CAMERA_MEDIUM}>)
   target_link_libraries(mcrtx_jni PRIVATE mcrtx_terrain)
   set_target_properties(mcrtx_jni PROPERTIES OUTPUT_NAME mcrtx_jni)
   install(TARGETS mcrtx_jni RUNTIME DESTINATION . LIBRARY DESTINATION .)

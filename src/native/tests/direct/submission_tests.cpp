@@ -126,5 +126,16 @@ int main() {
   for (int i = 0; i < 16; ++i) append(view, i % 5 == 0 ? 1.f : 0.f);
   require(accepts(view), "Separate double camera and floating origin");
   view.pop_back(); require(!accepts(view), "Truncated floating origin accepted");
+  // Water: linear textures (normal maps) share Texture's payload; Medium is the eye in water.
+  auto linear = resource;
+  std::uint32_t linearOp = std::uint32_t(Op::LinearTexture);
+  std::memcpy(linear.data() + 8, &linearOp, 4);
+  validatePacket(linear, true);
+  auto medium = [](std::uint32_t inside) {
+    auto bytes = packet(); append(bytes, std::uint32_t(Op::Medium)); append(bytes, std::uint32_t(4));
+    append(bytes, inside); return bytes;
+  };
+  require(accepts(medium(0)) && accepts(medium(1)), "Camera medium rejected");
+  require(!accepts(medium(2)), "Invalid camera medium accepted");
   std::cout << "Direct mailbox and protocol tests passed\n";
 }

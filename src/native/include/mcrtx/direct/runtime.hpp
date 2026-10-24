@@ -107,6 +107,13 @@ private:
   PFN_remixapi_DrawRetainedInstances m_drawRetained = nullptr;
 #endif
   bool m_useRetained = false;
+  // Water as a translucent body (MCRTX_WATER_TRANSLUCENT=0: the blended texture),
+  // and whether this frame's eye is in it (Op::Medium).
+  bool m_translucentWater = true, m_cameraInWater = false;
+  // The water the camera sees through from inside (MCRTX_UNDERWATER_COLOR "r,g,b",
+  // MCRTX_UNDERWATER_DISTANCE): absorbed light becomes this colour lit by the sky.
+  remixapi_Float3D m_underwaterColor{};
+  float m_underwaterDistance = 0;
   std::array<double, 3> m_retainedOrigin {};
   remixapi_LightHandle m_daylight = nullptr;
   std::unordered_map<std::uint64_t, Material> m_materials;

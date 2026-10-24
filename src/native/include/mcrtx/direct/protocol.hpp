@@ -15,7 +15,9 @@ inline constexpr std::uint32_t kVersion = 6;
 enum class Op : std::uint32_t {
   Texture = 1, Material = 2, Mesh = 3,
   DestroyTexture = 4, DestroyMaterial = 5, DestroyMesh = 6,
+  LinearTexture = 7, // Texture's payload, linear data (normal maps)
   Camera = 16, Draw = 17, Ui = 18, TerrainView = 19, RasterState = 20,
+  Medium = 21, // before the world Camera: whether the eye is under water
 };
 
 class Reader {

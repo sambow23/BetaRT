@@ -256,6 +256,10 @@ public final class DirectRenderer {
         frame.integer(blendEnabled ? 1 : 0); frame.integer(sourceBlend); frame.integer(destinationBlend);
         frame.integer(vertexColor ? 1 : 0); frame.end(command);
     }
+    /** Whether the eye is under water; before the world camera, which carries it. */
+    public static void medium(boolean inside) {
+        int command = frame.command(21); frame.integer(inside ? 1 : 0); frame.end(command);
+    }
     public static void camera(int kind) {
         int command = frame.command(16); frame.integer(kind);
         for (int i = 0; i < 16; ++i) frame.number(kind==0&&worldCamera?worldView[i]:(i % 5 == 0 ? 1f : 0f));

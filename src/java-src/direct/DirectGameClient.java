@@ -77,6 +77,7 @@ public final class DirectGameClient {
         DirectRenderer.cullEnabled=true;DirectRenderer.blendEnabled=false;DirectRenderer.alphaEnabled=true;
         renderer.a(partial,0); // Vanilla camera collision, bobbing, hurt, sleeping and third person.
         DirectGameWorld.environment(game.g,partial);
+        DirectRenderer.medium(camera.a(ln.g)); // Eye in water (ln.g); vanilla's underwater fog test.
         DirectRenderer.terrainView(DirectGameWorld.originX,DirectGameWorld.originY,DirectGameWorld.originZ);
         sr frustum=new sr();frustum.a(DirectGameWorld.originX,DirectGameWorld.originY,DirectGameWorld.originZ);
         DirectGameWorld.sky(game.g,partial);

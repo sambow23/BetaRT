@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cstdio>
+#include <cstdlib>
 #include <sstream>
 #include <fstream>
 #include <iomanip>
@@ -30,6 +31,20 @@ std::filesystem::path texturePath(std::uint64_t texture) {
   stream << "0x" << std::hex << texture;
   return stream.str();
 }
+// Water (terrain material class 2) as a translucent body, as main's terrain
+// water and garrys-mod-rtx-remixed's: Fresnel reflection at water's refractive
+// index and, behind the surface, its colour to the power of the depth over the
+// measurement distance.
+constexpr std::uint64_t kWaterMaterialId = 1 + 2;
+constexpr remixapi_Float3D kWaterTransmittance = {0.74f, 0.9f, 1.0f};
+constexpr float kWaterMeasurementDistance = 1.5f, kWaterRefractiveIndex = 1.333f;
+// Under water the view fogs as vanilla's does (exponential, density 0.1 per
+// block, dark blue): the surface's clear colour keeps blue whole and would
+// barely haze. Luminance passing falls to about 28% over 10 blocks, red and
+// green first, so distance fades into blue; what is absorbed becomes this
+// colour lit by the sky (OpenRemix's camera medium), dark at night.
+constexpr remixapi_Float3D kUnderwaterTransmittance = {0.1f, 0.3f, 0.55f};
+constexpr float kUnderwaterMeasurementDistance = 10.f;
 }
 
 Runtime &Runtime::instance() { static Runtime runtime; return runtime; }
@@ -249,6 +264,20 @@ void Runtime::run(std::filesystem::path library, unsigned width, unsigned height
     (void)width; (void)height;
 #endif
     check(m_api.Startup(&startup));
+    const auto translucentWater = detail::readEnvironmentVariable("MCRTX_WATER_TRANSLUCENT");
+    m_translucentWater = translucentWater.empty() || detail::isTruthyEnvValue(translucentWater.c_str());
+    m_underwaterColor = kUnderwaterTransmittance;
+    m_underwaterDistance = kUnderwaterMeasurementDistance;
+    {
+      const auto color = detail::readEnvironmentVariable("MCRTX_UNDERWATER_COLOR");
+      float c[3];
+      if (!color.empty() && std::sscanf(color.c_str(), "%f,%f,%f", &c[0], &c[1], &c[2]) == 3 &&
+          std::all_of(c, c + 3, [](float v) { return v > 0 && v <= 1; }))
+        m_underwaterColor = {c[0], c[1], c[2]};
+      const auto distance = detail::readEnvironmentVariable("MCRTX_UNDERWATER_DISTANCE");
+      const float d = distance.empty() ? 0 : std::strtof(distance.c_str(), nullptr);
+      if (d > 0 && std::isfinite(d)) m_underwaterDistance = d;
+    }
     const auto vsync = detail::readEnvironmentVariable("MCRTX_VSYNC");
     if (!vsync.empty()) check(m_api.SetConfigVariable("rtx.native.vsync", detail::isTruthyEnvValue(vsync.c_str()) ? "True" : "False"));
     const auto backend = detail::readEnvironmentVariable("MCRTX_RENDER_BACKEND");
@@ -574,6 +603,17 @@ void Runtime::material(std::uint64_t id) {
   info.filterMode = source.filter;
   info.wrapModeU = source.wrapU;
   info.wrapModeV = source.wrapV;
+  // Water: the body's colour instead of the texture (the surface reflects and
+  // refracts; its normal map, the animated frame Java uploads, ripples both).
+  remixapi_MaterialInfoTranslucentEXT translucent = {};
+  if (id == kWaterMaterialId && m_translucentWater) {
+    translucent.sType = REMIXAPI_STRUCT_TYPE_MATERIAL_INFO_TRANSLUCENT_EXT;
+    translucent.refractiveIndex = kWaterRefractiveIndex;
+    translucent.transmittanceColor = kWaterTransmittance;
+    translucent.transmittanceMeasurementDistance = kWaterMeasurementDistance;
+    info.pNext = &translucent;
+    info.albedoTexture = nullptr;
+  }
   remixapi_MaterialHandle result;
   check(m_api.CreateMaterial(&info, &result));
 }
@@ -589,21 +629,23 @@ void Runtime::resourcePacket(const Bytes &bytes) {
     auto data = stream.slice(stream.read<std::uint32_t>());
     const auto id = data.read<std::uint64_t>();
     switch (op) {
-    case Op::Texture: {
+    case Op::Texture:
+    case Op::LinearTexture: {
       remixapi_TextureInfo info = {};
       info.sType = REMIXAPI_STRUCT_TYPE_TEXTURE_INFO;
       info.hash = id;
       info.width = data.read<std::uint32_t>();
       info.height = data.read<std::uint32_t>();
       info.depth = info.mipLevels = 1;
-      info.format = REMIXAPI_FORMAT_R8G8B8A8_SRGB;
+      info.format = op == Op::LinearTexture ? REMIXAPI_FORMAT_R8G8B8A8_UNORM : REMIXAPI_FORMAT_R8G8B8A8_SRGB;
       info.data = data.data();
       info.dataSize = data.remaining();
       remixapi_TextureHandle result;
       check(m_api.CreateTexture(&info, &result));
       check(m_api.RegisterUITexture(id, info.width, info.height, info.format, info.data, info.dataSize));
+      const auto path = texturePath(id);
       for (const auto &[materialId, source] : m_materials) {
-        if (source.texture == id || source.emissionTexture == id) material(materialId);
+        if (source.texture == id || source.emissionTexture == id || source.pbr[0] == path) material(materialId);
       }
       break;
     }
@@ -698,6 +740,14 @@ void Runtime::framePacket(const Bytes &bytes) {
       sunlight.hash=0x6fffffffffffffffull;
       sunlight.radiance={data.read<float>(),data.read<float>(),data.read<float>()};
       if(!environment.enabled)sunlight.radiance={};
+#if MCRTX_HAS_CAMERA_MEDIUM
+      remixapi_CameraMediumEXT medium{};
+      medium.sType=REMIXAPI_STRUCT_TYPE_CAMERA_MEDIUM_EXT;
+      medium.inside=m_cameraInWater&&m_translucentWater;
+      medium.transmittanceColor=m_underwaterColor;
+      medium.transmittanceMeasurementDistance=m_underwaterDistance;
+      environment.pNext=&medium;
+#endif
       if(info.type==REMIXAPI_CAMERA_TYPE_WORLD) {
         temporal.pNext=&environment;
         check(m_api.UpdateLightDefinition(m_daylight,&sunlight));
@@ -706,6 +756,9 @@ void Runtime::framePacket(const Bytes &bytes) {
       check(m_api.SetupCamera(&info));
       break;
     }
+    case Op::Medium:
+      m_cameraInWater = data.read<std::uint32_t>() != 0;
+      break;
     case Op::Draw: {
       remixapi_InstanceInfo info = {};
       info.sType = REMIXAPI_STRUCT_TYPE_INSTANCE_INFO;

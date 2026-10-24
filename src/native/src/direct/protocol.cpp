@@ -12,11 +12,12 @@ void validatePacket(const Bytes &packet, bool resources) {
     auto payload = stream.slice(size);
     if (++commands > 65536) throw std::invalid_argument("Too many submission commands");
     if (resources) {
-      if (op < Op::Texture || op > Op::DestroyMesh || size < 8)
+      if (op < Op::Texture || op > Op::LinearTexture || size < 8)
         throw std::invalid_argument("Invalid resource command");
       if (!payload.read<std::uint64_t>()) throw std::invalid_argument("Zero resource identifier");
       switch (op) {
-      case Op::Texture: {
+      case Op::Texture:
+      case Op::LinearTexture: {
         const auto width = payload.read<std::uint32_t>(), height = payload.read<std::uint32_t>();
         if (!width || !height || width > 16384 || height > 16384 ||
             std::uint64_t(width) * height * 4 != payload.remaining())
@@ -93,6 +94,9 @@ void validatePacket(const Bytes &packet, bool resources) {
       case Op::TerrainView:
         for (int i = 0; i < 6; ++i) payload.read<double>();
         for (int i = 0; i < 16; ++i) payload.read<float>();
+        break;
+      case Op::Medium:
+        if (payload.read<std::uint32_t>() > 1) throw std::invalid_argument("Invalid medium state");
         break;
       case Op::RasterState:
         if (payload.read<std::uint32_t>() > 1 || payload.read<std::uint32_t>() > 1 || payload.read<std::uint32_t>() > 7 || payload.read<std::uint32_t>() > 1)
