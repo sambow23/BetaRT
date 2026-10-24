@@ -9,6 +9,9 @@
 #include <utility>
 #include "mcrtx/lifecycle/perf_log.hpp"
 #include "mcrtx/core/runtime_config.hpp"
+#if defined(__APPLE__)
+#include <dispatch/dispatch.h>
+#endif
 
 namespace mcrtx::direct {
 namespace {
@@ -61,7 +64,20 @@ bool Runtime::start(const std::filesystem::path &library, unsigned width, unsign
     m_window = {};
     m_metrics = {};
   }
+#if defined(__APPLE__)
+  // macOS windows belong to the main thread. Java runs off the first thread
+  // (scripts-macos/launch.py), which stays in Cocoa's run loop and so serves
+  // the main queue; the worker waits there while the renderer runs on it.
+  m_worker = std::thread([this, library, width, height] {
+    struct Start { Runtime *runtime; std::filesystem::path library; unsigned width, height; } start{this, library, width, height};
+    dispatch_sync_f(dispatch_get_main_queue(), &start, [](void *context) {
+      auto &start = *static_cast<Start *>(context);
+      start.runtime->run(start.library, start.width, start.height);
+    });
+  });
+#else
   m_worker = std::thread(&Runtime::run, this, library, width, height);
+#endif
   std::unique_lock lock(m_mutex);
   m_started.wait(lock, [&] { return m_ready; });
   return m_running;
