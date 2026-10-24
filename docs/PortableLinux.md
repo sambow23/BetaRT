@@ -19,8 +19,8 @@ build machine's version of libstdc++.
 
 Path tracing requires Vulkan ray-query support. DLSS additionally needs supported
 NVIDIA hardware and drivers. Automatic mode chooses DLSS with Ray Reconstruction,
-then DLSS Super Resolution, then native rendering as capabilities permit. F12
-shows the active mode, fallback reason and resolution. FSR remains selectable.
+then DLSS Super Resolution, then native rendering as capabilities permit. The runtime
+menu shows the active mode, fallback reason and resolution. FSR remains selectable.
 The default output size is 1920×1080, with DLSS Quality when available.
 
 The instance does not require a launch wrapper, Python, MangoHud, KDE or a fixed

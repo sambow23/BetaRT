@@ -35,7 +35,7 @@ OpenAL initializes in the actual host client.
 On `192.168.50.13`, the isolated `BetaRT-Raster-Profile` instance displays the dense
 scene with signs, water animation, flames/smoke, player skin, held item and HUD.
 Checks exercise inventory/player models, third-person camera, chat draft editing
-without sending a message, native debug text editing, F12 capture/restore, wheel
+without sending a message, native debug text editing, menu-key capture/restore, wheel
 selection, F2 PNG capture, fullscreen, resize, minimize/restore and shutdown.
 An in-memory local world additionally exercises standard entities, effects, block
 invalidation and unload without editing a save.

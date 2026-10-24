@@ -77,8 +77,8 @@ fresh Remix frames and explicit redraws separately.
 
 SDL input includes physical transitions, Unicode text, mouse motion/buttons and
 wheel displacement. Focus/capture changes and overflow reset held inputs.
-The raw extension retains captured events so F12 can close ImGui; the client
-suppresses gameplay input while that panel is visible. Closing it restores the
+OpenRemix toggles its menu on its own shortcut (Alt+X unless set otherwise in the menu's header) and keeps
+that key from the client, which suppresses gameplay input while the panel is visible. Closing it restores the
 requested mouse grab. The hidden launcher AWT window is disposed during shutdown.
 PNG screenshots use swapchain readback, including resize and shutdown cleanup.
 

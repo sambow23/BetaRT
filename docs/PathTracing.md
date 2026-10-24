@@ -11,12 +11,12 @@ Sun travel direction is `(0, -cos(theta), -sin(theta))`, where `theta` is the
 celestial angle in radians. White noon intensity remains pi, scaled by
 `clamp(2*cos(theta), 0, 1) * (1-rain) * (1-thunder)` for a continuous horizon fade.
 Dimensions without a sky disable both sources; night ambient uses only Minecraft's
-night-sky color. F12 retains the manual sunlight override and adds a sky toggle.
+night-sky color. The runtime menu retains the manual sunlight override and adds a sky toggle.
 Sun/moon/star sprites remain visual backgrounds. REBLUR SH and native-resolution
 TAA default on. SHARC caches indirect lighting on static diffuse and rough PBR
 surfaces; SIGMA filters primary
 opaque sun visibility with distance-dependent penumbra. BetaRT supplies a
-0.533-degree sun diameter. F12 exposes SIGMA and a sun-size override; zero diameter
+0.533-degree sun diameter. The runtime menu exposes SIGMA and a sun-size override; zero diameter
 retains hard shadows. See [SIGMA details](../../openremix/docs/features/sigma.md).
 Openremix supports analytic sphere-light sampling; general mesh-emitter sampling, glow, moonlight, cubemap,
 upscaling, a specular material model, physical refraction and acceleration-structure disk caches remain unavailable.
@@ -24,7 +24,7 @@ upscaling, a specular material model, physical refraction and acceleration-struc
 ## Launch controls
 
 Set environment variables on the isolated client's launch command or launcher
-environment. F12 also permits switching at a completed native frame boundary.
+environment. The runtime menu also permits switching at a completed native frame boundary.
 
 | Variable | Values | Default |
 | --- | --- | --- |
@@ -62,7 +62,7 @@ environment. F12 also permits switching at a completed native frame boundary.
 | `MCRTX_PT_FORCE_REBUILD` | Same booleans; dynamic TLAS profiling | 0 |
 | `MCRTX_PT_PROFILE` | Path to per-presentation CSV, overwritten on launch | disabled |
 
-The optional torch sampler uses NVIDIA RTXDI for ReSTIR DI. F12 shows the requested
+The optional torch sampler uses NVIDIA RTXDI for ReSTIR DI. The runtime menu shows the requested
 and active backend, any fallback reason, and a collapsed **ReSTIR DI settings** group.
 `MCRTX_PT_RTXDI=0/1` (or false/true) remains an alias; an explicit
 `MCRTX_PT_TORCH_SAMPLER` takes precedence. RTXDI preserves the explicit local sample
@@ -71,7 +71,7 @@ emissives on LightBVH. Backend and estimator changes clear lighting histories,
 progressive accumulation, and SHARC. No JNI protocol or public ABI changes are needed.
 See [ReSTIR DI details](../../openremix/docs/features/restir-di.md).
 
-F12 exposes **Maximum indirect bounces**, **Adaptive indirect termination**, and
+The runtime menu exposes **Maximum indirect bounces**, **Adaptive indirect termination**, and
 **Bounces before adaptive termination**. Leave adaptation off for the existing
 fixed maximum. When enabled, low-throughput paths can stop after the minimum;
 survivors are weighted to preserve expected unclamped brightness. The first
@@ -108,7 +108,7 @@ Torch reach defaults to 16 blocks, with unchanged individual-light strength insi
 12 blocks and a smooth fade to zero over the outer four. Set reach to zero for the
 previous unlimited model. Recent visibility guides opaque direct-light selection
 while retaining exploration and fresh shadow rays. Local primary radiance uses a
-separate NRD filter; SIGMA continues to filter only the sun. F12 exposes reach,
+separate NRD filter; SIGMA continues to filter only the sun. The runtime menu exposes reach,
 guidance, samples and diagnostics. `MCRTX_PT_LOCAL_RANGE` and
 `MCRTX_PT_LOCAL_GUIDING` provide matching environment controls. See
 [local-light architecture](../../openremix/docs/features/local-lights.md) for
@@ -117,7 +117,7 @@ radiance strengths, sampling, temporal behavior and current limitations.
 Set `MCRTX_PT_SEPARATE_LOCAL_LIGHTING=3` in `minecraft/mcrtx-runtime.env`
 to move opaque primary torch/emissive sampling into a dedicated compute pass.
 This keeps the combined sampler, light powers, candidate and ray budgets, and
-PBR diffuse/specular denoising. F12 **Torch / emissive lighting** also selects
+PBR diffuse/specular denoising. The runtime menu's **Torch / emissive lighting** also selects
 **Combined - separate pass**. Performance depends on the GPU and scene;
 mode `0` restores inline sampling. Without temporal resources, mode `3` uses
 inline combined lighting.
@@ -209,7 +209,7 @@ not compile or change launcher options. The default remains raster after staging
 The companion renderer's directional SHARC cache supports static opaque EON/GGX
 surfaces with sampled roughness at least 0.5, including metals and normal maps.
 Sharp surfaces continue tracing; reflection footprint checks decide when a later
-rough hit can reuse the cache. F12 distinguishes **Caching** from **Enabled (idle)**.
+rough hit can reuse the cache. The runtime menu distinguishes **Caching** from **Enabled (idle)**.
 The default 4,194,304-entry directional cache uses 256 MiB. Progressive references
 and zero indirect bounces bypass it. No new launch variables or JNI protocol
 changes are required. See [cache behavior](../../openremix/docs/features/sharc.md).
@@ -233,7 +233,7 @@ instance closed; preserve its SDL binary, launcher settings and saved worlds.
 
 DLSS uses the renderer's isolated `libraries/dlss/310.9.1` release libraries. Auto
 selects DLSS Ray Reconstruction, then DLSS Super Resolution, then native rendering.
-F12 displays the active backend and fallback reason. Ray Reconstruction manages
+The runtime menu displays the active backend and fallback reason. Ray Reconstruction manages
 its denoisers and independent sampling while retaining the saved NRD, SIGMA, TAA,
 blue-noise and reuse settings for restoration. Progressive references bypass it.
 
@@ -245,7 +245,7 @@ may dim legitimate highlights. Primary sunlight and directly visible emission
 remain unchanged. Both clamps preserve RGB ratios and share their scale between
 diffuse and specular contributions. Sample counts do not rescale the thresholds.
 
-F12 exposes both numeric thresholds and **PBR local-light firefly filter (REBLUR)**.
+The runtime menu exposes both numeric thresholds and **PBR local-light firefly filter (REBLUR)**.
 The independent filter preserves specular motion estimation while bypassing
 radiance pre-blur; it is inactive when REBLUR is bypassed, including DLSS RR.
 Changing any setting resets temporal history and progressive accumulation.

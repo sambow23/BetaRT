@@ -77,7 +77,7 @@ beside the JAR and run from a directory without `mcrtx-runtime.env` overrides.
 
 Optional environment settings: `MCRTX_VSYNC=0` disables VSync (or use the debug
 panel), `MCRTX_PERF=1` enables detailed timings, and `MCRTX_PERF_LOG` selects the
-log file. `MCRTX_GAMEPLAY_FOV` and `MCRTX_VIEWMODEL_FOV` retain camera FOV controls (30–120 degrees, default 70). Detailed profiling affects throughput. Old RTX, capture, lighting and
+log file. `MCRTX_GAMEPLAY_FOV` and `MCRTX_VIEWMODEL_FOV` retain camera FOV controls (30–120 degrees, default 70). OpenRemix opens and closes the runtime menu itself on its shortcut, Alt+X unless another is set in the menu's header. Detailed profiling affects throughput. Old RTX, capture, lighting and
 vanilla-suppression settings have no effect and should be removed.
 
 Runtime features BetaRT enables by default, when the runtime provides them: terrain
@@ -87,7 +87,7 @@ sections between frames (`MCRTX_PERSISTENT_STATIC`); recording and presenting ru
 runtime render thread while the next frame is built (`MCRTX_ASYNC_PRESENT`); shadow rays
 stop at the first blocker (`MCRTX_PT_SHADOW_EARLY_OUT`); and one-sided entity models cull
 back faces in traversal (`MCRTX_PT_HARDWARE_FACE_CULLING`; terrain is double-sided). Set a
-variable to `0` to disable its feature. These apply at every launch over the saved F12
+variable to `0` to disable its feature. These apply at every launch over the saved runtime-menu
 profile, so a panel change lasts for that session.
 
 ## Verification

@@ -33,8 +33,7 @@ public final class Keyboard {
     }
     public static void key(int code,boolean pressed,boolean repeated){
         if(!created||code<=0||code>=KEYS.length)return;
-        int key=KEYS[code];down[key]=pressed;
-        if(key==88&&pressed&&!repeated){mcrtx.bridge.DirectBridge.control(4,-1,0,0,null);return;}
+        int key=KEYS[code];down[key]=pressed; // The runtime menu's shortcut is OpenRemix's own.
         if(repeated&&!repeat)return;
         char text=key==14?'\b':key==28?'\r':key==15?'\t':0;
         events.add(new Event(key,pressed?text:0,pressed));
