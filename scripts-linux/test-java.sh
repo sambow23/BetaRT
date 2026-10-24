@@ -16,7 +16,7 @@ if [[ -e "$test_output" ]]; then
 fi
 mkdir -p "$test_output/client" "$test_output/queue"
 cd "$test_root"
-mapfile -t test_queue_sources < <(rg --files src/tests/java/chunks -g '*.java' | sort)
+mapfile -t test_queue_sources < <(find src/tests/java/chunks -name '*.java' -type f | sort)
 "$test_javac" --release 8 -d "$test_output/queue" "${test_queue_sources[@]}" \
   src/java-src/chunks/DirtyChunkSection.java src/java-src/chunks/RemixChunkSectionKey.java \
   src/java-src/direct/DirectSectionResidency.java src/java-src/direct/DirectSectionUpdates.java
@@ -29,7 +29,7 @@ mapfile -t test_queue_sources < <(rg --files src/tests/java/chunks -g '*.java' |
 "$test_java" -cp "$test_output/client:$test_client" DirectEnvironmentTest
 "$test_java" -cp "$test_output/client:$test_client" DirectWaterIceTransparencyTest
 if [[ ${MCRTX_TEST_GPU:-0} == 1 ]]; then
-  mapfile -t test_sources < <(rg --files src/tests/java/direct -g '*.java' | sort)
+  mapfile -t test_sources < <(find src/tests/java/direct -name '*.java' -type f | sort)
   "$test_javac" --release 8 -cp "$test_client" -d "$test_output/client" "${test_sources[@]}"
   test_names=(DirectTransportTest DirectClientTest DirectStartupTest DirectWorldTest)
   if [[ ${MCRTX_RENDER_BACKEND:-raster} == pathtrace ]]; then

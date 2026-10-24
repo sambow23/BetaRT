@@ -23,7 +23,7 @@ cd "$direct_root"
 "$direct_javac" -cp "$direct_asm:$direct_tree" -d "$direct_output/tool-classes" src/tools-src/patcher/mcrtx/tools/DirectClientPatchTool.java
 "$direct_java" -cp "$direct_output/tool-classes:$direct_asm:$direct_tree" mcrtx.tools.DirectClientPatchTool \
   "$direct_source" "$direct_output/minecraft-b1.7.3-client-mcrtx.jar"
-mapfile -t direct_sources < <(rg --files src/java-src/direct -g '*.java' | sort)
+mapfile -t direct_sources < <(find src/java-src/direct -name '*.java' -type f | sort)
 direct_sources+=(
   src/java-src/core/mcrtx/bridge/RemixBridgeNative.java
   src/java-src/core/mcrtx/bridge/McrtxRuntimeConfig.java
